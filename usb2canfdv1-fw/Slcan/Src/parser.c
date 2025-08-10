@@ -48,7 +48,7 @@ enum slcan_filter_mode
 // Private variables
 static char *hw_sw_ver = "VW1K2\r";
 static char *hw_sw_ver_detail = "v: hardware=\"USB2CANFDV1\", software=\"" "1.2.0" "\", url=\"" "github.com/Nakakiyo092/usb2canfdv1" "\"\r";
-static char *can_info = "I303C\r";
+static char *can_info = "I3050\r";
 static char *can_info_detail = "i: protocol=\"ISO-CANFD\", clock_mhz=60, controller=\"STM32G0B1CB\"\r";
 static uint32_t slcan_filter_code = 0x00000000;
 static uint32_t slcan_filter_mask = 0xFFFFFFFF;
