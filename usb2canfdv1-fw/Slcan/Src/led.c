@@ -43,7 +43,7 @@ void led_init()
     HAL_GPIO_WritePin(LED_TXD, LED_ON);
 }
 
-// Turn green LED on/off
+// Turn TX LED on/off
 void led_turn_txd(enum led_state state)
 {
     HAL_GPIO_WritePin(LED_TXD, state);
@@ -64,7 +64,7 @@ void led_blink_sequence(uint8_t numblinks)
     }
 }
 
-// Turn green LED on for a short duration
+// Turn TX LED on for a short duration
 void led_blink_txd(void)
 {
     // Make sure the LED has been off for at least LED_BLINK_DURATION before turning on again
@@ -77,7 +77,7 @@ void led_blink_txd(void)
     }
 }
 
-// Turn blue LED on for a short duration
+// Turn RX LED on for a short duration
 void led_blink_rxd(void)
 {
     // Make sure the LED has been off for at least LED_BLINK_DURATION before turning on again
@@ -93,7 +93,7 @@ void led_blink_rxd(void)
 // Process time-based LED events
 void led_process(void)
 {
-    // If error occurred in the last LED_ERROR_DURATION, override LEDs with constant on
+    // If an error is stored, override LEDs with constant on
     if (slcan_get_status_flags())
     {
         HAL_GPIO_WritePin(LED_RXD, LED_ON);
@@ -103,7 +103,7 @@ void led_process(void)
     // Otherwise, normal LED operation
     else
     {
-        // If LEDs were constant on but no longer are constant on, turn the LEDs back off.
+        // If an error was stored but no longer is stored, turn the LEDs back off.
         if (led_error_was_indicating)
         {
             HAL_GPIO_WritePin(LED_RXD, LED_OFF);

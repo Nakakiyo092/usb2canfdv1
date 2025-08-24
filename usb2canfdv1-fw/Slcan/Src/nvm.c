@@ -40,7 +40,7 @@ enum nvm_memory_status
 #define NVM_ADDR_ORIGIN           (0x0801F000)                  /* Start address of data area in flash */
 #define NVM_ADDR_SERIAL_NUMBER    (NVM_ADDR_ORIGIN + 0x000UL)
 #define NVM_ADDR_STP_CONFIG       (NVM_ADDR_ORIGIN + 0x008UL)   /* Auto startup configuration */
-#define NVM_ADDR_STP_NOM_BITRATE  (NVM_ADDR_ORIGIN + 0x010UL)
+#define NVM_ADDR_STP_NOM_BITRATE  (NVM_ADDR_ORIGIN + 0x010UL)   /* Nominal bitrate at STartuP */
 #define NVM_ADDR_STP_DATA_BITRATE (NVM_ADDR_ORIGIN + 0x018UL)
 #define NVM_ADDR_STP_FILTER_STD   (NVM_ADDR_ORIGIN + 0x020UL)
 #define NVM_ADDR_STP_FILTER_EXT   (NVM_ADDR_ORIGIN + 0x028UL)

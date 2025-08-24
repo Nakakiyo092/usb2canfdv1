@@ -30,17 +30,17 @@
 #include "led.h"
 #include "slcan.h"
 
-// Bit number for each frame type with zero data length
+// Bit number for each frame type WithOut Data bytes (DLC = 0)
 #define CAN_BIT_NBR_WOD_CBFF            47
 #define CAN_BIT_NBR_WOD_CEFF            67
-#define CAN_BIT_NBR_WOD_FBFF_ARBIT      30
+#define CAN_BIT_NBR_WOD_FBFF_ARBIT      30      // Bit number in arbitration phase
 #define CAN_BIT_NBR_WOD_FEFF_ARBIT      49
-#define CAN_BIT_NBR_WOD_FXFF_DATA_S     26
-#define CAN_BIT_NBR_WOD_FXFF_DATA_L     30
+#define CAN_BIT_NBR_WOD_FXFF_DATA_S     26      // Bit number in data phase with shorter crc
+#define CAN_BIT_NBR_WOD_FXFF_DATA_L     30      // Bit number in data phase with longer crc
 
 // Parameter to calculate bus load
-#define CAN_TIME_CNT_MAX_REWIND         360         /* Max cycle ~120ms X 3 times margin. should be < MIN_BIT_NBR * 9 */
-#define CAN_BUS_LOAD_BUILDUP_PPM        1125000     /* Compensate stuff bits and round down in laod calc */
+#define CAN_ROOT_CLOCK_MHZ              80
+#define CAN_BUS_LOAD_BUILDUP_PPM        1125000     /* Compensate stuff bits (10%) and round down (2.5%) in bus laod calc */
 
 // Public variable
 uint8_t can_dlc_to_bytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
@@ -54,12 +54,13 @@ static enum can_bus_state can_bus_state;
 static struct can_error_state can_error_state = {0};
 static uint32_t can_mode = FDCAN_MODE_NORMAL;
 static FunctionalState can_auto_retransmit = ENABLE;
-static struct can_bitrate_cfg can_bit_cfg_nominal, can_bit_cfg_data = {0};
+static struct can_bitrate_cfg can_bit_cfg_nominal = {0};
+static struct can_bitrate_cfg can_bit_cfg_data = {0};
 
 static uint32_t can_cycle_max_time_ns = 0;
 static uint32_t can_cycle_ave_time_ns = 0;
-static uint32_t can_bit_time_ns = 0;
-static uint32_t can_bus_load_ppm = 0;
+static uint32_t can_bit_time_ns = 0;            // Time for one bit in ns
+static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
 
 // Private methods
 static void can_update_bit_time_ns(void);
@@ -143,6 +144,7 @@ HAL_StatusTypeDef can_enable(void)
         uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
         if (offset <= 0x28)
         {
+            // TODO: The rationale behind the parameter selection is unclear.
             if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
             if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
         }
@@ -260,8 +262,11 @@ void can_process(void)
     uint32_t tick_now = HAL_GetTick();
     if (100 <= (uint32_t)(tick_now - tick_last))    // Update in every 100ms interval
     {
-        uint32_t rate_us_per_ms = (uint32_t)bit_cnt_message * can_bit_time_ns / 1000 / 100;   // MAX: 1000 @ 1Mbps
+        uint32_t rate_us_per_ms = (uint32_t)bit_cnt_message * can_bit_time_ns / 1000 / 100;   // Bus occupied time (us) / Interval (ms)
+
+        // Take exponential moving average (alpha = 1/8) to smooth the value
         can_bus_load_ppm = (can_bus_load_ppm * 7 + (uint32_t)CAN_BUS_LOAD_BUILDUP_PPM * rate_us_per_ms / 1000) >> 3;
+
         bit_cnt_message = 0;
         tick_last = tick_now;
     }
@@ -295,19 +300,25 @@ void can_process(void)
     uint8_t rx_err_cnt = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
     if (rx_err_cnt > can_error_state.rec || cnt.TxErrorCnt > can_error_state.tec)
         slcan_raise_error(SLCAN_STS_BUS_ERROR);
-    if (sts.BusOff && !can_error_state.bus_off)
-    	slcan_raise_error(SLCAN_STS_BUS_ERROR);  // Capture counter increase that caused bus off
+    if (sts.BusOff && !can_error_state.bus_off)     // If it gets bus off right now
+        // ... capture counter increase that caused bus off since it does not increase TxErrorCnt
+        slcan_raise_error(SLCAN_STS_BUS_ERROR);
 
     can_error_state.bus_off = (uint8_t)sts.BusOff;
     can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
     can_error_state.tec = (uint8_t)cnt.TxErrorCnt;
     can_error_state.rec = (uint8_t)rx_err_cnt;
+
+    // Check for error code (See the link for the intended behavior)
+    // https://github.com/Nakakiyo092/canable2-fw/issues/68
     if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
         can_error_state.last_err_code = sts.DataLastErrorCode;
     if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
         can_error_state.last_err_code = sts.LastErrorCode;
 
     // Check for bus error flags
+    // See the link for the difference from the bus status
+    // https://github.com/Nakakiyo092/canable2-fw/issues/63
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING))
     {
         slcan_raise_error(SLCAN_STS_ERROR_WARNING);
@@ -322,7 +333,7 @@ void can_process(void)
 
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF))
     {
-        // No status flag for bus off
+        // No slcan status flag for bus off
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF);
     }
 
@@ -337,12 +348,13 @@ void can_process(void)
 
     if (can_cycle_max_time_ns < cycle_time_ns)
         can_cycle_max_time_ns = cycle_time_ns;
-        
+
+    //  Take exponential moving average (alpha = 1/16)
     can_cycle_ave_time_ns = ((uint32_t)can_cycle_ave_time_ns * 15 + cycle_time_ns) >> 4;
     
     last_time_stamp_cnt = curr_time_stamp_cnt;
 
-    // Green LED on during bus closed
+    // TX LED on during bus closed
     if (can_bus_state == BUS_CLOSED)
         led_turn_txd(LED_ON);
 
@@ -625,11 +637,13 @@ enum can_bus_state can_get_bus_state(void)
     return can_bus_state;
 }
 
+// Return protocol status and error counters
 struct can_error_state can_get_error_state(void)
 {
     return can_error_state;
 }
 
+// Return state if CAN frame tx is possible
 FunctionalState can_is_tx_enabled(void)
 {
     if (can_bus_state == BUS_CLOSED)
@@ -643,6 +657,9 @@ FunctionalState can_is_tx_enabled(void)
 }
 
 // Return CAN bus load in ppm
+// The value is not accurate more than 100,000 points without considering stuff bits.
+// See the link for some details of bus load calculation
+// https://github.com/Nakakiyo092/canable2-fw/issues/62
 uint32_t can_get_bus_load_ppm(void)
 {
     return can_bus_load_ppm;
@@ -676,10 +693,12 @@ FDCAN_HandleTypeDef *can_get_handle(void)
 // Get the nominal one bit time in nanoseconds
 void can_update_bit_time_ns(void)
 {
+    // Number of time quanta (Tq) in one bit
     can_bit_time_ns = ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
-    can_bit_time_ns = can_bit_time_ns * can_bit_cfg_nominal.prescaler;    // Tq in one bit
-    can_bit_time_ns = can_bit_time_ns * 1000;                             // MAX: (1 + 256 + 128) * 1000
-    can_bit_time_ns = can_bit_time_ns / 80;                              // Clock: 80MHz = (80 / 1000) GHz
+    // ... times Tq [ns] = prescaler / CAN clock [GHz] = prescaler * 1000 / CAN clock [MHz]
+    can_bit_time_ns = can_bit_time_ns * can_bit_cfg_nominal.prescaler;
+    can_bit_time_ns = can_bit_time_ns * 1000;
+    can_bit_time_ns = can_bit_time_ns / CAN_ROOT_CLOCK_MHZ;
 
     return;
 }
@@ -723,10 +742,14 @@ uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
             if (can_bit_cfg_nominal.prescaler == 0) return 0;   // Uninitialized bitrate (avoid zero-div)
 
             uint32_t rate_ppm;  // Nominal bit time vs data bit time
+            // Number of time quanta (Tq) in one bit for data phase
             rate_ppm = ((uint32_t)1 + can_bit_cfg_data.time_seg1 + can_bit_cfg_data.time_seg2);
-            rate_ppm = rate_ppm * can_bit_cfg_data.prescaler;     // Tq in one bit (data)
-            rate_ppm = rate_ppm * 1000000;  // MAX: 32 * (32 + 16) * 1000000 
+            // ... times Tq [ns] = prescaler / CAN clock [GHz], but CAN clock will be canceled
+            rate_ppm = rate_ppm * can_bit_cfg_data.prescaler;
+            rate_ppm = rate_ppm * 1000000;  // Parts per MILLION
+            // Divide by number of time quanta (Tq) in one bit for nominal phase
             rate_ppm = rate_ppm / ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
+            // ... times Tq [ns] = prescaler / CAN clock [GHz], but CAN clock is canceled
             rate_ppm = rate_ppm / can_bit_cfg_nominal.prescaler;
 
             time_msg = time_msg + ((uint32_t)time_data * rate_ppm) / 1000000;

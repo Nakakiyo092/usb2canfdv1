@@ -35,6 +35,9 @@ uint16_t slcan_report_reg = 1;   // Default: no timestamp, no ESI, no Tx, but wi
 static int32_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data);
 
 // Generate a slcan message from a CAN frame
+// Returns number of bytes written into buf
+//  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
+//  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
 int32_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data)
 {
     // Start building the slcan message string at idx 0 in buf
@@ -78,16 +81,16 @@ int32_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, 
         msg_idx = 1 + SLCAN_EXT_ID_LEN;     // Type & ID
     }
 
-    // Add identifier to buffer
+    // Add identifier to the buffer
     uint32_t tmp = frame_header->Identifier;
     for (uint8_t j = msg_idx - 1; j >= 1; j--)
     {
-        // Add nibble to buffer
+        // Add nibble to the buffer
         buf[j] = slcan_nibble_to_ascii[tmp & 0xF];
         tmp = tmp >> 4;
     }
 
-    // Add DLC to buffer
+    // Add DLC to the buffer
     buf[msg_idx++] = slcan_nibble_to_ascii[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
     int8_t bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
     
@@ -147,25 +150,31 @@ int32_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, 
 }
 
 // Parse an incoming CAN frame into an outgoing slcan message
+// Returns number of bytes written into buf
+//  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
+//  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
 int32_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data)
 {
-    // Rx reporting not required
+    // Check if Rx reporting is required
     if (((slcan_report_reg >> SLCAN_REPORT_RX) & 1) == 0)
         return 0;
 
     if (buf == NULL)
         return 0;
 
-    int32_t msg_idx = slcan_generate_frame(buf, frame_header, frame_data);
+    int32_t len = slcan_generate_frame(buf, frame_header, frame_data);
 
     // Return string length
-    return msg_idx;
+    return len;
 }
 
 // Parse an incoming Tx event into an outgoing slcan message
+// Returns number of bytes written into buf
+//  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
+//  MAX: SLCAN_MTU - 16 (padding)
 int32_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, uint8_t *frame_data)
 {
-    // Tx reporting not required
+    // Check if Tx reporting is required
     if (((slcan_report_reg >> SLCAN_REPORT_TX) & 1) == 0)
         return 0;
 
@@ -186,14 +195,14 @@ int32_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event
     frame_header.BitRateSwitch = tx_event->BitRateSwitch;
     frame_header.FDFormat = tx_event->FDFormat;
     frame_header.RxTimestamp = tx_event->TxTimestamp;
-    int32_t msg_idx = slcan_generate_frame(&buf[1], &frame_header, frame_data);
+    int32_t len = slcan_generate_frame(&buf[1], &frame_header, frame_data);
 
     // Return string length
-    return msg_idx + 1;
+    return len + 1;
 }
 
 
-// Gets milli second timestamp (2bytes, MAX 60,000ms)
+// Gets milli second timestamp for the current time (2bytes, Resets at 60,000ms)
 uint16_t slcan_get_timestamp_ms(void)
 {
     static uint16_t slcan_last_timestamp_ms = 0;
@@ -210,7 +219,9 @@ uint16_t slcan_get_timestamp_ms(void)
     return slcan_last_timestamp_ms;
 }
 
-// Gets micro second timestamp (4bytes, MAX 3600,000,000us)
+// Gets micro second timestamp for the tim3 clock (4bytes, Resets at 3600,000,000us)
+// The tim3_us does not have to be the current value but supposed to be close to it (like ~1ms).
+// The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX / 2 ~ 30ms.
 uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
 {
     static uint32_t slcan_last_timestamp_us = 0;
@@ -229,14 +240,15 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     if (time_diff_ms <= 1 && time_diff_us > UINT16_MAX / 2)
     {
         // Assume tim3 was sampled before the last timestamp
+        // This can happen when a CAN frame is retrieved after answering a 'Z[CR]'
         // The amount of reversal should be close to the main loop (~100us)
         time_diff_us = (uint64_t)3600000000 - (uint16_t)(slcan_last_time_us - current_time_us);
     }
     else
     {
-        // Compensate overflow of micro second counter
+        // Compensate overflow of micro second counter using milli second counter
         n_comp = ((uint64_t)UINT16_MAX / 2 + time_diff_ms * 1000 - time_diff_us);   // MAX 0x10000, 0xFFFFFFFF * 1000, 0xFFFF
-        n_comp = n_comp / ((uint64_t)UINT16_MAX + 1);                               // MAX 0xFFFF * 1000 + ?
+        n_comp = n_comp / ((uint64_t)UINT16_MAX + 1);                               // Number of overflows  MAX 0xFFFF * 1000 + ?
         time_diff_us = time_diff_us + n_comp * ((uint64_t)UINT16_MAX + 1);          // MAX 0xFFFF * 1000 * 0x10000
     }
 

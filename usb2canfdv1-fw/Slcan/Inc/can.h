@@ -58,14 +58,14 @@ enum can_bus_state
     BUS_OPENED
 };
 
-// Structure for CAN bus error state
+// Structure for CAN protocol status and error counters
 struct can_error_state
 {
-    uint8_t bus_off;
-    uint8_t err_pssv;
-    uint8_t tec;
-    uint8_t rec;
-    uint32_t last_err_code;
+    uint8_t bus_off;    // Copy of BusOff in FDCAN_ProtocolStatus
+    uint8_t err_pssv;   // Copy of ErrorPassive in FDCAN_ProtocolStatus
+    uint8_t tec;        // Copy of TxErrorCnt in FDCAN_ErrorCounters
+    uint8_t rec;        // Copy of RxErrorCnt in FDCAN_ErrorCounters (rx error active) / 128 (rx error passive)
+    uint32_t last_err_code; // Copy of LastErrorCode or DataLastErrorCode in FDCAN_ProtocolStatus
 };
 
 // Structure for CAN/FD bitrate configuration

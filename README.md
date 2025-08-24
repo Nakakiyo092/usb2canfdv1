@@ -1,6 +1,6 @@
 # WeActStudio.USB2CANFDV1
 
-This repository contains sources for the slcan USB2CANFDV1 firmware. This firmware implements non-standard slcan commands to support CANFD messaging alongside a LAWICEL-style command set.
+This repository contains sources for an alternative USB2CANFDV1 firmware. This firmware features message filtering and tx event reporting.
 
 ## Frequently Used Commands
 
@@ -17,7 +17,7 @@ This repository contains sources for the slcan USB2CANFDV1 firmware. This firmwa
 - `V[CR]` and `v[CR]` - Returns firmware version and remote path as a string
 - `Z[CR]` and `z[CR]` - Configures reporting mechanism including time stamp and Tx event
 - `M[CR]` and `m[CR]` - Configures CAN acceptance filter
-- `F[CR]` and `f[CR]` - Returns status flags and detailed status
+- `F[CR]` - Returns status flags
 - `X[CR]` - Enters firmware upgrade mode
 
 `[CR]` : `0x0D` (hex), `\r` (ascii)

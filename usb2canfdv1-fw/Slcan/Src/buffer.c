@@ -85,7 +85,7 @@ void buf_process(void)
                 slcan_parse_str(slcan_str, slcan_str_index);
                 slcan_str_index = 0;
 
-                // Blink blue LED as slcan rx if bus closed
+                // Blink RX LED as slcan rx if bus closed
                 if (can_get_bus_state() == BUS_CLOSED) led_blink_rxd();
             }
             else
@@ -147,7 +147,7 @@ void buf_process(void)
     }
 }
 
-// Enqueue data for transmission over USB CDC to host (copy and comit = slow)
+// Enqueue data for transmission over USB CDC to host (copy and comit = slower)
 void buf_enqueue_cdc(uint8_t* buf, uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
@@ -156,12 +156,13 @@ void buf_enqueue_cdc(uint8_t* buf, uint16_t len)
         return;
     }
 
-    // Copy data
+    // Copy the data
     memcpy((uint8_t *)&buf_cdc_tx.data[buf_cdc_tx.head][buf_cdc_tx.msglen[buf_cdc_tx.head]], buf, len);
     buf_cdc_tx.msglen[buf_cdc_tx.head] += len;
 }
 
 // Get destination pointer of cdc buffer for len bytes data (Start position of write access)
+// This function combined with buf_comit_cdc_dest will provide a faster access compared to buf_enqueue_cdc.
 uint8_t *buf_get_cdc_dest(uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)

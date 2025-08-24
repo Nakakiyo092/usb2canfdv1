@@ -163,19 +163,10 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     // Debug function
     case '?':
     {
-        uint8_t cycle_ave = (uint8_t)(can_get_cycle_ave_time_ns() >= 255000 ? 255 : can_get_cycle_ave_time_ns() / 1000);
-        uint8_t cycle_max = (uint8_t)(can_get_cycle_max_time_ns() >= 255000 ? 255 : can_get_cycle_max_time_ns() / 1000);
-        // "?XX-XX\r"
-        uint8_t dbgstr[7];
+        uint8_t dbgstr[2];
         dbgstr[0] = '?';
-        dbgstr[1] = slcan_nibble_to_ascii[cycle_ave >> 4];
-        dbgstr[2] = slcan_nibble_to_ascii[cycle_ave & 0xF];
-        dbgstr[3] = '-';
-        dbgstr[4] = slcan_nibble_to_ascii[cycle_max >> 4];
-        dbgstr[5] = slcan_nibble_to_ascii[cycle_max & 0xF];
-        dbgstr[6] = '\r';
+        dbgstr[1] = '\r';
         buf_enqueue_cdc(dbgstr, strlen((char *)dbgstr));
-        can_clear_cycle_time();
         return;
     }
     default:
@@ -283,6 +274,10 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     // If dlc is too long for a remote frame
     if  (frame_header->TxFrameType == FDCAN_REMOTE_FRAME)
     {
+        // See the link for the DLC range
+        // https://github.com/Nakakiyo092/canable2-fw/issues/67#issuecomment-3228730384
+        // DO NOT RESTRICT THE DLC TO 8 !
+        // https://github.com/Nakakiyo092/annus-mirabilis
         if  (0xF < dlc_code_raw)
         {
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
@@ -292,6 +287,8 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     // If dlc is too long for a classical frame
     else if (frame_header->FDFormat == FDCAN_CLASSIC_CAN)
     {
+        // From a standards perspective, >8 are acceptable. 
+        // However, since the actual usage doesn't seem to exist, the restriction is applied.
         if (0x8 < dlc_code_raw)
         {
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
@@ -734,6 +731,8 @@ void slcan_parse_str_filter_code(uint8_t *buf, uint8_t len)
             slcan_filter_code = (slcan_filter_code << 4) + buf[1 + i];
         }
         
+        // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
+        // https://github.com/Nakakiyo092/canable2-fw/issues/66
         FunctionalState state_std = ENABLE;
         FunctionalState state_ext = ENABLE;
         if ((slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
@@ -787,6 +786,8 @@ void slcan_parse_str_filter_mask(uint8_t *buf, uint8_t len)
             slcan_filter_mask = (slcan_filter_mask << 4) + buf[1 + i];
         }
 
+        // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
+        // https://github.com/Nakakiyo092/canable2-fw/issues/66
         FunctionalState state_std = ENABLE;
         FunctionalState state_ext = ENABLE;
         if ((slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
@@ -950,6 +951,8 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
         }
         else if (buf[0] == 'f')
         {
+            // "f: node_sts=XXXXXXX, last_err_code=XXXX, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r"
+
             char* stsstr = (char*)buf_get_cdc_dest(SLCAN_MTU);
 
             struct can_error_state err = can_get_error_state();
