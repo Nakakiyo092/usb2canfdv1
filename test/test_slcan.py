@@ -31,7 +31,7 @@ class SlcanTestCase(unittest.TestCase):
     def test_error_command(self):
         # check response to [BELL]
         self.dut.send(b"\a")
-        self.assertEqual(self.dut.receive(), b"")      # message is incomplete without [CR]
+        self.assertEqual(self.dut.receive(), b"")      # no reply since message is incomplete without [CR]
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
