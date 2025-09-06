@@ -40,7 +40,6 @@
 
 // Parameter to calculate bus load
 #define CAN_ROOT_CLOCK_MHZ              80
-#define CAN_BUS_LOAD_BUILDUP_PPM        1125000     /* Compensate stuff bits (10%) and round down (2.5%) in bus laod calc */
 
 // Public variable
 uint8_t can_dlc_to_bytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
@@ -266,7 +265,7 @@ void can_process(void)
         uint32_t rate_us_per_ms = (uint32_t)bit_cnt_message * can_bit_time_ns / 1000 / 100;   // MAX: 100000 / 1000 / 100
 
         // Take exponential moving average (alpha = 1/8) to smooth the value
-        can_bus_load_ppm = (can_bus_load_ppm * 7 + (uint32_t)CAN_BUS_LOAD_BUILDUP_PPM * rate_us_per_ms / 1000) >> 3;
+        can_bus_load_ppm = (can_bus_load_ppm * 7 + (uint32_t)1000000 * rate_us_per_ms / 1000) >> 3;
 
         bit_cnt_message = 0;
         tick_last = tick_now;
@@ -658,9 +657,7 @@ FunctionalState can_is_tx_enabled(void)
 }
 
 // Return CAN bus load in ppm
-// The value is not accurate more than 100,000 points without considering stuff bits.
-// See the link for some details of bus load calculation
-// https://github.com/Nakakiyo092/canable2-fw/issues/62
+// The value is theoretical bus load which is a hypothetical bus load without bit stuffing.
 uint32_t can_get_bus_load_ppm(void)
 {
     return can_bus_load_ppm;

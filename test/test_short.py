@@ -35,7 +35,7 @@ class ShortTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -45,7 +45,7 @@ class ShortTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\r")
         time.sleep(0.1)     # wait for bus off ( > 1ms * 255 / 8)
@@ -55,7 +55,7 @@ class ShortTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=BUS_OFF, last_err_code=BIT0, err_cnt_tx_rx=[0xF8, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=BUS_OFF, last_err_code=BIT0, err_cnt_tx_rx=[0xF8, 0x00], th_bus_load_percent=00\r")
 
         # cannot send frame during bus off
         for cmd in cmd_send_std:
@@ -92,7 +92,7 @@ class ShortTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
 
         # One BIT0 error makes error passive event from REC = 0.
         # Not sure if this behavior of HAL is intensional.
@@ -107,7 +107,7 @@ class ShortTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=BIT0, err_cnt_tx_rx=[0x88, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=BIT0, err_cnt_tx_rx=[0x88, 0x00], th_bus_load_percent=00\r")
 
         for i in range(0, 14):
             self.dut.send(b"t0000\r")
@@ -118,7 +118,7 @@ class ShortTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=BIT0, err_cnt_tx_rx=[0xF8, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=BIT0, err_cnt_tx_rx=[0xF8, 0x00], th_bus_load_percent=00\r")
 
         for i in range(0, 1):
             self.dut.send(b"t0000\r")
@@ -129,7 +129,7 @@ class ShortTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=BUS_OFF, last_err_code=BIT0, err_cnt_tx_rx=[0xF8, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=BUS_OFF, last_err_code=BIT0, err_cnt_tx_rx=[0xF8, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
