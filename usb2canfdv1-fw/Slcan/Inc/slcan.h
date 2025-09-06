@@ -24,7 +24,7 @@
 #define _SLCAN_H
 
 // Timestamp mode
-enum slcan_timestamp_mode
+enum SlcanTimestampMode
 {
     SLCAN_TIMESTAMP_OFF = 0,
     SLCAN_TIMESTAMP_MILLI,
@@ -34,7 +34,7 @@ enum slcan_timestamp_mode
 };
 
 // Startup mode
-enum slcan_auto_startup_mode
+enum SlcanAutoStartupMode
 {
     SLCAN_AUTO_STARTUP_OFF = 0,
     SLCAN_AUTO_STARTUP_NORMAL,
@@ -44,7 +44,7 @@ enum slcan_auto_startup_mode
 };
 
 // Status flags, value is bit position in the status flags
-enum slcan_status_flag
+enum SlcanStatusFlag
 {
     SLCAN_STS_CAN_RX_FIFO_FULL = 0, /* Message loss. Not mean the buffer is just full. */
     SLCAN_STS_CAN_TX_FIFO_FULL,     /* Message loss. Not mean the buffer is just full. */
@@ -57,7 +57,7 @@ enum slcan_status_flag
 };
 
 // Report flag, value is bit position in the register
-enum slcan_report_flag
+enum SlcanReportFlag
 {
     SLCAN_REPORT_RX = 0,
     SLCAN_REPORT_TX,
@@ -74,7 +74,7 @@ enum slcan_report_flag
 
 // Public variables
 extern uint8_t slcan_nibble_to_ascii[];
-extern enum slcan_timestamp_mode slcan_timestamp_mode;
+extern enum SlcanTimestampMode slcan_timestamp_mode;
 extern uint16_t slcan_report_reg;
 
 // Prototypes
@@ -82,13 +82,13 @@ int32_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_heade
 int32_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, uint8_t *frame_data);
 uint16_t slcan_get_timestamp_ms(void);
 uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us);
-void slcan_set_timestamp_mode(enum slcan_timestamp_mode mode);
+void slcan_set_timestamp_mode(enum SlcanTimestampMode mode);
 void slcan_set_report_mode(uint16_t reg);
-enum slcan_timestamp_mode slcan_get_timestamp_mode(void);
+enum SlcanTimestampMode slcan_get_timestamp_mode(void);
 uint16_t slcan_get_report_mode(void);
 
 void slcan_parse_str(uint8_t *buf, uint8_t len);
-void slcan_raise_error(enum slcan_status_flag err);
+void slcan_raise_error(enum SlcanStatusFlag err);
 void slcan_clear_error(void);
 uint8_t slcan_get_status_flags(void);
 

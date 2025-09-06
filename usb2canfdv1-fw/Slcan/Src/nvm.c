@@ -29,7 +29,7 @@
 #include "slcan.h"
 
 // Memory status
-enum nvm_memory_status
+enum NvmMemoryStatus
 {
     NVM_MEMORY_WRITTEN = 0xA,
     NVM_MEMORY_CLEARED = 0xF    /* Flash memory store 0xFF when cleared */
@@ -134,7 +134,7 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     slcan_set_report_mode(report_reg);
 
     // Read and apply bitrate
-    struct can_bitrate_cfg bitrate;
+    struct CanBitrateCfg bitrate;
     bitrate.prescaler = (uint16_t)((nvm_stp_nom_bitrate_raw) & 0xFF);
     bitrate.time_seg1 = (uint8_t)((nvm_stp_nom_bitrate_raw >> 8) & 0xFF);
     bitrate.time_seg2 = (uint8_t)((nvm_stp_nom_bitrate_raw >> 16) & 0xFF);

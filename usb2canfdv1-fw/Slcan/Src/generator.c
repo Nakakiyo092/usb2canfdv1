@@ -28,7 +28,7 @@
 
 // Public variables
 uint8_t slcan_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-enum slcan_timestamp_mode slcan_timestamp_mode = 0;
+enum SlcanTimestampMode slcan_timestamp_mode = 0;
 uint16_t slcan_report_reg = 1;   // Default: no timestamp, no ESI, no Tx, but with Rx
 
 // Private methods
@@ -260,7 +260,7 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
 }
 
 // Set the timestamp mode
-void slcan_set_timestamp_mode(enum slcan_timestamp_mode mode)
+void slcan_set_timestamp_mode(enum SlcanTimestampMode mode)
 {
     if (mode < SLCAN_TIMESTAMP_INVALID)
         slcan_timestamp_mode = mode;
@@ -275,7 +275,7 @@ void slcan_set_report_mode(uint16_t reg)
 }
 
 // Report the current timestamp mode
-enum slcan_timestamp_mode slcan_get_timestamp_mode(void)
+enum SlcanTimestampMode slcan_get_timestamp_mode(void)
 {
     return slcan_timestamp_mode;
 }

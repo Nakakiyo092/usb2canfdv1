@@ -32,8 +32,8 @@
 // Private variables
 static uint32_t led_rxd_last_time = 0;
 static uint32_t led_txd_last_time = 0;
-static enum led_state led_rxd_last_state = LED_OFF;
-static enum led_state led_txd_last_state = LED_OFF;
+static enum LedState led_rxd_last_state = LED_OFF;
+static enum LedState led_txd_last_state = LED_OFF;
 static uint8_t led_error_was_indicating = 0;
 
 // Initialize LED GPIOs
@@ -44,7 +44,7 @@ void led_init()
 }
 
 // Turn TX LED on/off
-void led_turn_txd(enum led_state state)
+void led_turn_txd(enum LedState state)
 {
     HAL_GPIO_WritePin(LED_TXD, state);
 }

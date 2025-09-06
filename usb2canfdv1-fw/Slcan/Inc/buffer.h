@@ -38,7 +38,7 @@
 #define BUF_CAN_TXQUEUE_LEN 64   // Number of buffers allocated
 
 // Receive buffering: circular FIFO buffer
-struct buf_cdc_rx
+struct BufCdcRx
 {
     uint8_t data[BUF_CDC_RX_NUM_BUFS][BUF_CDC_RX_BUF_SIZE];
     uint32_t msglen[BUF_CDC_RX_NUM_BUFS];
@@ -47,7 +47,7 @@ struct buf_cdc_rx
 };
 
 // Transmit buffering: triple buffer
-struct buf_cdc_tx
+struct BufCdcTx
 {
     uint8_t data[BUF_CDC_TX_NUM_BUFS][BUF_CDC_TX_BUF_SIZE];
     uint32_t msglen[BUF_CDC_TX_NUM_BUFS];
@@ -56,8 +56,8 @@ struct buf_cdc_tx
 };
 
 // Public variables
-extern volatile struct buf_cdc_tx buf_cdc_tx;
-extern volatile struct buf_cdc_rx buf_cdc_rx;
+extern volatile struct BufCdcTx buf_cdc_tx;
+extern volatile struct BufCdcRx buf_cdc_rx;
 
 // Prototypes
 void buf_init(void);

@@ -30,7 +30,7 @@
 #include "slcan.h"
 
 // Cirbuf structure for CAN TX frames
-struct buf_can_tx
+struct BufCanTx
 {
     FDCAN_TxHeaderTypeDef header[BUF_CAN_TXQUEUE_LEN];  // Header buffer
     uint8_t data[BUF_CAN_TXQUEUE_LEN][CAN_MAX_DATALEN]; // Data buffer
@@ -41,11 +41,11 @@ struct buf_can_tx
 };
 
 // Public variables (shared with interrupts)
-volatile struct buf_cdc_tx buf_cdc_tx = {0};
-volatile struct buf_cdc_rx buf_cdc_rx = {0};
+volatile struct BufCdcTx buf_cdc_tx = {0};
+volatile struct BufCdcRx buf_cdc_rx = {0};
 
 // Private variables
-static struct buf_can_tx buf_can_tx = {0};
+static struct BufCanTx buf_can_tx = {0};
 static uint8_t slcan_str[SLCAN_MTU];
 static uint8_t slcan_str_index = 0;
 

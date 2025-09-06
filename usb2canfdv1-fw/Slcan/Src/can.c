@@ -49,12 +49,12 @@ static FDCAN_FilterTypeDef can_std_filter;
 static FDCAN_FilterTypeDef can_ext_filter;
 static FDCAN_FilterTypeDef can_std_pass_all;
 static FDCAN_FilterTypeDef can_ext_pass_all;
-static enum can_bus_state can_bus_state;
-static struct can_error_state can_error_state = {0};
+static enum CanBusState can_bus_state;
+static struct CanErrorState can_error_state = {0};
 static uint32_t can_mode = FDCAN_MODE_NORMAL;
 static FunctionalState can_auto_retransmit = ENABLE;
-static struct can_bitrate_cfg can_bit_cfg_nominal = {0};
-static struct can_bitrate_cfg can_bit_cfg_data = {0};
+static struct CanBitrateCfg can_bit_cfg_nominal = {0};
+static struct CanBitrateCfg can_bit_cfg_data = {0};
 
 static uint32_t can_cycle_max_time_ns = 0;
 static uint32_t can_cycle_ave_time_ns = 0;
@@ -361,7 +361,7 @@ void can_process(void)
 }
 
 // Set the nominal bitrate of the CAN peripheral
-HAL_StatusTypeDef can_set_nominal_bitrate(enum can_bitrate_nominal bitrate)
+HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate)
 {
     if (can_bus_state == BUS_OPENED)
     {
@@ -414,7 +414,7 @@ HAL_StatusTypeDef can_set_nominal_bitrate(enum can_bitrate_nominal bitrate)
 }
 
 // Set the data bitrate of the CAN peripheral
-HAL_StatusTypeDef can_set_data_bitrate(enum can_bitrate_data bitrate)
+HAL_StatusTypeDef can_set_data_bitrate(enum CanBitrateData bitrate)
 {
     if (can_bus_state == BUS_OPENED)
     {
@@ -458,7 +458,7 @@ HAL_StatusTypeDef can_set_data_bitrate(enum can_bitrate_data bitrate)
 }
 
 // Set the nominal bitrate configuration of the CAN peripheral
-HAL_StatusTypeDef can_set_nominal_bitrate_cfg(struct can_bitrate_cfg bitrate_cfg)
+HAL_StatusTypeDef can_set_nominal_bitrate_cfg(struct CanBitrateCfg bitrate_cfg)
 {
     if (can_bus_state == BUS_OPENED)
     {
@@ -477,7 +477,7 @@ HAL_StatusTypeDef can_set_nominal_bitrate_cfg(struct can_bitrate_cfg bitrate_cfg
 }
 
 // Set the data bitrate configuration of the CAN peripheral
-HAL_StatusTypeDef can_set_data_bitrate_cfg(struct can_bitrate_cfg bitrate_cfg)
+HAL_StatusTypeDef can_set_data_bitrate_cfg(struct CanBitrateCfg bitrate_cfg)
 {
     if (can_bus_state == BUS_OPENED)
     {
@@ -496,13 +496,13 @@ HAL_StatusTypeDef can_set_data_bitrate_cfg(struct can_bitrate_cfg bitrate_cfg)
 }
 
 // Get the data bitrate configuration of the CAN peripheral
-struct can_bitrate_cfg can_get_data_bitrate_cfg(void)
+struct CanBitrateCfg can_get_data_bitrate_cfg(void)
 {
     return can_bit_cfg_data;
 }
 
 // Get the nominal bitrate configuration of the CAN peripheral
-struct can_bitrate_cfg can_get_bitrate_cfg(void)
+struct CanBitrateCfg can_get_bitrate_cfg(void)
 {
     return can_bit_cfg_nominal;
 }
@@ -632,13 +632,13 @@ HAL_StatusTypeDef can_set_auto_retransmit(FunctionalState state)
 }
 
 // Return bus status
-enum can_bus_state can_get_bus_state(void)
+enum CanBusState can_get_bus_state(void)
 {
     return can_bus_state;
 }
 
 // Return protocol status and error counters
-struct can_error_state can_get_error_state(void)
+struct CanErrorState can_get_error_state(void)
 {
     return can_error_state;
 }

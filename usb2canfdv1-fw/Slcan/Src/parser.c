@@ -32,7 +32,7 @@
 #include "slcan.h"
 
 // Filter mode
-enum slcan_filter_mode
+enum SlcanFilterMode
 {
     // SLCAN_FILTER_DUAL_MODE = 0,     // Not supported
     // SLCAN_FILTER_SINGLE_MODE,       // Not supported
@@ -489,7 +489,7 @@ void slcan_parse_str_set_bitrate(uint8_t *buf, uint8_t len)
             return;
         }
 
-        struct can_bitrate_cfg bitrate_cfg;
+        struct CanBitrateCfg bitrate_cfg;
         bitrate_cfg.prescaler = ((uint16_t)buf[1] << 4) + buf[2];
         bitrate_cfg.time_seg1 = ((uint16_t)buf[3] << 4) + buf[4];
         bitrate_cfg.time_seg2 = ((uint16_t)buf[5] << 4) + buf[6];
@@ -931,7 +931,7 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
 
             char* stsstr = (char*)buf_get_cdc_dest(SLCAN_MTU);
 
-            struct can_error_state err = can_get_error_state();
+            struct CanErrorState err = can_get_error_state();
 
             snprintf(stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
                                         (err.bus_off ? "BUS_OFF" : (err.err_pssv ? "ER_PSSV" : "ER_ACTV")),
@@ -985,7 +985,7 @@ void slcan_parse_str_auto_startup(uint8_t *buf, uint8_t len)
     }
 }
 
-void slcan_raise_error(enum slcan_status_flag err)
+void slcan_raise_error(enum SlcanStatusFlag err)
 {
     slcan_status_flags |= (uint8_t)(1 << err);
 }
