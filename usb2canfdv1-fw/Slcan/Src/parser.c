@@ -298,20 +298,19 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
         if (0x8 < bytes_in_msg) bytes_in_msg = 0x8;
     }
 
+    // Check command length
+    // parse_loc is always updated after a byte is parsed
+    if (len != parse_loc + 2 * bytes_in_msg)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
     // Parse data
-    // TODO: Guard against walking off the end of the string!
     for (uint8_t i = 0; i < bytes_in_msg; i++)
     {
         frame_data[i] = (buf[parse_loc] << 4) + buf[parse_loc + 1];
         parse_loc += 2;
-    }
-
-    // Check command length
-    // parse_loc is always updated after a byte is parsed
-    if (len != parse_loc)
-    {
-        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-        return;
     }
 
     // Transmit the message
