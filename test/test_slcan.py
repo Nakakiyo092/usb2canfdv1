@@ -704,7 +704,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"r7FFF\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"t7FF80011223344556677\r")
+        self.dut.send(b"t7FFF0011223344556677\r")   # DLC 0xF - 8 byte data is a valid combination
         self.assertEqual(self.dut.receive(), b"z\r")
         self.dut.send(b"d7FFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
         self.assertEqual(self.dut.receive(), b"z\r")
@@ -712,7 +712,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"z\r")
         self.dut.send(b"R1FFFFFFFF\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"T1FFFFFFF80011223344556677\r")
+        self.dut.send(b"T1FFFFFFFF0011223344556677\r")  # DLC 0xF - 8 byte data is a valid combination
         self.assertEqual(self.dut.receive(), b"Z\r")
         self.dut.send(b"D1FFFFFFFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
