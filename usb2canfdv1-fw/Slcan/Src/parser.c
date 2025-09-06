@@ -951,13 +951,13 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
         }
         else if (buf[0] == 'f')
         {
-            // "f: node_sts=XXXXXXX, last_err_code=XXXX, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r"
+            // "f: node_sts=XXXXXXX, last_err_code=XXXX, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r"
 
             char* stsstr = (char*)buf_get_cdc_dest(SLCAN_MTU);
 
             struct can_error_state err = can_get_error_state();
 
-            snprintf(stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], est_bus_load_percent=%02d\r",
+            snprintf(stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
                                         (err.bus_off ? "BUS_OFF" : (err.err_pssv ? "ER_PSSV" : "ER_ACTV")),
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_NONE ? "NONE" : 
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_STUFF ? "STUF" : 
@@ -968,9 +968,9 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_CRC ? "_CRC" : "SAME"))))))),
                                         (uint8_t)(err.tec),
                                         (uint8_t)(err.rec),
-                                        (uint8_t)(can_get_bus_load_ppm() >= 990000 ? 99 : (can_get_bus_load_ppm() / 50000) * 5));
+                                        (uint8_t)(can_get_bus_load_ppm() >= 990000 ? 99 : can_get_bus_load_ppm() / 10000));
 
-            buf_comit_cdc_dest(93);
+            buf_comit_cdc_dest(92);
         }
     }
     // This command is only active if the CAN channel is open.

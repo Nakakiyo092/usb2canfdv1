@@ -972,9 +972,9 @@ class LoopbackTestCase(unittest.TestCase):
         rx_data = self.dut.receive()
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 93)        
-        self.assertGreaterEqual(int(rx_data[90:92], 10), 0)
-        self.assertLessEqual(int(rx_data[90:92], 10), 0)
+        self.assertEqual(len(rx_data), 92)        
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 0)
+        self.assertLessEqual(int(rx_data[89:91], 10), 10)
 
         # 18% mode (prove 10% accuracy)
         time.sleep(0.5)
@@ -985,9 +985,9 @@ class LoopbackTestCase(unittest.TestCase):
         rx_data = self.dut.receive()
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 93)
-        self.assertGreaterEqual(int(rx_data[90:92], 10), 8)
-        self.assertLessEqual(int(rx_data[90:92], 10), 28)
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 8)
+        self.assertLessEqual(int(rx_data[89:91], 10), 28)
 
         # 36% mode (prove 10% accuracy)
         tx_data = tx_data + tx_data
@@ -999,9 +999,9 @@ class LoopbackTestCase(unittest.TestCase):
         rx_data = self.dut.receive()
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 93)
-        self.assertGreaterEqual(int(rx_data[90:92], 10), 26)
-        self.assertLessEqual(int(rx_data[90:92], 10), 46)
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 26)
+        self.assertLessEqual(int(rx_data[89:91], 10), 46)
 
         # 72% mode (prove 10% accuracy)
         tx_data = tx_data + tx_data
@@ -1013,9 +1013,9 @@ class LoopbackTestCase(unittest.TestCase):
         rx_data = self.dut.receive()
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 93)
-        self.assertGreaterEqual(int(rx_data[90:92], 10), 62)
-        self.assertLessEqual(int(rx_data[90:92], 10), 82)
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 62)
+        self.assertLessEqual(int(rx_data[89:91], 10), 82)
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")

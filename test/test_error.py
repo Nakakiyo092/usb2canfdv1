@@ -29,14 +29,14 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\rt0000\r")
         time.sleep(0.2)     # wait for a while ( > 1ms * 128)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -55,7 +55,7 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x08, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x08, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -78,7 +78,7 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -93,7 +93,7 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\r")
         time.sleep(0.2)     # wait for error passive ( > 1ms * 128)
@@ -102,7 +102,7 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # Check cleared
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -123,7 +123,7 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], th_bus_load_percent=00\r")
 
         for i in range(0, 4):
             self.dut.send(b"t0000\r")
@@ -134,7 +134,7 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
