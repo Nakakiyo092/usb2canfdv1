@@ -40,6 +40,7 @@
 
 // Parameter to calculate bus load
 #define CAN_ROOT_CLOCK_MHZ              80
+#define CAN_BUS_LOAD_CYCLE_MS           100
 
 // Public variable
 uint8_t can_dlc_to_bytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
@@ -217,7 +218,7 @@ void can_process(void)
     // If message transmitted on bus, parse the frame
     if (HAL_FDCAN_GetTxEvent(&hfdcan1, &tx_event) == HAL_OK)
     {
-        int32_t len = slcan_generate_tx_event(buf_get_cdc_dest(SLCAN_MTU), &tx_event, buf_dequeue_can_tx_data());
+        uint16_t len = slcan_generate_tx_event(buf_get_cdc_dest(SLCAN_MTU), &tx_event, buf_dequeue_can_tx_data());
         buf_comit_cdc_dest(len);
 
         if (tx_event.TxTimestamp != last_frame_time_cnt)    // Don't count same frame.
@@ -232,7 +233,7 @@ void can_process(void)
     // Message has been accepted, pull it from the buffer
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
-        int32_t len = slcan_generate_rx_frame(buf_get_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
+        uint16_t len = slcan_generate_rx_frame(buf_get_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
         buf_comit_cdc_dest(len);
 
         if (rx_msg_header.RxTimestamp != last_frame_time_cnt)   // Don't count same frame.
@@ -259,12 +260,13 @@ void can_process(void)
     // Update bus load
     static uint32_t tick_last = 0;
     uint32_t tick_now = HAL_GetTick();
-    if (100 <= (uint32_t)(tick_now - tick_last))    // Update in every 100ms interval
+    if (CAN_BUS_LOAD_CYCLE_MS <= (uint32_t)(tick_now - tick_last))    // Update in every 100ms interval
     {
         // Bus occupied time (us) / Interval (ms)
-        uint32_t rate_us_per_ms = (uint32_t)bit_cnt_message * can_bit_time_ns / 1000 / 100;   // MAX: 100000 / 1000 / 100
+        uint32_t rate_us_per_ms = (uint32_t)bit_cnt_message * can_bit_time_ns;  // MAX: 100000000
+        rate_us_per_ms = rate_us_per_ms / 1000 / CAN_BUS_LOAD_CYCLE_MS;         // MAX: 1000
 
-        // Take exponential moving average (alpha = 1/8) to smooth the value
+        // Apply exponential moving average (alpha = 1/8) to smooth the value
         can_bus_load_ppm = (can_bus_load_ppm * 7 + (uint32_t)1000000 * rate_us_per_ms / 1000) >> 3;
 
         bit_cnt_message = 0;
@@ -297,8 +299,8 @@ void can_process(void)
     HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts);
     HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt);
 
-    uint8_t rx_err_cnt = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
-    if (rx_err_cnt > can_error_state.rec || cnt.TxErrorCnt > can_error_state.tec)
+    uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
+    if (rec > can_error_state.rx_err_cnt || cnt.TxErrorCnt > can_error_state.tx_err_cnt)
         slcan_raise_error(SLCAN_STS_BUS_ERROR);
     if (sts.BusOff && !can_error_state.bus_off)     // If it gets bus off right now
         // ... capture counter increase that caused bus off since it does not increase TxErrorCnt
@@ -306,8 +308,8 @@ void can_process(void)
 
     can_error_state.bus_off = (uint8_t)sts.BusOff;
     can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
-    can_error_state.tec = (uint8_t)cnt.TxErrorCnt;
-    can_error_state.rec = (uint8_t)rx_err_cnt;
+    can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
+    can_error_state.rx_err_cnt = (uint8_t)rec;
 
     // Check for error code (See the link for the intended behavior)
     // https://github.com/Nakakiyo092/canable2-fw/issues/68
@@ -349,7 +351,7 @@ void can_process(void)
     if (can_cycle_max_time_ns < cycle_time_ns)
         can_cycle_max_time_ns = cycle_time_ns;
 
-    //  Take exponential moving average (alpha = 1/16)
+    //  Apply exponential moving average (alpha = 1/16)
     can_cycle_ave_time_ns = ((uint32_t)can_cycle_ave_time_ns * 15 + cycle_time_ns) >> 4;
     
     last_time_stamp_cnt = curr_time_stamp_cnt;

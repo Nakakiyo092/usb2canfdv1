@@ -942,8 +942,8 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_BIT1 ? "BIT1" : 
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_BIT0 ? "BIT0" : 
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_CRC ? "_CRC" : "SAME"))))))),
-                                        (uint8_t)(err.tec),
-                                        (uint8_t)(err.rec),
+                                        (uint8_t)(err.tx_err_cnt),
+                                        (uint8_t)(err.rx_err_cnt),
                                         (uint8_t)(can_get_bus_load_ppm() >= 990000 ? 99 : can_get_bus_load_ppm() / 10000));
 
             buf_comit_cdc_dest(92);

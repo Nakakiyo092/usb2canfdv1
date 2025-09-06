@@ -61,10 +61,10 @@ enum CanBusState
 // Structure for CAN protocol status and error counters
 struct CanErrorState
 {
-    uint8_t bus_off;    // Copy of BusOff in FDCAN_ProtocolStatus
-    uint8_t err_pssv;   // Copy of ErrorPassive in FDCAN_ProtocolStatus
-    uint8_t tec;        // Copy of TxErrorCnt in FDCAN_ErrorCounters
-    uint8_t rec;        // Copy of RxErrorCnt in FDCAN_ErrorCounters (rx error active) / 128 (rx error passive)
+    uint8_t bus_off;        // Copy of BusOff in FDCAN_ProtocolStatus
+    uint8_t err_pssv;       // Copy of ErrorPassive in FDCAN_ProtocolStatus
+    uint8_t tx_err_cnt;     // Copy of TxErrorCnt in FDCAN_ErrorCounters
+    uint8_t rx_err_cnt;     // Copy of RxErrorCnt in FDCAN_ErrorCounters (rx err active) / 128 (rx err passive)
     uint32_t last_err_code; // Copy of LastErrorCode or DataLastErrorCode in FDCAN_ProtocolStatus
 };
 
