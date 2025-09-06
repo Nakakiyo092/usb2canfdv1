@@ -262,7 +262,8 @@ void can_process(void)
     uint32_t tick_now = HAL_GetTick();
     if (100 <= (uint32_t)(tick_now - tick_last))    // Update in every 100ms interval
     {
-        uint32_t rate_us_per_ms = (uint32_t)bit_cnt_message * can_bit_time_ns / 1000 / 100;   // Bus occupied time (us) / Interval (ms)
+        // Bus occupied time (us) / Interval (ms)
+        uint32_t rate_us_per_ms = (uint32_t)bit_cnt_message * can_bit_time_ns / 1000 / 100;   // MAX: 100000 / 1000 / 100
 
         // Take exponential moving average (alpha = 1/8) to smooth the value
         can_bus_load_ppm = (can_bus_load_ppm * 7 + (uint32_t)CAN_BUS_LOAD_BUILDUP_PPM * rate_us_per_ms / 1000) >> 3;
@@ -697,7 +698,7 @@ void can_update_bit_time_ns(void)
     can_bit_time_ns = ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
     // ... times Tq [ns] = prescaler / CAN clock [GHz] = prescaler * 1000 / CAN clock [MHz]
     can_bit_time_ns = can_bit_time_ns * can_bit_cfg_nominal.prescaler;
-    can_bit_time_ns = can_bit_time_ns * 1000;
+    can_bit_time_ns = can_bit_time_ns * 1000;   // MAX: (1 + 255 + 128) * 255 * 1000
     can_bit_time_ns = can_bit_time_ns / CAN_ROOT_CLOCK_MHZ;
 
     return;
@@ -746,7 +747,7 @@ uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
             rate_ppm = ((uint32_t)1 + can_bit_cfg_data.time_seg1 + can_bit_cfg_data.time_seg2);
             // ... times Tq [ns] = prescaler / CAN clock [GHz], but CAN clock will be canceled
             rate_ppm = rate_ppm * can_bit_cfg_data.prescaler;
-            rate_ppm = rate_ppm * 1000000;  // Parts per MILLION
+            rate_ppm = rate_ppm * 1000000;      // MAX: (1 + 32 + 16) * 32 * 1000000
             // Divide by number of time quanta (Tq) in one bit for nominal phase
             rate_ppm = rate_ppm / ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
             // ... times Tq [ns] = prescaler / CAN clock [GHz], but CAN clock is canceled
