@@ -271,62 +271,39 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     // Attempt to parse DLC and check sanity
     uint8_t dlc_code_raw = buf[parse_loc++];
 
-    // If dlc is too long for a remote frame
-    if  (frame_header->TxFrameType == FDCAN_REMOTE_FRAME)
+    // If dlc is too long
+    // DO NOT RESTRICT THE DLC TO 8 !
+    // https://github.com/Nakakiyo092/usb2canfdv1/issues/27
+    // https://github.com/Nakakiyo092/annus-mirabilis
+    if  (0xF < dlc_code_raw)
     {
-        // See the link for the DLC range
-        // https://github.com/Nakakiyo092/canable2-fw/issues/67#issuecomment-3228730384
-        // DO NOT RESTRICT THE DLC TO 8 !
-        // https://github.com/Nakakiyo092/annus-mirabilis
-        if  (0xF < dlc_code_raw)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
-    // If dlc is too long for a classical frame
-    else if (frame_header->FDFormat == FDCAN_CLASSIC_CAN)
-    {
-        // From a standards perspective, >8 are acceptable. 
-        // However, since the actual usage doesn't seem to exist, the restriction is applied.
-        if (0x8 < dlc_code_raw)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
-    // If dlc is too long for a FD frame
-    else
-    {
-        if (0xF < dlc_code_raw)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
     }
 
     // Set TX frame DLC according to HAL
     frame_header->DataLength = CAN_STD_DLC_TO_HAL_DLC(dlc_code_raw);
 
     // Calculate number of bytes we expect in the message
-    int8_t bytes_in_msg = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
+    uint8_t bytes_in_msg = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
 
-    if (bytes_in_msg < 0)
+    if (frame_header->TxFrameType == FDCAN_REMOTE_FRAME)
     {
-        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-        return;
+        // Apply maximum data bytes for a remote frame
+        bytes_in_msg = 0x0;
+    }
+    else if (frame_header->FDFormat == FDCAN_CLASSIC_CAN)
+    {
+        // Apply maximum data bytes for a classical data frame
+        if (0x8 < bytes_in_msg) bytes_in_msg = 0x8;
     }
 
     // Parse data
-    // Data frame only. No data bytes for a remote frame.
-    if (frame_header->TxFrameType != FDCAN_REMOTE_FRAME)
+    // TODO: Guard against walking off the end of the string!
+    for (uint8_t i = 0; i < bytes_in_msg; i++)
     {
-        // TODO: Guard against walking off the end of the string!
-        for (uint8_t i = 0; i < bytes_in_msg; i++)
-        {
-            frame_data[i] = (buf[parse_loc] << 4) + buf[parse_loc + 1];
-            parse_loc += 2;
-        }
+        frame_data[i] = (buf[parse_loc] << 4) + buf[parse_loc + 1];
+        parse_loc += 2;
     }
 
     // Check command length
