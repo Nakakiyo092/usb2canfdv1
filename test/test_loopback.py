@@ -816,6 +816,7 @@ class LoopbackTestCase(unittest.TestCase):
 
 
     def test_can_rx_buffer(self):
+        #self.dut.print_on = True
         rx_data_exp = b""
         # check response in CAN loopback mode
         self.dut.send(b"=\r")
@@ -823,7 +824,7 @@ class LoopbackTestCase(unittest.TestCase):
 
         # the buffer can store as least 180 messages (4096 / 22)
         for i in range(0, 180):
-            tx_data = b"t03F8001122334455" + format(i, "04X").encode() + b"\r"
+            tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"z\r" + tx_data
             time.sleep(0.001)
@@ -849,7 +850,7 @@ class LoopbackTestCase(unittest.TestCase):
 
         # the buffer can store as least 64 messages
         for i in range(0, 64):
-            tx_data = b"t03F8001122334455" + format(i, "04X").encode() + b"\r"
+            tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += tx_data
             time.sleep(0.001)
@@ -877,7 +878,7 @@ class LoopbackTestCase(unittest.TestCase):
 
         # the buffer can store as least 180 messages (4096 / 22)
         for i in range(0, 180):
-            tx_data = b"t03F8001122334455" + format(i, "04X").encode() + b"\r"
+            tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"\r" + b"z" + tx_data
             time.sleep(0.001)
@@ -907,10 +908,10 @@ class LoopbackTestCase(unittest.TestCase):
 
         # the buffer can store as least 180 messages (4096 / 22)
         for i in range(0, 180):
-            tx_data = b"r" + format(i, "03X").encode() + b"0\r"
+            tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"z\r" + tx_data
-            time.sleep(0.001)
+            time.sleep(0.001)   # Prevent stuck on host side
 
         # check all reply
         rx_data = self.dut.receive()
@@ -937,10 +938,10 @@ class LoopbackTestCase(unittest.TestCase):
 
         # the buffer can store as least 180 messages (4096 / 22)
         for i in range(0, 180):
-            tx_data = b"r" + format(i, "03X").encode() + b"0\r"
+            tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"\r" + b"z" + tx_data
-            time.sleep(0.001)
+            time.sleep(0.001)   # Prevent stuck on host side
 
         # check all reply
         rx_data = self.dut.receive()
