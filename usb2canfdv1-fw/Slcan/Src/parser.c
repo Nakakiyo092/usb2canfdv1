@@ -57,14 +57,13 @@ static uint8_t slcan_status_flags = 0;
 // Private methods
 static HAL_StatusTypeDef slcan_convert_str_to_number(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_open(uint8_t *buf, uint8_t len);
-static void slcan_parse_str_loop(uint8_t *buf, uint8_t len);
+static void slcan_parse_str_open_test_mode(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_close(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_set_bitrate(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_filter_mode(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_filter_code(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_filter_mask(uint8_t *buf, uint8_t len);
-static void slcan_parse_str_set_auto_retransmit(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_version(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_can_info(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_number(uint8_t *buf, uint8_t len);
@@ -96,10 +95,11 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     case 'L':
         slcan_parse_str_open(buf, len);
         return;
-    // Open channel (loopback mode)
+    // Open channel in test mode
     case '=':
     case '+':
-        slcan_parse_str_loop(buf, len);
+    case '-':
+        slcan_parse_str_open_test_mode(buf, len);
         return;
     // Close channel
     case 'C':
@@ -147,10 +147,6 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     // Set filter mask
     case 'm':
         slcan_parse_str_filter_mask(buf, len);
-        return;
-    // Set auto retransmit
-    case '-':
-        slcan_parse_str_set_auto_retransmit(buf, len);
         return;
     // Set auto startup mode
     case 'Q':
@@ -368,12 +364,12 @@ void slcan_parse_str_open(uint8_t *buf, uint8_t len)
         return;
     }
 
+    // TODO Is this intensional? O in bus open will reset someting
     slcan_status_flags = 0;
     can_clear_cycle_time();
 
     if (buf[0] == 'O')
     {
-        // Mode default
         if (can_set_mode(FDCAN_MODE_NORMAL) != HAL_OK)
         {
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
@@ -382,13 +378,18 @@ void slcan_parse_str_open(uint8_t *buf, uint8_t len)
     }
     else if (buf[0] == 'L')
     {
-        // Mode silent
         if (can_set_mode(FDCAN_MODE_BUS_MONITORING) != HAL_OK)
         {
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
     }
+    if (can_set_auto_retransmit(ENABLE) != HAL_OK)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
     // Open CAN port
     if (can_enable() != HAL_OK)
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
@@ -398,8 +399,8 @@ void slcan_parse_str_open(uint8_t *buf, uint8_t len)
     return;
 }
 
-// Open channel (loopback mode)
-void slcan_parse_str_loop(uint8_t *buf, uint8_t len)
+// Open channel in test mode
+void slcan_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
 {
     // Check command length
     if (len != 1)
@@ -411,8 +412,15 @@ void slcan_parse_str_loop(uint8_t *buf, uint8_t len)
     slcan_status_flags = 0;
     can_clear_cycle_time();
 
-    // Mode loopback
-    if (buf[0] == '+')
+    if (buf[0] == '=')
+    {
+        if (can_set_mode(FDCAN_MODE_INTERNAL_LOOPBACK) != HAL_OK)
+        {
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+            return;
+        }
+    }
+    else if (buf[0] == '+')
     {
         if (can_set_mode(FDCAN_MODE_EXTERNAL_LOOPBACK) != HAL_OK)
         {
@@ -422,12 +430,29 @@ void slcan_parse_str_loop(uint8_t *buf, uint8_t len)
     }
     else
     {
-        if (can_set_mode(FDCAN_MODE_INTERNAL_LOOPBACK) != HAL_OK)
+        if (can_set_mode(FDCAN_MODE_NORMAL) != HAL_OK)
         {
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
     }
+    if (buf[0] == '-')  // No retransmit mode
+    {
+        if (can_set_auto_retransmit(DISABLE) != HAL_OK)
+        {
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+            return;
+        }
+    }
+    else
+    {
+        if (can_set_auto_retransmit(ENABLE) != HAL_OK)
+        {
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+            return;
+        }
+    }
+
     // Open CAN port
     if (can_enable() != HAL_OK)
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
@@ -452,6 +477,7 @@ void slcan_parse_str_close(uint8_t *buf, uint8_t len)
     else
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
 
+    // TODO Is this allowed after a [BELL] is retruned?
     slcan_status_flags = 0;
     can_clear_cycle_time();
 
@@ -790,37 +816,6 @@ void slcan_parse_str_filter_mask(uint8_t *buf, uint8_t len)
         return;
     }
     // This command is only active if the CAN channel is initiated and not opened.
-    else
-    {
-        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-        return;
-    }
-}
-
-// Set auto retransmit
-static void slcan_parse_str_set_auto_retransmit(uint8_t *buf, uint8_t len)
-{
-    // Set auto retransmit
-    if (can_get_bus_state() == BUS_CLOSED)
-    {
-        // Check for valid command
-        if (len != 2 || 2 <= buf[1])
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-
-        // Apply the state
-        if (can_set_auto_retransmit((buf[1] == 0) ? DISABLE : ENABLE) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-
-        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
-        return;
-    }
-    // Command can only be sent if the device is initiated but not open.
     else
     {
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
