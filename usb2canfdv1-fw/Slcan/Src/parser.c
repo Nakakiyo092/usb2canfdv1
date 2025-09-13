@@ -364,31 +364,24 @@ void slcan_parse_str_open(uint8_t *buf, uint8_t len)
         return;
     }
 
-    // TODO Is this intensional? O in bus open will reset someting
-    slcan_status_flags = 0;
-    can_clear_cycle_time();
-
-    if (buf[0] == 'O')
-    {
-        if (can_set_mode(FDCAN_MODE_NORMAL) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
-    else if (buf[0] == 'L')
-    {
-        if (can_set_mode(FDCAN_MODE_BUS_MONITORING) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
-    if (can_set_auto_retransmit(ENABLE) != HAL_OK)
+    // Check bus status
+    if (can_get_bus_state() != BUS_CLOSED)
     {
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
+
+    // Reset variables
+    slcan_status_flags = 0;
+    can_clear_cycle_time();
+
+    // Set mode
+    if (buf[0] == 'O')
+        can_set_mode(FDCAN_MODE_NORMAL);
+    else if (buf[0] == 'L')
+        can_set_mode(FDCAN_MODE_BUS_MONITORING);
+
+    can_set_auto_retransmit(ENABLE);
 
     // Open CAN port
     if (can_enable() != HAL_OK)
@@ -409,49 +402,29 @@ void slcan_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
         return;
     }
 
+    // Check bus status
+    if (can_get_bus_state() != BUS_CLOSED)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    // Reset variables
     slcan_status_flags = 0;
     can_clear_cycle_time();
 
+    // Set mode
     if (buf[0] == '=')
-    {
-        if (can_set_mode(FDCAN_MODE_INTERNAL_LOOPBACK) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
+        can_set_mode(FDCAN_MODE_INTERNAL_LOOPBACK);
     else if (buf[0] == '+')
-    {
-        if (can_set_mode(FDCAN_MODE_EXTERNAL_LOOPBACK) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
+        can_set_mode(FDCAN_MODE_EXTERNAL_LOOPBACK);
     else
-    {
-        if (can_set_mode(FDCAN_MODE_NORMAL) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
+        can_set_mode(FDCAN_MODE_NORMAL);
+
     if (buf[0] == '-')  // No retransmit mode
-    {
-        if (can_set_auto_retransmit(DISABLE) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
+        can_set_auto_retransmit(DISABLE);
     else
-    {
-        if (can_set_auto_retransmit(ENABLE) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-    }
+        can_set_auto_retransmit(ENABLE);
 
     // Open CAN port
     if (can_enable() != HAL_OK)
@@ -471,13 +444,21 @@ void slcan_parse_str_close(uint8_t *buf, uint8_t len)
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
+
+    // Check bus status
+    if (can_get_bus_state() != BUS_OPENED)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+    
     // Close CAN port
     if (can_disable() == HAL_OK)
         buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
     else
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
 
-    // TODO Is this allowed after a [BELL] is retruned?
+    // Reset variables
     slcan_status_flags = 0;
     can_clear_cycle_time();
 
