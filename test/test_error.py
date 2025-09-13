@@ -43,9 +43,7 @@ class ErrorTestCase(unittest.TestCase):
 
     def test_bus_error(self):
         #self.dut.print_on = True
-        self.dut.send(b"-0\r")  # Disable auto retransmission
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
+        self.dut.send(b"-\r")   # No retransmit mode
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\r")
@@ -59,15 +57,11 @@ class ErrorTestCase(unittest.TestCase):
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-1\r")  # Enable auto retransmission
-        self.assertEqual(self.dut.receive(), b"\r")
         
 
     def test_error_warning(self):
         #self.dut.print_on = True
-        self.dut.send(b"-0\r")  # Disable auto retransmission
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
+        self.dut.send(b"-\r")   # No retransmit mode
         self.assertEqual(self.dut.receive(), b"\r")
         for i in range(0, 12):
             self.dut.send(b"t0000\r")
@@ -81,8 +75,6 @@ class ErrorTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-1\r")  # Enable auto retransmission
         self.assertEqual(self.dut.receive(), b"\r")
 
 
@@ -109,9 +101,7 @@ class ErrorTestCase(unittest.TestCase):
 
     def test_error_passive_clear(self):
         #self.dut.print_on = True
-        self.dut.send(b"-0\r")  # Disable auto retransmission
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
+        self.dut.send(b"-\r")   # No retransmit mode
         self.assertEqual(self.dut.receive(), b"\r")
         
         for i in range(0, 12):
@@ -137,8 +127,6 @@ class ErrorTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-1\r")  # Enable auto retransmission
         self.assertEqual(self.dut.receive(), b"\r")
 
 
