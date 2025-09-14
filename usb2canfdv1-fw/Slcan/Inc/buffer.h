@@ -67,10 +67,12 @@ void buf_enqueue_cdc(uint8_t* buf, uint16_t len);
 uint8_t *buf_get_cdc_dest(uint16_t len);
 void buf_comit_cdc_dest(uint16_t len);
 
-FDCAN_TxHeaderTypeDef *buf_get_can_dest_header(void);
-uint8_t *buf_get_can_dest_data(void);
-HAL_StatusTypeDef buf_comit_can_dest(void);
-uint8_t *buf_dequeue_can_tx_data(void);
+FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void);
+FDCAN_TxHeaderTypeDef *buf_get_can_tail_header(void);
+uint8_t *buf_get_can_head_data(void);
+uint8_t *buf_get_can_tail_data(void);
+HAL_StatusTypeDef buf_comit_can_head(void);
+HAL_StatusTypeDef buf_delete_can_tail(void);
 void buf_clear_can_buffer(void);
 
 #endif // _BUFFER_H

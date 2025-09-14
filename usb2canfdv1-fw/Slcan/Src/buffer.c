@@ -129,7 +129,7 @@ void buf_process(void)
 
 
     // Process can transmit buffer
-    while ((buf_can_tx.send != buf_can_tx.head || buf_can_tx.full) && (HAL_FDCAN_GetTxFifoFreeLevel(can_get_handle()) > 0))
+    while (((buf_can_tx.send != buf_can_tx.head) || buf_can_tx.full) && (HAL_FDCAN_GetTxFifoFreeLevel(can_get_handle()) > 0))
     {
         HAL_StatusTypeDef status;
 
@@ -186,8 +186,8 @@ void buf_comit_cdc_dest(uint16_t len)
     buf_cdc_tx.msglen[buf_cdc_tx.head] += len;
 }
 
-// Get destination pointer of can tx frame header
-FDCAN_TxHeaderTypeDef *buf_get_can_dest_header(void)
+// Get head pointer of can tx frame header
+FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
 {
     if (buf_can_tx.full)
     {
@@ -198,8 +198,14 @@ FDCAN_TxHeaderTypeDef *buf_get_can_dest_header(void)
     return &buf_can_tx.header[buf_can_tx.head];
 }
 
-// Get destination pointer of can tx frame data bytes
-uint8_t *buf_get_can_dest_data(void)
+// Get tail pointer of can tx frame header
+FDCAN_TxHeaderTypeDef *buf_get_can_tail_header(void)
+{
+    return &buf_can_tx.header[buf_can_tx.tail];
+}
+
+// Get head pointer of can tx frame data bytes
+uint8_t *buf_get_can_head_data(void)
 {
     if (buf_can_tx.full)
     {
@@ -210,8 +216,14 @@ uint8_t *buf_get_can_dest_data(void)
     return buf_can_tx.data[buf_can_tx.head];
 }
 
-// Send the message in destination slot on the CAN bus.
-HAL_StatusTypeDef buf_comit_can_dest(void)
+// Get tail pointer of can tx frame data bytes
+uint8_t *buf_get_can_tail_data(void)
+{
+    return buf_can_tx.data[buf_can_tx.tail];
+}
+
+// Send the message in head slot on the CAN bus.
+HAL_StatusTypeDef buf_comit_can_head(void)
 {
     if (can_is_tx_enabled() == ENABLE)
     {
@@ -234,15 +246,18 @@ HAL_StatusTypeDef buf_comit_can_dest(void)
     return HAL_OK;
 }
 
-// Dequeue data bytes from the can tx buffer (Delete one frame)
-uint8_t *buf_dequeue_can_tx_data(void)
+// Delete one frame from the can tx buffer
+HAL_StatusTypeDef buf_delete_can_tail(void)
 {
-    uint32_t tmp_tail = buf_can_tx.tail;
+    while ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
+    {
+        return HAL_ERROR;
+    }
 
     buf_can_tx.tail = (buf_can_tx.tail + 1) % BUF_CAN_TXQUEUE_LEN;
     buf_can_tx.full = 0;
 
-    return buf_can_tx.data[tmp_tail];
+    return HAL_OK;
 }
 
 // Clear can tx buffer
