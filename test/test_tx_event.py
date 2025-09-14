@@ -31,12 +31,12 @@ class TxEventTestCase(unittest.TestCase):
         rx_data_exp = b""
         self.dut.send(b"z0002\r")  # no rx, tx event only
         self.assertEqual(self.dut.receive(), b"\r")
-        #self.dut.send(b"O\r")
-        #self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-1\r")
-        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"-1\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"O\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
 
         for i in range(0x000, 0x800):
             if random.random() < 0.1:
@@ -70,12 +70,12 @@ class TxEventTestCase(unittest.TestCase):
         rx_data_exp = b""
         self.dut.send(b"z0002\r")  # no rx, tx event only
         self.assertEqual(self.dut.receive(), b"\r")
-        #self.dut.send(b"-\r")
+        self.dut.send(b"-\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"-0\r")
         #self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-0\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
-        self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"O\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
 
         for i in range(0x000, 0x800):
             if random.random() < 0.1:
@@ -113,12 +113,12 @@ class TxEventTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"z0002\r")  # no rx, tx event only
         self.assertEqual(self.dut.receive(), b"\r")
-        #self.dut.send(b"-\r")
+        self.dut.send(b"-\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"-0\r")
         #self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-0\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
-        self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"O\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
 
         for i in range(0x000, 0x800):
             if random.random() < 0.1:
@@ -150,12 +150,12 @@ class TxEventTestCase(unittest.TestCase):
     def test_can_tx_overflow(self): # TODO delete this test
         #self.dut.print_on = True
         # check response in CAN normal mode
-        #self.dut.send(b"-\r")
+        self.dut.send(b"-\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"-0\r")
         #self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-0\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
-        self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"O\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
 
         # confirm no error
         self.dut.send(b"F\r")
