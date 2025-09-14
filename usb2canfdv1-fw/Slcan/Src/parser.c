@@ -185,7 +185,8 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     frame_header->BitRateSwitch = FDCAN_BRS_OFF;                 // no bitrate switch
     frame_header->ErrorStateIndicator = FDCAN_ESI_ACTIVE;        // error active
     frame_header->TxEventFifoControl = FDCAN_STORE_TX_EVENTS;    // record tx events
-    frame_header->MessageMarker = 0;                             // not used
+    static uint8_t msg_marker = 0;
+    frame_header->MessageMarker = (uint32_t)(msg_marker++);      // increment counter
 
     // Handle each incoming command (transmit)
     switch (buf[0])

@@ -29,6 +29,9 @@
 #include "led.h"
 #include "slcan.h"
 
+// Maximum number of frames stored in "sending" status
+#define BUF_MAX_NBR_SEND_FRAMES         (3 + 2)         // SRAMCAN_TFQ_NBR 3 + Margin
+
 // Cirbuf structure for CAN TX frames
 struct BufCanTx
 {
@@ -140,6 +143,13 @@ void buf_process(void)
 
         buf_can_tx.send = (buf_can_tx.send + 1) % BUF_CAN_TXQUEUE_LEN;
 
+        uint16_t nbr_send_frames;
+        nbr_send_frames = (BUF_CAN_TXQUEUE_LEN + buf_can_tx.send - buf_can_tx.tail) % BUF_CAN_TXQUEUE_LEN;
+        if (BUF_MAX_NBR_SEND_FRAMES < nbr_send_frames)
+        {
+            buf_delete_can_tail();  // Assume the frame is deleted in HAL
+        }
+
         if (status != HAL_OK)
         {
             slcan_raise_error(SLCAN_STS_DATA_OVERRUN);
@@ -201,6 +211,12 @@ FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
 // Get tail pointer of can tx frame header
 FDCAN_TxHeaderTypeDef *buf_get_can_tail_header(void)
 {
+    if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
+    {
+        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);;
+        return NULL;
+    }
+
     return &buf_can_tx.header[buf_can_tx.tail];
 }
 
@@ -219,6 +235,12 @@ uint8_t *buf_get_can_head_data(void)
 // Get tail pointer of can tx frame data bytes
 uint8_t *buf_get_can_tail_data(void)
 {
+    if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
+    {
+        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);;
+        return NULL;
+    }
+
     return buf_can_tx.data[buf_can_tx.tail];
 }
 
