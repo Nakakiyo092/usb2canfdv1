@@ -129,7 +129,7 @@ void buf_process(void)
 
 
     // Process can transmit buffer
-    while (((buf_can_tx.send != buf_can_tx.head) || buf_can_tx.full) && (HAL_FDCAN_GetTxFifoFreeLevel(can_get_handle()) > 0))
+    while ((buf_can_tx.send != buf_can_tx.head) && (HAL_FDCAN_GetTxFifoFreeLevel(can_get_handle()) > 0))
     {
         HAL_StatusTypeDef status;
 
