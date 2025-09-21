@@ -32,7 +32,7 @@ class ErrorTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\rt0000\r")
-        time.sleep(0.2)     # wait for a while ( > 1ms * 128)
+        time.sleep(0.2)     # wait for a while ( > 1ms * 1)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
@@ -237,6 +237,59 @@ class ErrorTestCase(unittest.TestCase):
         # check error
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F02\r")
+
+        # check error clear
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_no_retransmit(self):
+        self.dut.print_on = True
+        # check response in no retransmit mode
+        self.dut.send(b"-\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"-0\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"O\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
+
+        # confirm no error
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r")
+
+        # will be discarded by no ack
+        for i in range(0, 64):
+            self.dut.send(b"t03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+
+        # confirm no overflow
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
+        self.dut.send(b"f\r")
+        self.dut.receive()
+
+        # will be discarded by no ack
+        for i in range(0, 64):
+            self.dut.send(b"t03F0\r")
+            self.dut.receive()
+
+        # confirm no overflow
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
+
+        # will be discarded by no ack
+        for i in range(0, 64):
+            self.dut.send(b"t03F0\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+        # confirm no overflow
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
+        self.dut.send(b"f\r")
+        self.dut.receive()
 
         # check error clear
         self.dut.send(b"F\r")

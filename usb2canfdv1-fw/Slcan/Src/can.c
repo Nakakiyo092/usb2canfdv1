@@ -230,7 +230,7 @@ void can_process(void)
             buf_delete_can_tail();
         }
 
-        if (tx_event.TxTimestamp != last_frame_time_cnt)    // Don't count same frame.
+        if (tx_event.TxTimestamp != last_frame_time_cnt)    // Don't count same frame in loop back test.
         {
             bit_cnt_message += can_get_bit_number_in_tx_event(&tx_event);
             last_frame_time_cnt = tx_event.TxTimestamp;
@@ -245,7 +245,7 @@ void can_process(void)
         uint16_t len = slcan_generate_rx_frame(buf_get_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
         buf_comit_cdc_dest(len);
 
-        if (rx_msg_header.RxTimestamp != last_frame_time_cnt)   // Don't count same frame.
+        if (rx_msg_header.RxTimestamp != last_frame_time_cnt)   // Don't count same frame in loop back test.
         {
             bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
             last_frame_time_cnt = rx_msg_header.RxTimestamp;
@@ -257,7 +257,7 @@ void can_process(void)
     // If a message has been received but not been accepted, pull it from the buffer
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO1, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
-        if (rx_msg_header.RxTimestamp != last_frame_time_cnt)   // Don't count same frame.
+        if (rx_msg_header.RxTimestamp != last_frame_time_cnt)   // Don't count same frame in loop back test.
         {
             bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
             last_frame_time_cnt = rx_msg_header.RxTimestamp;
