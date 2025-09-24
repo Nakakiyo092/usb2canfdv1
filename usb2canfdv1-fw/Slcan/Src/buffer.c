@@ -221,7 +221,7 @@ HAL_StatusTypeDef buf_comit_can_dest(void)
         // If the queue is full
         if (buf_can_tx.full)
         {
-            slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);;
+            slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
             return HAL_ERROR;
         }
 
