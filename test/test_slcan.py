@@ -36,6 +36,25 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\a")
 
 
+    def test_too_long_command(self):
+        # 1 + 138 + 8 + 1 + 1 + 16 = 165 is the MTU (including a [CR])
+        for i in range(163):
+            self.dut.send(b"F")
+        self.assertEqual(self.dut.receive(), b"")
+        self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        for i in range(164):
+            self.dut.send(b"F")
+        self.assertEqual(self.dut.receive(), b"")
+        self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        for i in range(165):
+            self.dut.send(b"F")
+        self.assertEqual(self.dut.receive(), b"")
+        self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+
+
     def test_V_command(self):
         # check response to V
         self.dut.send(b"V\r")

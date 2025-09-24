@@ -80,7 +80,7 @@ void buf_process(void)
         //  Process one whole buffer
         for (uint32_t i = 0; i < buf_cdc_rx.msglen[buf_cdc_rx.tail]; i++)
 	    {
-            if (buf_cdc_rx.data[buf_cdc_rx.tail][i] == '\r')
+            if (buf_cdc_rx.data[buf_cdc_rx.tail][i] == '\r')    // \r = [CR] = delimiter
             {
                 slcan_parse_str(slcan_str, slcan_str_index);
                 slcan_str_index = 0;
@@ -90,13 +90,16 @@ void buf_process(void)
             }
             else
             {
-                // Check for buffer overflow
-                if (slcan_str_index >= SLCAN_MTU)
-                {
-                    slcan_str_index = 0;
-                }
-
                 slcan_str[slcan_str_index++] = buf_cdc_rx.data[buf_cdc_rx.tail][i];
+
+                // Check for command length
+                if (slcan_str_index == SLCAN_MTU)
+                {
+                    // Any incoming command longer than MTU (including a [CR]) is invalid.
+                    // Ensure a [BELL] will be returned when receiving a [CR].
+                    slcan_str_index = 0;                    // Clear the command and
+                    slcan_str[slcan_str_index++] = '\a';    // ... mark as invalid (\a = [BELL])
+                }
             }
         }
 
