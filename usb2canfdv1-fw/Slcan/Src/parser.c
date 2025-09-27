@@ -170,8 +170,8 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     }
 
     // Set default header. All values overridden below as needed.
-    FDCAN_TxHeaderTypeDef *frame_header = buf_get_can_dest_header();
-    uint8_t *frame_data = buf_get_can_dest_data();
+    FDCAN_TxHeaderTypeDef *frame_header = buf_get_can_head_header();
+    uint8_t *frame_data = buf_get_can_head_data();
 
     if (frame_header == NULL || frame_data == NULL)
     {
@@ -185,7 +185,8 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     frame_header->BitRateSwitch = FDCAN_BRS_OFF;                 // no bitrate switch
     frame_header->ErrorStateIndicator = FDCAN_ESI_ACTIVE;        // error active
     frame_header->TxEventFifoControl = FDCAN_STORE_TX_EVENTS;    // record tx events
-    frame_header->MessageMarker = 0;                             // not used
+    static uint8_t msg_marker = 0;
+    frame_header->MessageMarker = (uint32_t)(msg_marker++);      // increment counter
 
     // Handle each incoming command (transmit)
     switch (buf[0])
@@ -310,7 +311,7 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     }
 
     // Transmit the message
-    if (buf_comit_can_dest() != HAL_OK)
+    if (buf_comit_can_head() != HAL_OK)
     {
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;

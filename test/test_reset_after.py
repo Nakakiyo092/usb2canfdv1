@@ -14,7 +14,7 @@ class LoopbackTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = DeviceUnderTest()
         self.dut.open()
-        # DO NOT SETUP!
+        # DO NOT SETUP! CHECK AUTO SETUP!
 
 
     def tearDown(self):
