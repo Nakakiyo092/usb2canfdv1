@@ -29,7 +29,7 @@
 #include "led.h"
 #include "slcan.h"
 
-// Maximum number of frames stored in "sending" status
+// Maximum number of frames stored in HAL waiting for being sent
 #define BUF_MAX_NBR_SEND_FRAMES         (3 + 2)         // SRAMCAN_TFQ_NBR 3 + Margin
 
 // Cirbuf structure for CAN TX frames
@@ -143,7 +143,7 @@ void buf_process(void)
 
         buf_can_tx.send = (buf_can_tx.send + 1) % BUF_CAN_TXQUEUE_LEN;
 
-        uint16_t nbr_send_frames;
+        uint16_t nbr_send_frames;   // Number of frames in HAL waiting for being sent
         nbr_send_frames = (BUF_CAN_TXQUEUE_LEN + buf_can_tx.send - buf_can_tx.tail) % BUF_CAN_TXQUEUE_LEN;
         if (BUF_MAX_NBR_SEND_FRAMES < nbr_send_frames)
         {

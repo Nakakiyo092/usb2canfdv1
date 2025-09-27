@@ -215,7 +215,7 @@ void can_process(void)
     FDCAN_RxHeaderTypeDef rx_msg_header;
     uint8_t rx_msg_data[64] = {0};
 
-    // If message transmitted on bus, parse the frame
+    // If a message has been transmitted on bus, parse the frame
     if (HAL_FDCAN_GetTxEvent(&hfdcan1, &tx_event) == HAL_OK)
     {
         while (buf_get_can_tail_header() != NULL)
@@ -239,7 +239,7 @@ void can_process(void)
         led_blink_txd();
     }
 
-    // Message has been accepted, pull it from the buffer
+    // If a message has been accepted, parse the frame
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
         uint16_t len = slcan_generate_rx_frame(buf_get_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
@@ -254,7 +254,7 @@ void can_process(void)
         led_blink_rxd();
     }
 
-    // Message has been received but not been accepted, pull it from the buffer
+    // If a message has been received but not been accepted, pull it from the buffer
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO1, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
         if (rx_msg_header.RxTimestamp != last_frame_time_cnt)   // Don't count same frame.
@@ -621,7 +621,7 @@ HAL_StatusTypeDef can_set_mode(uint32_t mode)
 {
     if (can_bus_state == BUS_OPENED)
     {
-        // cannot set silent mode while on bus
+        // cannot set mode while on bus
         return HAL_ERROR;
     }
     can_mode = mode;
