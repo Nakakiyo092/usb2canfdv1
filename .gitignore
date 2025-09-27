@@ -55,3 +55,6 @@ ubuntu*.log
 
 # python
 test/__pycache__
+
+# reference documents
+/ref/*
