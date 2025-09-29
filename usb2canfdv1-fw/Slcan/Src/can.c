@@ -229,6 +229,10 @@ void can_process(void)
             buf_comit_cdc_dest(len);
             buf_delete_can_tail();
         }
+        else
+        {
+            slcan_raise_error(SLCAN_STS_DATA_OVERRUN);
+        }
 
         if (tx_event.TxTimestamp != last_frame_time_cnt)    // Don't count same frame in loop back test.
         {
