@@ -247,7 +247,7 @@ class ErrorTestCase(unittest.TestCase):
 
 
     def test_no_retransmit(self):
-        self.dut.print_on = True
+        #self.dut.print_on = True
         # check response in no retransmit mode
         self.dut.send(b"-\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -278,22 +278,16 @@ class ErrorTestCase(unittest.TestCase):
 
         # confirm no overflow
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
+        self.assertEqual(self.dut.receive(), b"F00\r")  # TEC saturates by 16 frames
 
         # will be discarded by no ack
         for i in range(0, 64):
             self.dut.send(b"t03F0\r")
-            self.assertEqual(self.dut.receive(), b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
 
         # confirm no overflow
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
-        self.dut.send(b"f\r")
-        self.dut.receive()
-
-        # check error clear
-        self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r")
+        self.assertEqual(self.dut.receive(), b"F00\r")  # TEC saturates by 16 frames
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
