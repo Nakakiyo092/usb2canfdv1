@@ -1,6 +1,6 @@
 # WeActStudio.USB2CANFDV1
 
-This repository contains sources for an alternative USB2CANFDV1 firmware. This firmware features message filtering and tx event reporting.
+This repository contains sources for an alternative USB2CANFDV1 firmware. This firmware implements non-standard slcan commands to support CAN FD messaging and other new features, alongside the LAWICEL-style command set.
 
 ## Frequently Used Commands
 
