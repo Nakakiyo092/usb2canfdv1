@@ -7,7 +7,7 @@ from device_under_test import DeviceUnderTest
 
 
 # NOTE: This test needs to be done with CAN bus fixed at dominant level.
-class ShortTestCase(unittest.TestCase):
+class DominantTestCase(unittest.TestCase):
 
     print_on: bool
     dut: DeviceUnderTest
@@ -19,19 +19,18 @@ class ShortTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
 
 
     def test_dominant(self):
+        #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        #self.dut.print_on = True
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check no error
+        # Check no error in internal loopback mode
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
@@ -39,7 +38,7 @@ class ShortTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check error passive
+        # Check error passive after "receiving" fixed signal at dominant level
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         time.sleep(0.5)     # wait for error passive ( > 1ms * 128 / 1)

@@ -5,8 +5,9 @@ import unittest
 import time
 from device_under_test import DeviceUnderTest
 
+# Tool to set up auto startup mode
 
-class SlcanTestCase(unittest.TestCase):
+class ToolStartupModeTestCase(unittest.TestCase):
 
     print_on: bool
     dut: DeviceUnderTest
@@ -18,15 +19,14 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
 
 
-    def test_Q_command(self):
+    def test_startup_mode(self):
         self.dut.print_on = True
 
-        # Timestamp
-        self.dut.send(b"z1013\r")
+        # Report
+        self.dut.send(b"z0001\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
         # Filter
@@ -45,13 +45,12 @@ class SlcanTestCase(unittest.TestCase):
 
         # Mode
         self.dut.send(b"Q1\r")
+        time.sleep(0.1)         # Extra wait for flash update
         self.assertEqual(self.dut.receive(), b"\r")
 
         # Close port
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
-
-        # check serial number after reset
 
 
 if __name__ == "__main__":

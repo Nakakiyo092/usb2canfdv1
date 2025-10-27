@@ -9,7 +9,7 @@ from device_under_test import DeviceUnderTest
 
 # NOTE: This test requires another device with the default setup on CAN bus.
 #       Its channel should become open and closed repeatedly.
-class TxEventTestCase(unittest.TestCase):
+class TxEventNackTestCase(unittest.TestCase):
 
     print_on: bool
     dut: DeviceUnderTest
@@ -29,6 +29,8 @@ class TxEventTestCase(unittest.TestCase):
         self.dut.print_on = True
         rx_data = b""
         rx_data_exp = b""
+        #self.dut.send(b"S0\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"z0002\r")  # no rx, tx event only
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"O\r")

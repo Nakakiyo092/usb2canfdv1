@@ -18,7 +18,6 @@ class LoopbackTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
 
 
@@ -26,7 +25,7 @@ class LoopbackTestCase(unittest.TestCase):
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        # check response to shortest SEND in CAN loopback mode
+        # Check loopback of shortest frames of each type
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
@@ -38,7 +37,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to longest SEND in CAN loopback mode
+        # Check loopback of longest frames of each type
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         tx_data = b"r03FF\r"
@@ -73,7 +72,7 @@ class LoopbackTestCase(unittest.TestCase):
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        # check response to shortest SEND in CAN loopback mode
+        # Check loopback of shortest frames of each type
         self.dut.send(b"+\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
@@ -85,7 +84,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to longest SEND in CAN loopback mode
+        # Check loopback of longest frames of each type
         self.dut.send(b"+\r")
         self.assertEqual(self.dut.receive(), b"\r")
         tx_data = b"r03FF\r"
@@ -118,7 +117,7 @@ class LoopbackTestCase(unittest.TestCase):
 
     def test_nominal_bitrate(self):
         #self.dut.print_on = True
-        # check response to SEND in every nominal bitrate
+        # Check loopback of a frame in every nominal bitrates
         for rate in range(0, 9):
             cmd = "S" + str(rate) + "\r"
             self.dut.send(cmd.encode())
@@ -134,7 +133,7 @@ class LoopbackTestCase(unittest.TestCase):
 
     def test_data_bitrate(self):
         #self.dut.print_on = True
-        # check response to SEND in every data bitrate
+        # Check loopback of a frame in every data bitrates
         for rate in (0, 1, 2, 4, 5):
             cmd = "Y" + str(rate) + "\r"
             self.dut.send(cmd.encode())
@@ -149,12 +148,11 @@ class LoopbackTestCase(unittest.TestCase):
 
 
     def test_timestamp_milli(self):
+        #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        #self.dut.print_on = True
-
-        # check timestamp off in CAN loopback mode
+        # Check no timestamp when timestamp is off
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
@@ -166,7 +164,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check timestamp on in CAN loopback mode
+        # Check millisec timestamp when timestamp is on
         self.dut.send(b"Z1\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -184,7 +182,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check timestamp off in CAN loopback mode
+        # Check no timestamp when timestamp is back to off
         self.dut.send(b"Z0\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -198,7 +196,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check timestamp accuracy in CAN loopback mode
+        # Check timestamp accuracy
         self.dut.send(b"Z1\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -228,19 +226,18 @@ class LoopbackTestCase(unittest.TestCase):
         else:
             diff_time_ms = (60000 + crnt_time_ms) - last_time_ms
 
-        # Proving 2% accuracy. 600ms should be acceptable for USB latency.
+        # Proving 2% accuracy. 600ms should be enough for USB latency.
         self.assertLess(abs(sleep_time_ms - diff_time_ms), 600)
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_timestamp_micro(self):
+        #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        #self.dut.print_on = True
-
-        # check timestamp off in CAN loopback mode
+        # Check no timestamp when timestamp is off
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
@@ -252,7 +249,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check timestamp on in CAN loopback mode
+        # Check microsec timestamp when timestamp is on
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -270,7 +267,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check timestamp off in CAN loopback mode
+        # Check no timestamp when timestamp is back to off
         self.dut.send(b"Z0\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -284,7 +281,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check timestamp accuracy in CAN loopback mode
+        # Check timestamp accuracy
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -314,7 +311,7 @@ class LoopbackTestCase(unittest.TestCase):
         else:
             diff_time_us = (3600000000 + crnt_time_us) - last_time_us
 
-        # Proving 2% accuracy. 600ms should be acceptable for USB latency.
+        # Proving 2% accuracy. 600ms should be enough for USB latency.
         self.assertLess(abs(sleep_time_us - diff_time_us), 600 * 1000)
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -323,7 +320,7 @@ class LoopbackTestCase(unittest.TestCase):
     def test_timestamp_same_stamp(self):
         #self.dut.print_on = True
 
-        # check timestamp on in CAN loopback mode
+        # Check Rx frame and Tx event have the same timestamp in CAN loopback mode
         self.dut.send(b"z2003\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -365,7 +362,7 @@ class LoopbackTestCase(unittest.TestCase):
         else:
             diff_time_us = (3600000000 + crnt_time_us) - last_time_us
 
-        # Difference should be less than time to send the frame (~50us) + main loop cycle (~100us)
+        # Difference should be less than the lengthf of the frame (~50us) + device main loop cycle (~100us)
         self.assertLess(diff_time_us, 200)
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -374,7 +371,7 @@ class LoopbackTestCase(unittest.TestCase):
     def test_timestamp_accuracy_milli(self):
         #self.dut.print_on = True
 
-        # check timestamp on in CAN loopback mode
+        # Configure a CAN bus with the slowest bitrates
         self.dut.send(b"Z1\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"S0\r")
@@ -384,9 +381,8 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-
-        # test frame number 1 * 1 ~ 5ms
-        tx_frame = b"t55585555555555555555"
+        # Check timestamp difference for two frames sent consecutively
+        tx_frame = b"t55585555555555555555" # Minimum stuffing bits
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
@@ -401,9 +397,8 @@ class LoopbackTestCase(unittest.TestCase):
         time_exp_us = (int(timestamp_1st, 16) * 1000 + (47 + 8 * 8 + 1) * 100) % 60000000   # 1 stuff bits?
         self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
 
-
-        # test frame number 2 * 1 ~ 5ms
-        tx_frame = b"B1555555585555555555555555"
+        # Check timestamp difference for two frames with BRS sent consecutively
+        tx_frame = b"B1555555585555555555555555" # Minimum stuffing bits
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
@@ -418,8 +413,7 @@ class LoopbackTestCase(unittest.TestCase):
         time_exp_us = (int(timestamp_1st, 16) * 1000 + 49 * 100 + 8 * 8 + 26 + 7) % 60000000   # 7 stuff bits?
         self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
 
-
-        # close port
+        # Close port
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -427,7 +421,7 @@ class LoopbackTestCase(unittest.TestCase):
     def test_timestamp_accuracy_micro(self):
         #self.dut.print_on = True
 
-        # check timestamp on in CAN loopback mode
+        # Configure a CAN bus with the slowest bitrates
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"S0\r")
@@ -437,9 +431,8 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-
-        # test frame number 1 * 1 ~ 5ms
-        tx_frame = b"t55585555555555555555"
+        # Check timestamp difference for two frames sent consecutively
+        tx_frame = b"t55585555555555555555" # Minimum stuffing bits
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
@@ -454,9 +447,8 @@ class LoopbackTestCase(unittest.TestCase):
         time_exp_us = (int(timestamp_1st, 16) + (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bits?
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
-
-        # test frame number 2 * 1 ~ 5ms
-        tx_frame = b"B1555555585555555555555555"
+        # Check timestamp difference for two frames with BRS sent consecutively
+        tx_frame = b"B1555555585555555555555555" # Minimum stuffing bits
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
@@ -471,8 +463,7 @@ class LoopbackTestCase(unittest.TestCase):
         time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + 8 * 8 + 26 + 7) % 3600000000   # 7 stuff bits?
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
-
-        # test frame number 1 * 20 ~ 100ms
+        # Check timestamp difference for 20 frames sent consecutively
         tx_frame = b"t55585555555555555555"
         for i in range(0, 20):
             self.dut.send(tx_frame + b"\r")
@@ -491,8 +482,7 @@ class LoopbackTestCase(unittest.TestCase):
         time_exp_us = (int(timestamp_1st, 16) + 19 * (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bits?
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
-
-        # test frame number 2 * 20 ~ 100ms
+        # Check timestamp difference for 20 frames with BRS sent consecutively
         tx_frame = b"B1555555585555555555555555"
         for i in range(0, 20):
             self.dut.send(tx_frame + b"\r")
@@ -511,19 +501,17 @@ class LoopbackTestCase(unittest.TestCase):
         time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + 8 * 8 + 26 + 7)) % 3600000000   # 7 stuff bits?
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
-
-        # close port
+        # Close port
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_tx_off_rx_on(self):
+        #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        #self.dut.print_on = True
-
-        # check tx event on in CAN loopback mode
+        # Check tx event is disabled and rx frame is enabled
         self.dut.send(b"z0001\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -539,12 +527,11 @@ class LoopbackTestCase(unittest.TestCase):
 
 
     def test_tx_on_rx_off(self):
+        #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        #self.dut.print_on = True
-
-        # check tx event on in CAN loopback mode
+        # Check tx event is enabled and rx frame is disabled
         self.dut.send(b"z0002\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -560,12 +547,12 @@ class LoopbackTestCase(unittest.TestCase):
 
 
     def test_esi_on(self):
+        #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        #self.dut.print_on = True
-
-        # check tx event on in CAN loopback mode
+        # Check CC frames are reported without ESI and FD frames with ESI (Rx frame and Tx event)
+        # TODO: check ESI bit 0 for error active and 1 for error passive
         self.dut.send(b"z0013\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -612,7 +599,7 @@ class LoopbackTestCase(unittest.TestCase):
 
         #self.dut.print_on = True
 
-        # check pass all (default) in CAN loopback mode
+        # Check pass all filter (default)
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
@@ -632,7 +619,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check pass 0x03F in CAN loopback mode
+        # Check pass 0x03F and 0x0000003F filter
         self.dut.send(b"M0000003F\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"mFFFFF800\r")
@@ -656,7 +643,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check pass 0x0137FEC8 (0x6C8) in CAN loopback mode
+        # Check pass 0x6C8 and 0x0137FEC8 filter
         self.dut.send(b"M0137FEC8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"mE0000000\r")
@@ -682,7 +669,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check pass STD ID 0x03F in CAN loopback mode
+        # Check pass STD ID 0x03F filter
         self.dut.send(b"M8000003F\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m00000000\r")
@@ -706,7 +693,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check pass EXT ID 0x0137FEC8 in CAN loopback mode
+        # Check pass EXT ID 0x0137FEC8 filter
         self.dut.send(b"M0137FEC8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m00000000\r")
@@ -734,7 +721,7 @@ class LoopbackTestCase(unittest.TestCase):
         
 
     def test_filter_every_bits(self):
-        # receive std
+        # Check pass STD ID 0x000 filter comparing every bit in CAN ID
         self.dut.send(b"M80000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m00000000\r")
@@ -754,7 +741,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # receive ext
+        # Check pass EXT ID 0x00000000 filter comparing every bit in CAN ID
         self.dut.send(b"M00000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m00000000\r")
@@ -774,7 +761,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # receive both
+        # Check pass 0x000 and 0x00000000 filter comparing every bit in CAN ID
         self.dut.send(b"M00000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m80000000\r")
@@ -794,7 +781,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check consistency
+        # Check consistency by setting pass STD ID 0x000 filter again
         self.dut.send(b"m80000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"M00000000\r")
@@ -818,21 +805,23 @@ class LoopbackTestCase(unittest.TestCase):
     def test_can_rx_buffer(self):
         #self.dut.print_on = True
         rx_data_exp = b""
-        # check response in CAN loopback mode
+
+        # Check stored frames in CAN Rx buffer are not alterd in order or content
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # the buffer can store as least 180 messages (4096 / 22)
+        # TODO: This process will stack messages in the CDC Tx buffer but not in the CAN Rx buffer.
+        #  the buffer can store as least 180 messages (4096 / 22)
         for i in range(0, 180):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"z\r" + tx_data
             time.sleep(0.001)
 
-        # check all reply
         rx_data = self.dut.receive()
         self.assertEqual(rx_data, rx_data_exp)
 
+        # Check no buffer overflow
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"C\r")
@@ -842,25 +831,26 @@ class LoopbackTestCase(unittest.TestCase):
     def test_can_tx_buffer(self):
         #self.dut.print_on = True
         rx_data_exp = b""
-        # check response in CAN loopback mode
+
+        # Check stored frames in CAN Tx buffer are not alterd in order or content
         self.dut.send(b"S0\r")  # take ~10ms to send one frame
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # the buffer can store as least 64 messages
+        #  the buffer can store as least 64 messages
         for i in range(0, 64):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += tx_data
             time.sleep(0.001)
 
-        # check all reply
         rx_data = self.dut.receive()
         rx_data += self.dut.receive()    # just to make sure (need time to tx all)
         rx_data = rx_data.replace(b"z\r", b"")
         self.assertEqual(rx_data, rx_data_exp)
 
+        # Check no buffer overflow
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"C\r")
@@ -870,23 +860,25 @@ class LoopbackTestCase(unittest.TestCase):
     def test_can_tx_event_buffer(self):
         #self.dut.print_on = True
         rx_data_exp = b""
-        # check response in CAN loopback mode
+
+        # Check stored frames in Tx event buffer are not alterd in order or content
         self.dut.send(b"z0002\r")  # no rx, tx event only
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # the buffer can store as least 180 messages (4096 / 22)
+        # TODO: This process will stack messages in the CDC Tx buffer but not in the Tx event buffer.
+        #  the buffer can store as least 180 messages (4096 / 22)
         for i in range(0, 180):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"\r" + b"z" + tx_data
             time.sleep(0.001)
 
-        # check all reply
         rx_data = self.dut.receive()
         self.assertEqual(rx_data, rx_data_exp)
 
+        # Check no buffer overflow
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"C\r")
@@ -896,7 +888,8 @@ class LoopbackTestCase(unittest.TestCase):
     def test_high_rx_frame_rate(self):
         #self.dut.print_on = True
         rx_data_exp = b""
-        # check response in CAN loopback mode
+
+        # Check stored frames in buffer are not alterd in order or content in high rx frame rate
         self.dut.send(b"S8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Y5\r")
@@ -906,17 +899,17 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # the buffer can store as least 180 messages (4096 / 22)
+        #  the buffer can store as least 180 messages (4096 / 22)
         for i in range(0, 180):
             tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"z\r" + tx_data
             time.sleep(0.001)   # Prevent stuck on host side
 
-        # check all reply
         rx_data = self.dut.receive()
         self.assertEqual(rx_data, rx_data_exp)
 
+        # Check no buffer overflow
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"C\r")
@@ -926,7 +919,8 @@ class LoopbackTestCase(unittest.TestCase):
     def test_high_tx_frame_rate(self):
         #self.dut.print_on = True
         rx_data_exp = b""
-        # check response in CAN loopback mode
+
+        # Check stored frames in buffer are not alterd in order or content in high tx frame rate
         self.dut.send(b"S8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Y5\r")
@@ -936,27 +930,27 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # the buffer can store as least 180 messages (4096 / 22)
+        #  the buffer can store as least 180 messages (4096 / 22)
         for i in range(0, 180):
             tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"\r" + b"z" + tx_data
             time.sleep(0.001)   # Prevent stuck on host side
 
-        # check all reply
         rx_data = self.dut.receive()
         self.assertEqual(rx_data, rx_data_exp)
 
+        # Check no buffer overflow
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    # TODO: implement more detailed test
     def test_bus_load(self):
         #self.dut.print_on = True
-        rx_data_exp = b""
-        # check response in CAN loopback mode
+
         self.dut.send(b"S0\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"z0000\r")
@@ -968,7 +962,10 @@ class LoopbackTestCase(unittest.TestCase):
         for i in range(0, 4):
             tx_data = tx_data + tx_data    # 11.2ms * 16 = 179.2ms
 
-        # 0% mode (prove 10% accuracy)
+        # NOTE: The 10% point accuracy has no reasoning.
+        # It is just to give some margin for the inaccurate bus load creation.
+
+        # Check bus load in 0% mode (prove 10% point accuracy)
         time.sleep(1)
         rx_data = self.dut.receive()
         self.dut.send(b"f\r")
@@ -977,7 +974,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.assertGreaterEqual(int(rx_data[89:91], 10), 0)
         self.assertLessEqual(int(rx_data[89:91], 10), 10)
 
-        # 18% mode (prove 10% accuracy)
+        # Check bus load in 18% mode (prove 10% point accuracy)
         time.sleep(0.5)
         self.dut.send(tx_data)
         time.sleep(1)
@@ -990,7 +987,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.assertGreaterEqual(int(rx_data[89:91], 10), 8)
         self.assertLessEqual(int(rx_data[89:91], 10), 28)
 
-        # 36% mode (prove 10% accuracy)
+        # Check bus load in 36% mode (prove 10% point accuracy)
         tx_data = tx_data + tx_data
         time.sleep(0.5)
         self.dut.send(tx_data)
@@ -1004,7 +1001,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.assertGreaterEqual(int(rx_data[89:91], 10), 26)
         self.assertLessEqual(int(rx_data[89:91], 10), 46)
 
-        # 72% mode (prove 10% accuracy)
+        # Check bus load in 72% mode (prove 10% point accuracy)
         tx_data = tx_data + tx_data
         time.sleep(0.5)
         self.dut.send(tx_data)

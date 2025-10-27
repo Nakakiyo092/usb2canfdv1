@@ -9,7 +9,7 @@ echo ""
 echo "Restoring default setup"
 python3 test/tool_default_setup.py
 
-# Run all test cases
+# Run standard test cases
 echo ""
 echo ""
 echo "Running slcan test cases"

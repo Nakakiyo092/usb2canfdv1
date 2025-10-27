@@ -6,7 +6,7 @@ echo.
 echo Restoring default setup
 python test\tool_default_setup.py
 
-:: Run all test cases
+:: Run standard test cases
 echo.
 echo.
 echo Running slcan test cases
