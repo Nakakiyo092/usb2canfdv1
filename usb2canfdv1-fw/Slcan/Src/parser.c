@@ -564,7 +564,7 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
     // Get detailed time
     if (buf[0] == 'z' && len == 1)
     {
-        // "z: time_ms=0x0000, time_us=0x00000000, cycle_time_us_ave_max=[0x00, 0x00]\r";
+        // "z: time_ms=0x0000, time_us=0x00000000, cycle_time_us_ave_max=[0x000, 0x000]\r";
 
         uint8_t* timstr;
 
@@ -602,21 +602,23 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         }
         else
         {
-			uint8_t cycle_ave = (uint8_t)(can_get_cycle_ave_time_ns() >= 255000 ? 255 : can_get_cycle_ave_time_ns() / 1000);
-			uint8_t cycle_max = (uint8_t)(can_get_cycle_max_time_ns() >= 255000 ? 255 : can_get_cycle_max_time_ns() / 1000);
+			uint16_t cycle_ave = (uint16_t)(can_get_cycle_ave_time_ns() >= 4095000 ? 4095 : can_get_cycle_ave_time_ns() / 1000);
+			uint16_t cycle_max = (uint16_t)(can_get_cycle_max_time_ns() >= 4095000 ? 4095 : can_get_cycle_max_time_ns() / 1000);
 			can_clear_cycle_time();
 
 			timstr = buf_get_cdc_dest(SLCAN_MTU);
-	        timstr[0] = slcan_nibble_to_ascii[cycle_ave >> 4];
-	        timstr[1] = slcan_nibble_to_ascii[cycle_ave & 0xF];
-	        buf_comit_cdc_dest(2);
+	        timstr[0] = slcan_nibble_to_ascii[(cycle_ave >> 8) & 0xF];
+	        timstr[1] = slcan_nibble_to_ascii[(cycle_ave >> 4) & 0xF];
+	        timstr[2] = slcan_nibble_to_ascii[cycle_ave & 0xF];
+	        buf_comit_cdc_dest(3);
 
 	        buf_enqueue_cdc((uint8_t *)", 0x", 4);
 
 	        timstr = buf_get_cdc_dest(SLCAN_MTU);
-	        timstr[0] = slcan_nibble_to_ascii[cycle_max >> 4];
-	        timstr[1] = slcan_nibble_to_ascii[cycle_max & 0xF];
-	        buf_comit_cdc_dest(2);
+	        timstr[0] = slcan_nibble_to_ascii[(cycle_max >> 8) & 0xF];
+	        timstr[1] = slcan_nibble_to_ascii[(cycle_max >> 4) & 0xF];
+	        timstr[2] = slcan_nibble_to_ascii[cycle_max & 0xF];
+	        buf_comit_cdc_dest(3);
         }
 
         buf_enqueue_cdc((uint8_t *)"]\r", 2);
