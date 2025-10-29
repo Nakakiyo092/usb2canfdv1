@@ -598,7 +598,7 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         if (can_get_bus_state() == BUS_CLOSED)
         {
         	// Cycle time calculation is disabled
-            buf_enqueue_cdc((uint8_t *)"**, 0x**", 8);
+            buf_enqueue_cdc((uint8_t *)"***, 0x***", 10);
         }
         else
         {

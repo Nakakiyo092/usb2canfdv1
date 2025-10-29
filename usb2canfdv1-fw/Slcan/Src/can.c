@@ -362,7 +362,7 @@ void can_process(void)
         cycle_time_ns = ((uint32_t)UINT16_MAX - last_time_stamp_cnt + 1 + curr_time_stamp_cnt) * 1000;
 
     if (can_cycle_max_time_ns < cycle_time_ns)
-        can_cycle_max_time_ns = cycle_time_ns;
+        can_cycle_max_time_ns = cycle_time_ns;  // NOte: Output too large value at first measurement
 
     //  Apply exponential moving average (alpha = 1/16)
     can_cycle_ave_time_ns = ((uint32_t)can_cycle_ave_time_ns * 15 + cycle_time_ns) >> 4;
