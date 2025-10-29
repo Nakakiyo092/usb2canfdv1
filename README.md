@@ -25,7 +25,7 @@ This repository contains sources for an alternative USB2CANFDV1 firmware. This f
 Please find more information in the `doc` directory or the [wiki](https://github.com/Nakakiyo092/usb2canfdv1/wiki).
 
 ## How to compile firmware
-Use STM32CubeIDE 1.18.0 or later.
+Use STM32CubeIDE 1.19.0 or later.
 
 ## How to upgrade firmware
 Use the upgrade tool in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1).
