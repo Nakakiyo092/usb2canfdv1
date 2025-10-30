@@ -353,8 +353,8 @@ void can_process(void)
     }
 
     // Update cycle time
-    static uint32_t last_time_stamp_cnt = 0;
-    uint16_t curr_time_stamp_cnt = HAL_FDCAN_GetTimestampCounter(&hfdcan1);
+    static uint32_t last_time_stamp_cnt = 0;    // NOte: Output too large cycle time at first measurement
+    uint16_t curr_time_stamp_cnt = (TIM3->CNT);
     uint32_t cycle_time_ns;
     if (last_time_stamp_cnt <= curr_time_stamp_cnt)
         cycle_time_ns = ((uint32_t)curr_time_stamp_cnt - last_time_stamp_cnt) * 1000;
@@ -362,7 +362,7 @@ void can_process(void)
         cycle_time_ns = ((uint32_t)UINT16_MAX - last_time_stamp_cnt + 1 + curr_time_stamp_cnt) * 1000;
 
     if (can_cycle_max_time_ns < cycle_time_ns)
-        can_cycle_max_time_ns = cycle_time_ns;  // NOte: Output too large value at first measurement
+        can_cycle_max_time_ns = cycle_time_ns;
 
     //  Apply exponential moving average (alpha = 1/16)
     can_cycle_ave_time_ns = ((uint32_t)can_cycle_ave_time_ns * 15 + cycle_time_ns) >> 4;
