@@ -841,6 +841,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
         #  the buffer can store as least 64 messages
+        # TODO: Cause buffer overflow and prove that no swapping happens?
         for i in range(0, 64):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
