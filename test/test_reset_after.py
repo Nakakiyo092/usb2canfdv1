@@ -22,7 +22,7 @@ class ResetAfterTestCase(unittest.TestCase):
 
 
     def test_serial(self):
-        # Check serial numver is stored after reset
+        # Check serial number is stored after reset
         self.dut.send(b"N\r")
         self.assertEqual(self.dut.receive(), b"NA123\r")
 

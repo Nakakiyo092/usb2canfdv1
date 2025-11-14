@@ -115,6 +115,7 @@ class LoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    # TODO: Make this a external test and saparate file (in and ex)
     def test_nominal_bitrate(self):
         #self.dut.print_on = True
         # Check loopback of a frame in every nominal bitrates
@@ -131,6 +132,7 @@ class LoopbackTestCase(unittest.TestCase):
             self.assertEqual(self.dut.receive(), b"\r")
 
 
+    # TODO: Make this a external test and saparate file (in and ex)
     def test_data_bitrate(self):
         #self.dut.print_on = True
         # Check loopback of a frame in every data bitrates
@@ -970,7 +972,7 @@ class LoopbackTestCase(unittest.TestCase):
         rx_data = self.dut.receive()
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92)        
+        self.assertEqual(len(rx_data), 92)
         self.assertGreaterEqual(int(rx_data[89:91], 10), 0)
         self.assertLessEqual(int(rx_data[89:91], 10), 10)
 

@@ -94,7 +94,7 @@ class ShortTestCase(unittest.TestCase):
 
         # One BIT0 error makes error passive event from REC = 0.
         # Not sure if this behavior of HAL is intensional.
-        # TODO; Need to check data sheet
+        # TODO: Need to check data sheet
 
         # Check error warning and error passive is reported
         for i in range(0, 1):
