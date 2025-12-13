@@ -108,6 +108,9 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
     // Add time stamp
     if (slcan_timestamp_mode == SLCAN_TIMESTAMP_MILLI)
     {
+        // Use current time instead of frame timestamp
+        // By this way the complex compensation for TIM3 overflow is not needed
+        // and the main loop delya at most ~300us will not greatly affect the timestamp correctness.
         uint16_t timestamp_ms = slcan_get_timestamp_ms();
 
         buf[msg_idx++] = slcan_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
