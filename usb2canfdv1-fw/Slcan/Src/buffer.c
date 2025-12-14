@@ -30,7 +30,7 @@
 #include "slcan.h"
 
 // Maximum number of frames stored in HAL waiting for being sent
-#define BUF_MAX_NBR_SEND_FRAMES         (3 + 2)         // SRAMCAN_TFQ_NBR 3 + Margin
+#define BUF_MAX_NBR_SEND_FRAMES         (3 + 3 + 2)         // SRAMCAN_TFQ_NBR 3 + SRAMCAN_TEF_NBR 3 + Margin
 
 // Cirbuf structure for CAN TX frames
 struct BufCanTx
