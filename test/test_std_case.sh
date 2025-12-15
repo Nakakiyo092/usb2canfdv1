@@ -16,8 +16,12 @@ echo "Running slcan test cases"
 python3 test/test_slcan.py
 echo ""
 echo ""
-echo "Running loopback test cases"
-python3 test/test_loopback.py
+echo "Running internal loopback test cases"
+python3 test/test_in_loopback.py
+echo ""
+echo ""
+echo "Running external loopback test cases"
+python3 test/test_ex_loopback.py
 echo ""
 echo ""
 echo "Running error test cases"
