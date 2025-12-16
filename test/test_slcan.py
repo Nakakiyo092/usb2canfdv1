@@ -37,7 +37,7 @@ class SlcanTestCase(unittest.TestCase):
 
     def test_too_long_command(self):
         # Check response to a command longer than MTU
-        # 1 + 138 + 8 + 1 + 1 + 16 = 165 is the MTU (including a [CR])
+        # 1 + 138 + 8 + 1 + 1 + 16 = 165 is the MTU (including a [CR] and 16 bytes margin)
         for i in range(163):
             self.dut.send(b"F")
         self.assertEqual(self.dut.receive(), b"")
@@ -110,7 +110,7 @@ class SlcanTestCase(unittest.TestCase):
     def test_open_close_command(self):
         # Check response to C and O
         self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\a")
+        self.assertEqual(self.dut.receive(), b"\a")     # Initially closed
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"O\r")

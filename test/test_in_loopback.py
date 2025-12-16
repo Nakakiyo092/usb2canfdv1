@@ -283,7 +283,7 @@ class InLoopbackTestCase(unittest.TestCase):
         else:
             diff_time_us = (3600000000 + crnt_time_us) - last_time_us
 
-        # Difference should be less than the lengthf of the frame (~50us) + device main loop cycle (~100us)
+        # Difference should be less than the length of the frame (~50us) + device main loop cycle (~100us)
         self.assertLess(diff_time_us, 200)
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -303,7 +303,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
         # Check timestamp difference for two frames sent consecutively
-        tx_frame = b"t55585555555555555555" # Minimum stuffing bits
+        tx_frame = b"t55585555555555555555" # Minimize stuffing bits
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
@@ -315,11 +315,11 @@ class InLoopbackTestCase(unittest.TestCase):
         pos = 2 * len(b"z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 4]
 
-        time_exp_us = (int(timestamp_1st, 16) * 1000 + (47 + 8 * 8 + 1) * 100) % 60000000   # 1 stuff bits?
+        time_exp_us = (int(timestamp_1st, 16) * 1000 + (47 + 8 * 8 + 1) * 100) % 60000000   # 1 stuff bit?
         self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
 
         # Check timestamp difference for two frames with BRS sent consecutively
-        tx_frame = b"B1555555585555555555555555" # Minimum stuffing bits
+        tx_frame = b"B1555555585555555555555555" # Minimize stuffing bits
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
@@ -353,7 +353,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
         # Check timestamp difference for two frames sent consecutively
-        tx_frame = b"t55585555555555555555" # Minimum stuffing bits
+        tx_frame = b"t55585555555555555555" # Minimize stuffing bits
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
@@ -365,11 +365,11 @@ class InLoopbackTestCase(unittest.TestCase):
         pos = 2 * len(b"z\r") + len(tx_frame) + len(b"TTTTTTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bits?
+        time_exp_us = (int(timestamp_1st, 16) + (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bit?
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
         # Check timestamp difference for two frames with BRS sent consecutively
-        tx_frame = b"B1555555585555555555555555" # Minimum stuffing bits
+        tx_frame = b"B1555555585555555555555555" # Minimize stuffing bits
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
@@ -400,7 +400,7 @@ class InLoopbackTestCase(unittest.TestCase):
         pos = 19 * (len(tx_frame) + len(b"TTTTTTTT\r")) + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + 19 * (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bits?
+        time_exp_us = (int(timestamp_1st, 16) + 19 * (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bit?
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
         # Check timestamp difference for 20 frames with BRS sent consecutively
@@ -769,17 +769,17 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    # Check stored frames in CAN Tx buffer are not alterd in order or content
     def test_can_tx_buffer(self):
         #self.dut.print_on = True
         rx_data_exp = b""
 
-        # Check stored frames in CAN Tx buffer are not alterd in order or content
         self.dut.send(b"S0\r")  # take ~10ms to send one frame
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        #  the buffer can store as least 64 messages
+        # The buffer can store as least 64 messages
         # TODO: Cause buffer overflow and prove that no swapping happens?
         for i in range(0, 64):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
@@ -846,7 +846,7 @@ class InLoopbackTestCase(unittest.TestCase):
             tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"z\r" + tx_data
-            time.sleep(0.001)   # Prevent stuck on host side
+            time.sleep(0.001)   # TODO Prevent stuck on host side
 
         rx_data = self.dut.receive()
         self.assertEqual(rx_data, rx_data_exp)
@@ -877,7 +877,7 @@ class InLoopbackTestCase(unittest.TestCase):
             tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"\r" + b"z" + tx_data
-            time.sleep(0.001)   # Prevent stuck on host side
+            time.sleep(0.001)   # TODO Prevent stuck on host side
 
         rx_data = self.dut.receive()
         self.assertEqual(rx_data, rx_data_exp)
