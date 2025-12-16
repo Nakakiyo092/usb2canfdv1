@@ -24,6 +24,10 @@ echo "Running external loopback test cases"
 python3 test/test_ex_loopback.py
 echo ""
 echo ""
+echo "Running buffer test cases"
+python3 test/test_buffer.py
+echo ""
+echo ""
 echo "Running error test cases"
 python3 test/test_error.py
 echo ""

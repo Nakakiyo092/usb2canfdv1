@@ -100,5 +100,8 @@ class ExLoopbackTestCase(unittest.TestCase):
             self.assertEqual(self.dut.receive(), b"\r")
 
 
+    # TODO Measure and show tx delay of the tranceiver?
+
+
 if __name__ == "__main__":
     unittest.main()

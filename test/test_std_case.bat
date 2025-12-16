@@ -21,6 +21,10 @@ echo Running external loopback test cases
 python test\test_ex_loopback.py
 echo.
 echo.
+echo Running buffer test cases
+python test\test_buffer.py
+echo.
+echo.
 echo Running error test cases
 python test\test_error.py
 echo.
