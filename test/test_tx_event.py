@@ -114,7 +114,7 @@ class TxEventTestCase(unittest.TestCase):
         # Setup sampling point so that CBFF is OK but FBFF is not. See the link for details.
         # https://github.com/Nakakiyo092/canable2-fw/discussions/72#discussioncomment-14331610
         #self.dut.send(b"s10420D0C\r")   # For CANable2
-        self.dut.send(b"s08420D0C\r")   # For WeActStudio
+        self.dut.send(b"s08420D0C\r")   # For WeActStudio   TODO use VXXXX
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"z0002\r")  # no rx, tx event only
         self.assertEqual(self.dut.receive(), b"\r")
