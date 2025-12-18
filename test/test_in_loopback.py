@@ -778,7 +778,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertLessEqual(int(rx_data[89:91], 10), 46)
 
         # Check bus load in 72% mode (prove 10% point accuracy)
-        tx_data = tx_data + tx_data
+        tx_data = tx_data + tx_data     # TODO large chunk may be not sent correctly
         time.sleep(0.5)
         self.dut.send(tx_data)
         time.sleep(1)

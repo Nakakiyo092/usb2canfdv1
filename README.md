@@ -2,7 +2,7 @@
 
 This repository contains sources for an alternative USB2CANFDV1 firmware. This firmware implements non-standard slcan commands to support CAN FD messaging and other new features, alongside the LAWICEL-style command set.
 
-## Frequently Used Commands
+## Frequently used commands
 
 - `O[CR]` - Opens the CAN channel
 - `C[CR]` - Closes the CAN channel
