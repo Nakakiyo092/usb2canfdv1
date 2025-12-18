@@ -7,7 +7,7 @@ from device_under_test import DeviceUnderTest
 
 
 # NOTE: YOU must check LED in this test.
-class LoopbackTestCase(unittest.TestCase):
+class LedTestCase(unittest.TestCase):
 
     print_on: bool
     dut: DeviceUnderTest
@@ -19,7 +19,6 @@ class LoopbackTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
 
 
@@ -27,7 +26,6 @@ class LoopbackTestCase(unittest.TestCase):
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        # check response to shortest SEND in CAN loopback mode
         self.dut.send(b"z0000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"W2\r")

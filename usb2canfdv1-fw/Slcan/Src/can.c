@@ -141,17 +141,18 @@ HAL_StatusTypeDef can_enable(void)
         if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) return HAL_ERROR;
 
         // Setup Tx delay compensation
+        // The offset value 0x28 corresponds to bitrate ~ 1Mbps @ 50% sampling point or ~ 2Mbps @ 100%.
+        // Turn off at 1Mbps and Turn on at 2Mbps
         uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
         if (offset <= 0x28)
         {
-            // TODO: The rationale behind the parameter selection is unclear.
+            // Follow the recommended values in the link.
+            // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
             if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
             if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
         }
         else
         {
-            // The offset value 0x28 corresponds to bitrate ~ 1Mbps @ 50% sampling point or ~ 2Mbps @ 100%.
-            // Turn off at 1Mbps and Turn on at 2Mbps
             HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1);
         }
 
@@ -162,7 +163,7 @@ HAL_StatusTypeDef can_enable(void)
         HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
 
         HAL_FDCAN_ConfigTimestampCounter(&hfdcan1, FDCAN_TIMESTAMP_PRESC_1);
-        // Internal does not work to get time. External use TIM3 as source. See RM0444.
+        // Internal does not work to get time (counts arb. bits + data bits). External use TIM3 as source. See RM0444.
         HAL_FDCAN_EnableTimestampCounter(&hfdcan1, FDCAN_TIMESTAMP_EXTERNAL);
 
         if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) return HAL_ERROR;
@@ -348,7 +349,7 @@ void can_process(void)
 
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF))
     {
-        // No slcan status flag for bus off
+        // TODO: No slcan status flag for bus off
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF);
     }
 

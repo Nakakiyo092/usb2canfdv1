@@ -6,15 +6,23 @@ echo.
 echo Restoring default setup
 python test\tool_default_setup.py
 
-:: Run all test cases
+:: Run standard test cases
 echo.
 echo.
 echo Running slcan test cases
 python test\test_slcan.py
 echo.
 echo.
-echo Running loopback test cases
-python test\test_loopback.py
+echo Running internal loopback test cases
+python test\test_in_loopback.py
+echo.
+echo.
+echo Running external loopback test cases
+python test\test_ex_loopback.py
+echo.
+echo.
+echo Running buffer test cases
+python test\test_buffer.py
 echo.
 echo.
 echo Running error test cases
