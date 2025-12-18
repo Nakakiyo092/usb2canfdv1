@@ -18,7 +18,6 @@ This repository contains sources for an alternative USB2CANFDV1 firmware. This f
 - `Z[CR]` and `z[CR]` - Configures reporting mechanism including time stamp and Tx event
 - `M[CR]` and `m[CR]` - Configures CAN acceptance filter
 - `F[CR]` - Returns status flags
-- `X[CR]` - Enters firmware upgrade mode
 
 `[CR]` : `0x0D` (hex), `\r` (ascii)
 
@@ -31,4 +30,5 @@ Use STM32CubeIDE 1.19.0 or later.
 Use the upgrade tool in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1).
 
 Note: After flashing this firmware, there would be an issue upgrading to another firmware.
-You should manually send `X[CR]` command before upgrade or force upgrade mode by shorting DIO and GND as described in the root repository.
+You should force upgrade mode by shorting DIO and GND as described in the root repository.
+There would be no command to enter firmware upgrade mode.

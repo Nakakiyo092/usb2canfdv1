@@ -95,7 +95,7 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     case 'L':
         slcan_parse_str_open(buf, len);
         return;
-    // Open channel in test mode
+    // Open channel in test mode (TODO remove for release build)
     case '=':
     case '+':
     case '-':
@@ -153,6 +153,8 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
         slcan_parse_str_auto_startup(buf, len);
         return;
     // Enter firmware upgrade mode
+    // TODO Replace with a longer command to avoid accidental entry (!B007 / *B007)
+    // TODO Delete this function for release build
     case 'X':
     	bootloader_enter_update_mode();
         break;
