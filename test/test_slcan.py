@@ -520,7 +520,7 @@ class SlcanTestCase(unittest.TestCase):
         for idx in range(0, 10):
             cmd = "W" + str(idx) + "\r"
             self.dut.send(cmd.encode())
-            if idx == 2:
+            if idx in (0, 2):
                 self.assertEqual(self.dut.receive(), b"\r")
             else:
                 self.assertEqual(self.dut.receive(), b"\a")
