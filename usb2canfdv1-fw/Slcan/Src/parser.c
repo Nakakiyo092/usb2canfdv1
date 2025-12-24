@@ -34,9 +34,9 @@
 // Filter mode
 enum SlcanFilterMode
 {
-    // SLCAN_FILTER_DUAL_MODE = 0,     // Not supported
-    // SLCAN_FILTER_SINGLE_MODE,       // Not supported
-    SLCAN_FILTER_SIMPLE_ID_MODE = 2,
+    SLCAN_FILTER_DUAL_MODE = 0,
+    // SLCAN_FILTER_SINGLE_MODE,        // Not supported
+    SLCAN_FILTER_SIMPLE_MODE = 2,
 
     SLCAN_FILTER_INVALID
 };
@@ -50,6 +50,7 @@ static char *hw_sw_ver = "VW1K3\r";
 static char *hw_sw_ver_detail = "v: hardware=\"USB2CANFDV1\", software=\"" "2.0.0" "\", url=\"" "github.com/Nakakiyo092/usb2canfdv1" "\"\r";
 static char *can_info = "I3050\r";
 static char *can_info_detail = "i: protocol=\"ISO-CANFD\", clock_mhz=80, controller=\"STM32G0B1CB\"\r";
+static uint8_t slcan_filter_mode = SLCAN_FILTER_DUAL_MODE;
 static uint32_t slcan_filter_code = 0x00000000;
 static uint32_t slcan_filter_mask = 0xFFFFFFFF;
 static uint8_t slcan_status_flags = 0;
@@ -64,6 +65,7 @@ static void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_filter_mode(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_filter_code(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_filter_mask(uint8_t *buf, uint8_t len);
+static HAL_StatusTypeDef slcan_configure_filter(void);
 static void slcan_parse_str_version(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_can_info(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_number(uint8_t *buf, uint8_t len);
@@ -674,23 +676,29 @@ void slcan_parse_str_filter_mode(uint8_t *buf, uint8_t len)
         }
 
         // Check if the filter mode is supported
-        if (buf[1] != SLCAN_FILTER_SIMPLE_ID_MODE)
+        if (buf[1] == SLCAN_FILTER_DUAL_MODE || buf[1] == SLCAN_FILTER_SIMPLE_MODE)
+            slcan_filter_mode = buf[1];
+        else
         {
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
 
+        if (slcan_configure_filter() != HAL_OK)
+        {
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+            return;
+        }
         buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         return;
     }
-    // Command can only be sent if CAN232 is initiated but not open.
+    // Command can only be sent if the device is initiated but not open.
     else
     {
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 }
-
 
 // Set filter code
 void slcan_parse_str_filter_code(uint8_t *buf, uint8_t len)
@@ -711,26 +719,7 @@ void slcan_parse_str_filter_code(uint8_t *buf, uint8_t len)
             slcan_filter_code = (slcan_filter_code << 4) + buf[1 + i];
         }
         
-        // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
-        // https://github.com/Nakakiyo092/canable2-fw/issues/66
-        FunctionalState state_std = ENABLE;
-        FunctionalState state_ext = ENABLE;
-        if ((slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
-        {
-            state_ext = DISABLE;
-        }
-        else if (!(slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
-        {
-            state_std = DISABLE;
-        }
-
-        // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
-        if (can_set_filter_std(state_std, slcan_filter_code & 0x7FF, (~slcan_filter_mask) & 0x7FF) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-        if (can_set_filter_ext(state_ext, slcan_filter_code & 0x1FFFFFFF, (~slcan_filter_mask) & 0x1FFFFFFF) != HAL_OK)
+        if (slcan_configure_filter() != HAL_OK)
         {
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
@@ -766,26 +755,7 @@ void slcan_parse_str_filter_mask(uint8_t *buf, uint8_t len)
             slcan_filter_mask = (slcan_filter_mask << 4) + buf[1 + i];
         }
 
-        // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
-        // https://github.com/Nakakiyo092/canable2-fw/issues/66
-        FunctionalState state_std = ENABLE;
-        FunctionalState state_ext = ENABLE;
-        if ((slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
-        {
-            state_ext = DISABLE;
-        }
-        else if (!(slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
-        {
-            state_std = DISABLE;
-        }
-
-        // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
-        if (can_set_filter_std(state_std, slcan_filter_code & 0x7FF, (~slcan_filter_mask) & 0x7FF) != HAL_OK)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-        if (can_set_filter_ext(state_ext, slcan_filter_code & 0x1FFFFFFF, (~slcan_filter_mask) & 0x1FFFFFFF) != HAL_OK)
+        if (slcan_configure_filter() != HAL_OK)
         {
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
@@ -799,6 +769,53 @@ void slcan_parse_str_filter_mask(uint8_t *buf, uint8_t len)
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
+}
+
+// Configure filter settings
+HAL_StatusTypeDef slcan_configure_filter(void)
+{
+    FunctionalState state_std = ENABLE;
+    FunctionalState state_ext = ENABLE;
+
+    if (slcan_filter_mode != SLCAN_FILTER_SIMPLE_MODE)
+    {
+        // TODO: Dual filter mode is not implemented yet. Pass all messages.
+
+        // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
+        if (can_set_filter_std(state_std, 0x000, 0x000) != HAL_OK)
+        {
+            return HAL_ERROR;
+        }
+        if (can_set_filter_ext(state_ext, 0x00000000, 0x00000000) != HAL_OK)
+        {
+            return HAL_ERROR;
+        }
+    }
+    else
+    {
+        // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
+        // https://github.com/Nakakiyo092/canable2-fw/issues/66
+        if (!(slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
+        {
+            state_std = DISABLE;
+        }
+        else if ((slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
+        {
+            state_ext = DISABLE;
+        }
+
+        // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
+        if (can_set_filter_std(state_std, slcan_filter_code & 0x7FF, (~slcan_filter_mask) & 0x7FF) != HAL_OK)
+        {
+            return HAL_ERROR;
+        }
+        if (can_set_filter_ext(state_ext, slcan_filter_code & 0x1FFFFFFF, (~slcan_filter_mask) & 0x1FFFFFFF) != HAL_OK)
+        {
+            return HAL_ERROR;
+        }
+    }
+
+    return HAL_OK;
 }
 
 // Get version number in standard + detailed style
