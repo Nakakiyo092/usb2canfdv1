@@ -514,7 +514,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_filter_basic(self):
+    def test_dual_filter_basic(self):
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
@@ -540,7 +540,38 @@ class InLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
+
+    def test_simple_filter_basic(self):
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
+        #self.dut.print_on = True
+
+        # Check pass all filter (default)
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.dut.send(cmd + b"7C00\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"7C00\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0000003F0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
+            self.dut.send(cmd + b"000007C00\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"000007C00\r")
+            self.dut.send(cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.dut.send(cmd + b"1EC801370\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"1EC801370\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
         # Check pass 0x03F and 0x0000003F filter
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"M0000003F\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"mFFFFF800\r")
@@ -641,8 +672,10 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         
 
-    def test_filter_every_bits(self):
+    def test_simple_filter_every_bits(self):
         # Check pass STD ID 0x000 filter comparing every bit in CAN ID
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"M80000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m00000000\r")
@@ -778,12 +811,16 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertLessEqual(int(rx_data[89:91], 10), 46)
 
         # Check bus load in 72% mode (prove 10% point accuracy)
-        tx_data = tx_data + tx_data     # TODO large chunk may be not sent correctly
-        time.sleep(0.5)
-        self.dut.send(tx_data)
-        time.sleep(1)
+        #tx_data = tx_data + tx_data     # Large chunk may be not sent correctly
+        time.sleep(0.25)
         self.dut.send(tx_data)
         time.sleep(0.5)
+        self.dut.send(tx_data)
+        time.sleep(0.5)
+        self.dut.send(tx_data)
+        time.sleep(0.5)
+        self.dut.send(tx_data)
+        time.sleep(0.25)
         rx_data = self.dut.receive()
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()

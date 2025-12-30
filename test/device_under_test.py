@@ -49,7 +49,7 @@ class DeviceUnderTest:
         self.receive()
         self.send(b"Z0\r")
         self.receive()
-        self.send(b"W2\r")
+        self.send(b"W0\r")
         self.receive()
         self.send(b"M00000000\r")
         self.receive()

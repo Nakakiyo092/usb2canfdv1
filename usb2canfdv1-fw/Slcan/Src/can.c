@@ -354,7 +354,7 @@ void can_process(void)
     }
 
     // Update cycle time
-    static uint32_t last_time_stamp_cnt = 0;    // NOte: This initial value creates too much cycle time at first measurement
+    static uint32_t last_time_stamp_cnt = 0;    // NOTE: This initial value creates too much cycle time at first measurement
     uint16_t curr_time_stamp_cnt = (TIM3->CNT);
     uint32_t cycle_time_ns;
     if (last_time_stamp_cnt <= curr_time_stamp_cnt)

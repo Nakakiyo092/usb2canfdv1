@@ -29,6 +29,9 @@ class ResetBeforeTestCase(unittest.TestCase):
         self.dut.send(b"z1011\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
         self.dut.send(b"M0000003F\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"mFFFFF800\r")

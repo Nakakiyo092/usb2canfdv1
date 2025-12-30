@@ -28,11 +28,18 @@
 
 // Public variables
 uint8_t slcan_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-enum SlcanTimestampMode slcan_timestamp_mode = 0;
-uint16_t slcan_report_reg = 1;   // Default: no timestamp, no ESI, no Tx, but with Rx
+
+// Private variables
+static enum SlcanFilterMode slcan_filter_mode = SLCAN_FILTER_DUAL_MODE;
+static uint32_t slcan_filter_code = 0x00000000;
+static uint32_t slcan_filter_mask = 0xFFFFFFFF;
+static enum SlcanTimestampMode slcan_timestamp_mode = 0;
+static uint16_t slcan_report_reg = 1;   // Default: no timestamp, no ESI, no Tx, but with Rx
+static uint8_t slcan_status_flags = 0;
 
 // Private methods
 static uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data);
+static HAL_StatusTypeDef slcan_configure_filter(void);
 
 // Generate a slcan message from a CAN frame
 // Returns number of bytes written into buf
@@ -262,29 +269,130 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     return slcan_last_timestamp_us;
 }
 
-// Set the timestamp mode
+// Setter and getter for the filter settings
+HAL_StatusTypeDef slcan_set_filter_mode(enum SlcanFilterMode mode)
+{
+    if (mode < SLCAN_FILTER_INVALID)
+        slcan_filter_mode = mode;
+    else
+        return HAL_ERROR;
+
+    if (slcan_configure_filter() != HAL_OK)
+        return HAL_ERROR;
+
+    return HAL_OK;
+}
+HAL_StatusTypeDef slcan_set_filter_code(uint32_t code)
+{
+    slcan_filter_code = code;
+
+    if (slcan_configure_filter() != HAL_OK)
+        return HAL_ERROR;
+
+    return HAL_OK;
+}
+HAL_StatusTypeDef slcan_set_filter_mask(uint32_t mask)
+{
+    slcan_filter_mask = mask;
+
+    if (slcan_configure_filter() != HAL_OK)
+        return HAL_ERROR;
+
+    return HAL_OK;
+}
+enum SlcanFilterMode slcan_get_filter_mode(void)
+{
+    return slcan_filter_mode;
+}
+uint32_t slcan_get_filter_code(void)
+{
+    return slcan_filter_code;
+}
+uint32_t slcan_get_filter_mask(void)
+{
+    return slcan_filter_mask;
+}
+
+// Configure filter settings
+HAL_StatusTypeDef slcan_configure_filter(void)
+{
+    FunctionalState state_std = ENABLE;
+    FunctionalState state_ext = ENABLE;
+
+    if (slcan_filter_mode != SLCAN_FILTER_SIMPLE_MODE)
+    {
+        // TODO: Dual filter mode is not implemented yet. Pass all messages.
+
+        // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
+        if (can_set_filter_std(state_std, 0x000, 0x000) != HAL_OK)
+        {
+            return HAL_ERROR;
+        }
+        if (can_set_filter_ext(state_ext, 0x00000000, 0x00000000) != HAL_OK)
+        {
+            return HAL_ERROR;
+        }
+    }
+    else
+    {
+        // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
+        // https://github.com/Nakakiyo092/canable2-fw/issues/66
+        if (!(slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
+        {
+            state_std = DISABLE;
+        }
+        else if ((slcan_filter_code >> 31) && !(slcan_filter_mask >> 31))
+        {
+            state_ext = DISABLE;
+        }
+
+        // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
+        if (can_set_filter_std(state_std, slcan_filter_code & 0x7FF, (~slcan_filter_mask) & 0x7FF) != HAL_OK)
+        {
+            return HAL_ERROR;
+        }
+        if (can_set_filter_ext(state_ext, slcan_filter_code & 0x1FFFFFFF, (~slcan_filter_mask) & 0x1FFFFFFF) != HAL_OK)
+        {
+            return HAL_ERROR;
+        }
+    }
+
+    return HAL_OK;
+}
+
+// Setter and getter for the report mode
+void slcan_set_report_mode(uint16_t reg)
+{
+    slcan_report_reg = reg;
+    return;
+}
 void slcan_set_timestamp_mode(enum SlcanTimestampMode mode)
 {
     if (mode < SLCAN_TIMESTAMP_INVALID)
         slcan_timestamp_mode = mode;
     return;
 }
-
-// Set the report setting register
-void slcan_set_report_mode(uint16_t reg)
-{
-    slcan_report_reg = reg;
-    return;
-}
-
-// Report the current timestamp mode
 enum SlcanTimestampMode slcan_get_timestamp_mode(void)
 {
     return slcan_timestamp_mode;
 }
-
-// Report the current report setting register value
 uint16_t slcan_get_report_mode(void)
 {
     return slcan_report_reg;
+}
+
+// Setter and getter for the status flags
+void slcan_raise_error(enum SlcanStatusFlag err)
+{
+    slcan_status_flags |= (uint8_t)(1 << err);
+}
+
+void slcan_clear_error(void)
+{
+    slcan_status_flags = 0;
+}
+
+uint8_t slcan_get_status_flags(void)
+{
+    return slcan_status_flags;
 }

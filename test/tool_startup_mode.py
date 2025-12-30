@@ -30,7 +30,7 @@ class ToolStartupModeTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
         # Filter
-        self.dut.send(b"W2\r")
+        self.dut.send(b"W0\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
         self.dut.send(b"M00000000\r")
