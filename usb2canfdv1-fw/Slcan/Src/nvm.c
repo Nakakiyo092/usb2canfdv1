@@ -42,8 +42,8 @@ enum NvmMemoryStatus
 #define NVM_ADDR_STP_CONFIG       (NVM_ADDR_ORIGIN + 0x008UL)   /* Auto startup configuration */
 #define NVM_ADDR_STP_NOM_BITRATE  (NVM_ADDR_ORIGIN + 0x010UL)   /* Nominal bitrate at STartuP */
 #define NVM_ADDR_STP_DATA_BITRATE (NVM_ADDR_ORIGIN + 0x018UL)
-#define NVM_ADDR_STP_FILTER_STD   (NVM_ADDR_ORIGIN + 0x020UL)
-#define NVM_ADDR_STP_FILTER_EXT   (NVM_ADDR_ORIGIN + 0x028UL)
+#define NVM_ADDR_STP_FILTER_CODE  (NVM_ADDR_ORIGIN + 0x020UL)
+#define NVM_ADDR_STP_FILTER_MASK  (NVM_ADDR_ORIGIN + 0x028UL)
 
 #define NVM_EXTRACT_MEM_STS(val)  ((uint8_t)(((val) >> 60) & 0x0F))
 #define NVM_IS_WRITTEN(val)       (NVM_EXTRACT_MEM_STS(val) == NVM_MEMORY_WRITTEN)
@@ -54,8 +54,8 @@ static uint64_t nvm_serial_number_raw;
 static uint64_t nvm_stp_config_raw;
 static uint64_t nvm_stp_nom_bitrate_raw;
 static uint64_t nvm_stp_data_bitrate_raw;
-static uint64_t nvm_stp_filter_std_raw;
-static uint64_t nvm_stp_filter_ext_raw;
+static uint64_t nvm_stp_filter_code_raw;
+static uint64_t nvm_stp_filter_mask_raw;
 
 // Private methods
 static HAL_StatusTypeDef nvm_write_to_flash(void);
@@ -68,8 +68,8 @@ void nvm_init(void)
     nvm_stp_config_raw =        *(uint64_t *)NVM_ADDR_STP_CONFIG;
     nvm_stp_nom_bitrate_raw =   *(uint64_t *)NVM_ADDR_STP_NOM_BITRATE;
     nvm_stp_data_bitrate_raw =  *(uint64_t *)NVM_ADDR_STP_DATA_BITRATE;
-    nvm_stp_filter_std_raw =    *(uint64_t *)NVM_ADDR_STP_FILTER_STD;
-    nvm_stp_filter_ext_raw =    *(uint64_t *)NVM_ADDR_STP_FILTER_EXT;
+    nvm_stp_filter_code_raw =   *(uint64_t *)NVM_ADDR_STP_FILTER_CODE;
+    nvm_stp_filter_mask_raw =   *(uint64_t *)NVM_ADDR_STP_FILTER_MASK;
 
     return;
 }
@@ -111,8 +111,8 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     if (!NVM_IS_WRITTEN(nvm_stp_config_raw)) return HAL_ERROR;
     if (!NVM_IS_WRITTEN(nvm_stp_nom_bitrate_raw)) return HAL_ERROR;
     if (!NVM_IS_WRITTEN(nvm_stp_data_bitrate_raw)) return HAL_ERROR;
-    if (!NVM_IS_WRITTEN(nvm_stp_filter_std_raw)) return HAL_ERROR;
-    if (!NVM_IS_WRITTEN(nvm_stp_filter_ext_raw)) return HAL_ERROR;
+    if (!NVM_IS_WRITTEN(nvm_stp_filter_code_raw)) return HAL_ERROR;
+    if (!NVM_IS_WRITTEN(nvm_stp_filter_mask_raw)) return HAL_ERROR;
 
     // Read and apply the main configuration
     uint8_t startup_mode = (uint8_t)(nvm_stp_config_raw & 0xFF);
@@ -123,14 +123,21 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     if (SLCAN_AUTO_STARTUP_INVALID <= startup_mode)
         return HAL_ERROR;
 
-    uint8_t timestamp_mode = (uint8_t)((nvm_stp_config_raw >> 8) & 0xFF);
+    uint8_t filter_mode = (uint8_t)((nvm_stp_config_raw >> 8) & 0xFF);
+
+    if (SLCAN_FILTER_INVALID <= filter_mode)
+        return HAL_ERROR;
+
+    slcan_set_filter_mode(filter_mode);
+
+    uint8_t timestamp_mode = (uint8_t)((nvm_stp_config_raw >> 16) & 0xFF);
 
     if (SLCAN_TIMESTAMP_INVALID <= timestamp_mode)
         return HAL_ERROR;
 
     slcan_set_timestamp_mode(timestamp_mode);
 
-    uint16_t report_reg = (uint16_t)((nvm_stp_config_raw >> 16) & 0xFFFF);
+    uint16_t report_reg = (uint16_t)((nvm_stp_config_raw >> 24) & 0xFFFF);
     slcan_set_report_mode(report_reg);
 
     // Read and apply bitrate
@@ -148,17 +155,8 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     can_set_data_bitrate_cfg(bitrate);
 
     // Read and apply filter
-    FunctionalState state;
-    uint32_t code, mask;
-    state = ((nvm_stp_filter_std_raw >> 22) & 0x1) ? ENABLE : DISABLE;
-    code = (nvm_stp_filter_std_raw & 0x7FF);
-    mask = ((nvm_stp_filter_std_raw >> 11) & 0x7FF);
-    can_set_filter_std(state, code, mask);
-
-    state = ((nvm_stp_filter_ext_raw >> 58) & 0x1) ? ENABLE : DISABLE;
-    code = (nvm_stp_filter_ext_raw & 0x1FFFFFFF);
-    mask = ((nvm_stp_filter_ext_raw >> 29) & 0x1FFFFFFF);
-    can_set_filter_ext(state, code, mask);
+    slcan_set_filter_code(nvm_stp_filter_code_raw & 0xFFFFFFFF);
+    slcan_set_filter_mask(nvm_stp_filter_mask_raw & 0xFFFFFFFF);
 
     // Start the CAN peripheral
     if (startup_mode == SLCAN_AUTO_STARTUP_NORMAL)
@@ -200,9 +198,11 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
 
     startup_cfg = (startup_cfg | (uint64_t)mode);
 
+    if (0xFF < slcan_get_filter_mode()) return HAL_ERROR;
     if (0xFF < slcan_get_timestamp_mode()) return HAL_ERROR;
-    startup_cfg = (startup_cfg | ((uint64_t)slcan_get_timestamp_mode() << 8));
-    startup_cfg = (startup_cfg | ((uint64_t)slcan_get_report_mode() << 16));
+    startup_cfg = (startup_cfg | ((uint64_t)slcan_get_filter_mode() << 8));
+    startup_cfg = (startup_cfg | ((uint64_t)slcan_get_timestamp_mode() << 16));
+    startup_cfg = (startup_cfg | ((uint64_t)slcan_get_report_mode() << 24));
     startup_cfg = NVM_WRITE_MEM_STS(startup_cfg);
 
     // Make raw data for nominal bitrate
@@ -225,32 +225,26 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
     data_bitrate = (data_bitrate | ((uint64_t)can_get_data_bitrate_cfg().sjw << 24));
     data_bitrate = NVM_WRITE_MEM_STS(data_bitrate);
 
-    // Make raw data for standard filter
-    uint64_t filter_std = 0;
-    filter_std = (filter_std | ((uint64_t)can_get_filter_std_code() & 0x7FF));
-    filter_std = (filter_std | (((uint64_t)can_get_filter_std_mask() & 0x7FF) << 11));
-    filter_std = (filter_std | ((uint64_t)(can_is_filter_std_enabled() == ENABLE) << 22));
-    filter_std = NVM_WRITE_MEM_STS(filter_std);
+    // Make raw data for filter code
+    uint64_t filter_code = 0;
+    filter_code = NVM_WRITE_MEM_STS((uint64_t)slcan_get_filter_code());
 
-    // Make raw data for extended filter
-    uint64_t filter_ext = 0;
-    filter_ext = (filter_ext | ((uint64_t)can_get_filter_ext_code() & 0x1FFFFFFF));
-    filter_ext = (filter_ext | (((uint64_t)can_get_filter_ext_mask() & 0x1FFFFFFF) << 29));
-    filter_ext = (filter_ext | ((uint64_t)(can_is_filter_ext_enabled() == ENABLE) << 58));
-    filter_ext = NVM_WRITE_MEM_STS(filter_ext);
+    // Make raw data for filter mask
+    uint64_t filter_mask = 0;
+    filter_mask = NVM_WRITE_MEM_STS((uint64_t)slcan_get_filter_mask());
 
     // Check if the configuration is the same
     if (startup_cfg == nvm_stp_config_raw)
         if (nom_bitrate == nvm_stp_nom_bitrate_raw && data_bitrate == nvm_stp_data_bitrate_raw)
-            if (filter_std == nvm_stp_filter_std_raw && filter_ext == nvm_stp_filter_ext_raw)
+            if (filter_code == nvm_stp_filter_code_raw && filter_mask == nvm_stp_filter_mask_raw)
                 return HAL_OK;
 
     // Update the RAM data
     nvm_stp_config_raw = startup_cfg;
     nvm_stp_nom_bitrate_raw = nom_bitrate;
     nvm_stp_data_bitrate_raw = data_bitrate;
-    nvm_stp_filter_std_raw = filter_std;
-    nvm_stp_filter_ext_raw = filter_ext;
+    nvm_stp_filter_code_raw = filter_code;
+    nvm_stp_filter_mask_raw = filter_mask;
 
     // Write to the flash
     if (nvm_write_to_flash() != HAL_OK)
@@ -311,14 +305,14 @@ HAL_StatusTypeDef nvm_write_to_flash(void)
     }
 
     // Write standard filter to flash
-    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, NVM_ADDR_STP_FILTER_STD, nvm_stp_filter_std_raw) != HAL_OK)
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, NVM_ADDR_STP_FILTER_CODE, nvm_stp_filter_code_raw) != HAL_OK)
     {
         HAL_FLASH_Lock();
         return HAL_ERROR;
     }
 
     // Write extended filter to flash
-    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, NVM_ADDR_STP_FILTER_EXT, nvm_stp_filter_ext_raw) != HAL_OK)
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, NVM_ADDR_STP_FILTER_MASK, nvm_stp_filter_mask_raw) != HAL_OK)
     {
         HAL_FLASH_Lock();
         return HAL_ERROR;
