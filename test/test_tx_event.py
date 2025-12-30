@@ -111,7 +111,8 @@ class TxEventTestCase(unittest.TestCase):
         random.seed(92)
         rx_data = b""
         rx_data_exp = b""
-        # Setup sampling point so that CBFF is OK but FBFF is not. See the link for details.
+        # Setup sampling point so that CBFF is OK but FBFF with BRS is not. See the link for details.
+        # TODO Just a unmatched data bit rate is not enough?
         # https://github.com/Nakakiyo092/canable2-fw/discussions/72#discussioncomment-14331610
         #self.dut.send(b"s10420D0C\r")   # For CANable2
         self.dut.send(b"s08420D0C\r")   # For WeActStudio   TODO use VXXXX
