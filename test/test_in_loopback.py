@@ -274,9 +274,9 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z\rt03F0\r")
         rx_data = self.dut.receive() + self.dut.receive()
-        last_timestamp = rx_data[len(b"Z"):len(b"Z") + 8]
+        last_timestamp = rx_data[len(b"Z2"):len(b"Z2") + 8]
         last_time_us = int(last_timestamp.decode(), 16)
-        crnt_timestamp = rx_data[len(b"ZXXXXXXXX\rz\rt03F0"):len(b"ZXXXXXXXX\rz\rt03F0") + 8]
+        crnt_timestamp = rx_data[len(b"Z2XXXXXXXX\rz\rt03F0"):len(b"Z2XXXXXXXX\rz\rt03F0") + 8]
         crnt_time_us = int(crnt_timestamp.decode(), 16)
         if crnt_time_us > last_time_us:
             diff_time_us = crnt_time_us - last_time_us

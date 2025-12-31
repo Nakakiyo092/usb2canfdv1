@@ -352,16 +352,16 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"Zxxxx\r"))
-        self.assertEqual(rx_data[0], b"Zxxxx\r"[0])
+        self.assertEqual(len(rx_data), len(b"Z1xxxx\r"))
+        self.assertEqual(rx_data[0], b"Z1xxxx\r"[0])
 
         # Check response to Z with us timestamp
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"Zxxxxxxxx\r"))
-        self.assertEqual(rx_data[0], b"Zxxxxxxxx\r"[0])
+        self.assertEqual(len(rx_data), len(b"Z2xxxxxxxx\r"))
+        self.assertEqual(rx_data[0], b"Z2xxxxxxxx\r"[0])
 
         # With option
         # Check response to Z with CAN port closed
