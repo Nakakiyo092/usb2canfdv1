@@ -18,26 +18,44 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
 
 
     def test_blank_command(self):
-        # check response to [CR]
+        # Check response to a [CR]
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_error_command(self):
-        # check response to [BELL]
+        # Check response to a [BELL]
         self.dut.send(b"\a")
         self.assertEqual(self.dut.receive(), b"")      # no reply since message is incomplete without [CR]
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
 
+    def test_too_long_command(self):
+        # Check response to a command longer than MTU
+        # 1 + 138 + 8 + 1 + 1 + 16 = 165 is the MTU (including a [CR] and 16 bytes margin)
+        for i in range(163):
+            self.dut.send(b"F")
+        self.assertEqual(self.dut.receive(), b"")
+        self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        for i in range(164):
+            self.dut.send(b"F")
+        self.assertEqual(self.dut.receive(), b"")
+        self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        for i in range(165):
+            self.dut.send(b"F")
+        self.assertEqual(self.dut.receive(), b"")
+        self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+
+
     def test_V_command(self):
-        # check response to V
         self.dut.send(b"V\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), len(b"V1013\r"))
@@ -75,7 +93,6 @@ class SlcanTestCase(unittest.TestCase):
 
     def test_N_command(self):
         #self.dut.print_on = True
-        # check response to N
         self.dut.send(b"N\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), len(b"NA123\r"))
@@ -91,9 +108,9 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_open_close_command(self):
-        # check response to C and O
+        # Check response to C and O
         self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\a")
+        self.assertEqual(self.dut.receive(), b"\a")     # Initially closed
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"O\r")
@@ -101,7 +118,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to C and L
+        # Check response to C and L
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"L\r")
@@ -111,7 +128,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to O and L
+        # Check response to O and L
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"O\r")
@@ -127,7 +144,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # invalid format
+        # Check invalid format
         self.dut.send(b"O0\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"L0\r")
@@ -137,7 +154,7 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_S_command(self):
-        # check response to S with CAN port closed
+        # Check response to S with CAN port closed
         for idx in range(0, 10):
             cmd = "S" + str(idx) + "\r"
             self.dut.send(cmd.encode())
@@ -146,7 +163,7 @@ class SlcanTestCase(unittest.TestCase):
             else:
                 self.assertEqual(self.dut.receive(), b"\a")
 
-        # check response to S in CAN normal mode
+        # Check response to S in CAN normal mode
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for idx in range(0, 10):
@@ -156,7 +173,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to S in CAN silent mode
+        # Check response to S in CAN silent mode
         self.dut.send(b"L\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for idx in range(0, 10):
@@ -166,7 +183,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # invalid format
+        # Check invalid format
         self.dut.send(b"S\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"S00\r")
@@ -176,12 +193,11 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_s_command(self):
-        # check response with CAN port closed
+        # Check response with CAN port closed
         self.dut.send(b"s10460908\r")
-        #self.dut.send(b"s010046009008\r")  # extension for future use?
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response in CAN normal mode
+        # Check response in CAN normal mode
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"s10460908\r")
@@ -189,7 +205,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response in CAN silent mode
+        # Check response in CAN silent mode
         self.dut.send(b"L\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"s10460908\r")
@@ -197,13 +213,13 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # within range
+        # Check within range
         self.dut.send(b"s01010101\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"sFFFF8080\r")
         self.assertEqual(self.dut.receive(), b"\r")
         
-        # our of range
+        # Check our of range
         self.dut.send(b"s00460908\r")
         self.assertEqual(self.dut.receive(), b"\a")
         #self.dut.send(b"sFF460908\r")
@@ -221,7 +237,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"s10460981\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
-        # invalid format
+        # Check invalid format
         self.dut.send(b"s1046090\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"s104609080\r")
@@ -231,17 +247,16 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_Y_command(self):
-        # check response to Y with CAN port closed
+        # Check response to Y with CAN port closed
         for idx in range(0, 10):
             cmd = "Y" + str(idx) + "\r"
             self.dut.send(cmd.encode())
-            #if idx in (0, 1, 2, 4, 5, 8):
-            if idx in (0, 1, 2, 3, 4, 5):
+            if idx in (0, 1, 2, 4, 5):
                 self.assertEqual(self.dut.receive(), b"\r")
             else:
                 self.assertEqual(self.dut.receive(), b"\a")
 
-        # check response to Y in CAN normal mode
+        # Check response to Y in CAN normal mode
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for idx in range(0, 10):
@@ -251,7 +266,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to Y in CAN silent mode
+        # Check response to Y in CAN silent mode
         self.dut.send(b"L\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for idx in range(0, 10):
@@ -261,7 +276,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # invalid format
+        # Check invalid format
         self.dut.send(b"Y\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"Y00\r")
@@ -271,11 +286,11 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_y_command(self):
-        # check response with CAN port closed
+        # Check response with CAN port closed
         self.dut.send(b"y021E0908\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response in CAN normal mode
+        # Check response in CAN normal mode
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"y021E0908\r")
@@ -283,7 +298,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response in CAN silent mode
+        # Check response in CAN silent mode
         self.dut.send(b"L\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"y021E0908\r")
@@ -291,13 +306,13 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # within range
+        # Check within range
         self.dut.send(b"y01010101\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"y20201010\r")
         self.assertEqual(self.dut.receive(), b"\r")
         
-        # our of range
+        # Check our of range
         self.dut.send(b"y001E0908\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"y211E0908\r")
@@ -315,7 +330,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"y021E0911\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
-        # invalid format
+        # Check invalid format
         self.dut.send(b"y021E090\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"y021E09080\r")
@@ -326,30 +341,30 @@ class SlcanTestCase(unittest.TestCase):
 
     def test_Z_command(self):
         # Without option
-        # check response to Z with timestamp disabled
+        # Check response to Z with timestamp disabled
         self.dut.send(b"Z0\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
-        # check response to Z with ms timestamp
+        # Check response to Z with ms timestamp
         self.dut.send(b"Z1\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"Zxxxx\r"))
-        self.assertEqual(rx_data[0], b"Zxxxx\r"[0])
+        self.assertEqual(len(rx_data), len(b"Z1xxxx\r"))
+        self.assertEqual(rx_data[0], b"Z1xxxx\r"[0])
 
-        # check response to Z with us timestamp
+        # Check response to Z with us timestamp
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"Zxxxxxxxx\r"))
-        self.assertEqual(rx_data[0], b"Zxxxxxxxx\r"[0])
+        self.assertEqual(len(rx_data), len(b"Z2xxxxxxxx\r"))
+        self.assertEqual(rx_data[0], b"Z2xxxxxxxx\r"[0])
 
         # With option
-        # check response to Z with CAN port closed
+        # Check response to Z with CAN port closed
         for idx in range(0, 10):
             cmd = "Z" + str(idx) + "\r"
             self.dut.send(cmd.encode())
@@ -358,7 +373,7 @@ class SlcanTestCase(unittest.TestCase):
             else:
                 self.assertEqual(self.dut.receive(), b"\a")
 
-        # check response to Z in CAN normal mode
+        # Check response to Z in CAN normal mode
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for idx in range(0, 10):
@@ -368,7 +383,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to Z in CAN silent mode
+        # Check response to Z in CAN silent mode
         self.dut.send(b"L\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for idx in range(0, 10):
@@ -378,7 +393,9 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # invalid format
+        # Check invalid format
+        #self.dut.send(b"Z\r") This is now valid.
+        #self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"Z00\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"ZG\r")
@@ -387,13 +404,14 @@ class SlcanTestCase(unittest.TestCase):
 
     def test_z_command(self):
         # Without option
+        # Check response to z
         self.dut.send(b"z\r")
         rx_data = self.dut.receive()
         self.assertGreaterEqual(len(rx_data), len(b"z\r"))
         self.assertEqual(rx_data[0], b"z\r"[0])
 
         # With option
-        # check response with CAN port closed
+        # Check response with CAN port closed
         for idx in range(0, 10):
             cmd = "z" + str(idx) + "000\r"
             self.dut.send(cmd.encode())
@@ -402,7 +420,7 @@ class SlcanTestCase(unittest.TestCase):
             else:
                 self.assertEqual(self.dut.receive(), b"\a")
 
-        # check response in CAN normal mode
+        # Check response in CAN normal mode
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for idx in range(0, 10):
@@ -412,7 +430,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response in CAN silent mode
+        # Check response in CAN silent mode
         self.dut.send(b"L\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for idx in range(0, 10):
@@ -422,7 +440,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # invalid format
+        # Check invalid format
         self.dut.send(b"z0\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"z000\r")
@@ -502,7 +520,7 @@ class SlcanTestCase(unittest.TestCase):
         for idx in range(0, 10):
             cmd = "W" + str(idx) + "\r"
             self.dut.send(cmd.encode())
-            if idx == 2:
+            if idx in (0, 2):
                 self.assertEqual(self.dut.receive(), b"\r")
             else:
                 self.assertEqual(self.dut.receive(), b"\a")
@@ -705,7 +723,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"r7FFF\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"t7FF80011223344556677\r")
+        self.dut.send(b"t7FFF0011223344556677\r")   # DLC 0xF - 8 byte data is a valid combination
         self.assertEqual(self.dut.receive(), b"z\r")
         self.dut.send(b"d7FFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
         self.assertEqual(self.dut.receive(), b"z\r")
@@ -713,7 +731,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"z\r")
         self.dut.send(b"R1FFFFFFFF\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"T1FFFFFFF80011223344556677\r")
+        self.dut.send(b"T1FFFFFFFF0011223344556677\r")  # DLC 0xF - 8 byte data is a valid combination
         self.assertEqual(self.dut.receive(), b"Z\r")
         self.dut.send(b"D1FFFFFFFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
         self.assertEqual(self.dut.receive(), b"Z\r")

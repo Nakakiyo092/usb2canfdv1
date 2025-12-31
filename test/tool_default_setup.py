@@ -5,8 +5,9 @@ import unittest
 import time
 from device_under_test import DeviceUnderTest
 
+# Tool to get the device back to default setup
 
-class SlcanTestCase(unittest.TestCase):
+class ToolDefaultTestCase(unittest.TestCase):
 
     print_on: bool
     dut: DeviceUnderTest
@@ -18,11 +19,10 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
         
 
-    def test_Q_command(self):
+    def test_default(self):
         #self.dut.print_on = True
 
         # Bit rate
@@ -36,7 +36,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
         # Filter
-        self.dut.send(b"W2\r")
+        self.dut.send(b"W0\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
         self.dut.send(b"M00000000\r")
@@ -49,7 +49,7 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Mode
+        # Startup mode
         self.dut.send(b"Q0\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -58,7 +58,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_N_command(self):
+    def test_serial_number(self):
         #self.dut.print_on = True
 
         # Check response to N

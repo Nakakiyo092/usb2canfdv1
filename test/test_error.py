@@ -18,34 +18,35 @@ class ErrorTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
 
 
     def test_error_active(self):
         #self.dut.print_on = True
+
+        # Check error active in normal operation
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\rt0000\r")
-        time.sleep(0.2)     # wait for a while ( > 1ms * 128)
+        time.sleep(0.2)     # wait for a while ( > 1ms * 1)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_bus_error(self):
         #self.dut.print_on = True
-        self.dut.send(b"-0\r")  # Disable auto retransmission
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
+
+        # Check no ack error is reported
+        self.dut.send(b"-\r")   # No retransmit mode
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\r")
@@ -55,19 +56,17 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x08, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x08, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-1\r")  # Enable auto retransmission
         self.assertEqual(self.dut.receive(), b"\r")
         
 
     def test_error_warning(self):
         #self.dut.print_on = True
-        self.dut.send(b"-0\r")  # Disable auto retransmission
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
+
+        # Check error warning level is reported
+        self.dut.send(b"-\r")   # No retransmit mode
         self.assertEqual(self.dut.receive(), b"\r")
         for i in range(0, 12):
             self.dut.send(b"t0000\r")
@@ -78,40 +77,41 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-1\r")  # Enable auto retransmission
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_error_passive(self):
         #self.dut.print_on = True
+
+        # Check error passive status is reported
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\r")
         time.sleep(0.2)     # wait for error passive ( > 1ms * 128)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r")  # Check cleared
+        self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_error_passive_clear(self):
         #self.dut.print_on = True
-        self.dut.send(b"-0\r")  # Disable auto retransmission
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"O\r")
+
+        # Check error passive status is reported after status flags are cleared
+        # Check error warning level is not reported after exceeding error warning level
+        self.dut.send(b"-\r")   # No retransmit mode
         self.assertEqual(self.dut.receive(), b"\r")
         
         for i in range(0, 12):
@@ -123,7 +123,7 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], th_bus_load_percent=00\r")
 
         for i in range(0, 4):
             self.dut.send(b"t0000\r")
@@ -134,36 +134,36 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")  # check error clear
         self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], est_bus_load_percent=00\r")
+        self.assertEqual(self.dut.receive(), b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], th_bus_load_percent=00\r")
 
         self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-1\r")  # Enable auto retransmission
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_cdc_tx_overflow(self):
-        # check response to shortest SEND in CAN normal mode
+        #self.dut.print_on = True
+
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # confirm no error
+        # Confirm no error at initial state
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
-        # send a lot of command without receiving data (amount depends on PC env.)
+        #  send a lot of command without receiving data (amount depends on PC env.)
         for i in range(0, 400):
             self.dut.send(b"v\r")
             time.sleep(0.001)
 
-        # recieve all reply
+        #  recieve all reply
         rx_data = self.dut.receive()
 
-        # check error
+        # Check CAN Rx Full error is reported for CDC Tx overflow
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F01\r")  # CAN Rx Full (because this overflow is caused typically by too many can frame)
+        #  CAN Rx Full (because this type of overflow is caused typically by too many can frame)
+        self.assertEqual(self.dut.receive(), b"F01\r")
 
-        # check error clear
+        # Check error clear
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
@@ -172,41 +172,44 @@ class ErrorTestCase(unittest.TestCase):
 
 
     def test_can_rx_overflow(self):
-        # check response in CAN loopback mode
+        #self.dut.print_on = True
+
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # confirm no error
+        # Confirm no error at initial state
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
-        # the buffer can store as least 180 messages (4096 / 24)
+        #  the buffer can store as least 180 messages (4096 / 24)
         for i in range(0, 180):
             self.dut.send(b"t03F80011223344556677\r")
             time.sleep(0.001)
 
-        # recieve all reply
+        #  recieve all reply
         rx_data = self.dut.receive()
         rx_data = self.dut.receive()    # just to make sure
 
-        # confirm no error
+        # Confirm no error
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
-        # the buffer can not store 800 messages (amount depends on PC env.)
+        # TODO: This process creates overflow in CDC Tx buffer not in CAN Rx buffer
+        #  the buffer can not store 800 messages (amount depends on PC env.)
         for i in range(0, 800):
             self.dut.send(b"t03F80011223344556677\r")
             time.sleep(0.001)
 
-        # recieve all reply
+        #  recieve all reply
         rx_data = self.dut.receive()
         rx_data = self.dut.receive()    # just to make sure
 
-        # check error
+        # Check CAN Rx Full error is reported for CDC Tx overflow
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F01\r")  # CAN Rx Full
+        #  CAN Rx Full (because this type of overflow is caused typically by too many can frame)
+        self.assertEqual(self.dut.receive(), b"F01\r")
 
-        # check error clear
+        # Check error clear
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
@@ -215,44 +218,92 @@ class ErrorTestCase(unittest.TestCase):
 
 
     def test_can_tx_overflow(self):
-        # check response in CAN normal mode
+        #self.dut.print_on = True
+
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # confirm no error
+        # Confirm no error at initial state
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
-        # the buffer can store as least 64 messages
+        #  the buffer can store as least 64 messages
         for i in range(0, 64):
             self.dut.send(b"t03F0\r")
             self.assertEqual(self.dut.receive(), b"z\r")
 
-        # confirm no overflow
+        # Confirm no overflow
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
 
-        # the buffer can not store additional 64 messages
+        #  the buffer can not store additional 64 messages
         for i in range(0, 64):
             self.dut.send(b"t03F0\r")
             self.dut.receive()
 
-        # check error
+        # Check CAN Tx Full error is reported for CAN Tx overflow
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F02\r")  # CAN Tx Full
+        self.assertEqual(self.dut.receive(), b"F02\r")
 
-        # the buffer can not store anymore messages
+        # Check a [BELL] is sent for each transmitted frame when CAN Tx overflow occurs
         for i in range(0, 64):
             self.dut.send(b"t03F0\r")
             self.assertEqual(self.dut.receive(), b"\a")
 
-        # check error
+        # Check error
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F02\r")
 
-        # check error clear
+        # Check error clear
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_no_retransmit(self):
+        #self.dut.print_on = True
+
+        self.dut.send(b"-\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"-0\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
+        #self.dut.send(b"O\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
+
+        # Confirm no error at initial state
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r")
+
+        #  will be discarded by no ack
+        for i in range(0, 64):
+            self.dut.send(b"t03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+
+        # Confirm no overflow error
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
+        self.dut.send(b"f\r")
+        self.dut.receive()
+
+        #  will be discarded by no ack
+        for i in range(0, 64):
+            self.dut.send(b"t03F0\r")
+            self.dut.receive()
+
+        # Confirm no overflow error
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r")  # TEC saturates by 16 frames
+
+        #  will be discarded by no ack
+        for i in range(0, 64):
+            self.dut.send(b"t03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+
+        # Confirm no overflow error
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r")  # TEC saturates by 16 frames
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")

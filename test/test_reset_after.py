@@ -6,7 +6,7 @@ import time
 from device_under_test import DeviceUnderTest
 
 
-class LoopbackTestCase(unittest.TestCase):
+class ResetAfterTestCase(unittest.TestCase):
 
     print_on: bool
     dut: DeviceUnderTest
@@ -14,26 +14,25 @@ class LoopbackTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = DeviceUnderTest()
         self.dut.open()
-        # DO NOT SETUP!
+        # DO NOT SETUP! CHECK AUTO SETUP!
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
 
 
     def test_serial(self):
+        # Check serial number is stored after reset
         self.dut.send(b"N\r")
         self.assertEqual(self.dut.receive(), b"NA123\r")
 
 
     def test_timestamp(self):
+        #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        #self.dut.print_on = True
-
-        # check timestamp on in CAN loopback mode
+        # Check timestamp is still on after reset
         self.dut.send(b"C\r")
         self.dut.receive()
         self.dut.send(b"=\r")
@@ -61,17 +60,11 @@ class LoopbackTestCase(unittest.TestCase):
 
 
     def test_filter(self):
+        #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        #self.dut.print_on = True
-
-        #self.dut.print_on = True
-        #elf.send(b"?\r")
-        #self.dut.receive()
-        #self.dut.print_on = False       
-
-        # check pass 0x03F in CAN loopback mode
+        # Check pass 0x03F filter is still active after reset
         self.dut.send(b"C\r")
         self.dut.receive()
         self.dut.send(b"=\r")

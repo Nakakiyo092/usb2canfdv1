@@ -26,7 +26,7 @@
 #include "main.h"
 
 // LED state
-enum led_state
+enum LedState
 {
     LED_ON,
     LED_OFF
@@ -38,7 +38,7 @@ enum led_state
 
 // Prototypes
 void led_init();
-void led_turn_txd(enum led_state state);
+void led_turn_txd(enum LedState state);
 void led_blink_sequence(uint8_t numblinks);
 void led_blink_txd(void);
 void led_blink_rxd(void);

@@ -79,7 +79,7 @@ void HAL_FDCAN_MspInit(FDCAN_HandleTypeDef* fdcanHandle)
   /** Initializes the peripherals clocks
   */
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_FDCAN;
-    PeriphClkInit.FdcanClockSelection = RCC_FDCANCLKSOURCE_PCLK1;
+    PeriphClkInit.FdcanClockSelection = RCC_FDCANCLKSOURCE_PLL;
 
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
     {

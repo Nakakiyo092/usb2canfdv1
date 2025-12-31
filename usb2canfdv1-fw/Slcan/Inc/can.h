@@ -24,7 +24,7 @@
 #define _CAN_H
 
 // Classic CAN / CANFD nominal bitrates
-enum can_bitrate_nominal
+enum CanBitrateNominal
 {
     CAN_BITRATE_10K = 0,
     CAN_BITRATE_20K,
@@ -40,37 +40,36 @@ enum can_bitrate_nominal
 };
 
 // CANFD data bitrates
-enum can_bitrate_data
+enum CanBitrateData
 {
     CAN_DATA_BITRATE_500K = 0,
-    CAN_DATA_BITRATE_1M,
-    CAN_DATA_BITRATE_2M,
-    CAN_DATA_BITRATE_3M,
-    CAN_DATA_BITRATE_4M,
-    CAN_DATA_BITRATE_5M,
+    CAN_DATA_BITRATE_1M = 1,
+    CAN_DATA_BITRATE_2M = 2,
+    CAN_DATA_BITRATE_4M = 4,
+    CAN_DATA_BITRATE_5M = 5,
 
     CAN_DATA_BITRATE_INVALID,
 };
 
 // Bus state
-enum can_bus_state
+enum CanBusState
 {
     BUS_CLOSED,
     BUS_OPENED
 };
 
-// Structure for CAN bus error state
-struct can_error_state
+// Structure for CAN protocol status and error counters
+struct CanErrorState
 {
-    uint8_t bus_off;
-    uint8_t err_pssv;
-    uint8_t tec;
-    uint8_t rec;
-    uint32_t last_err_code;
+    uint8_t bus_off;        // Copy of BusOff in FDCAN_ProtocolStatus
+    uint8_t err_pssv;       // Copy of ErrorPassive in FDCAN_ProtocolStatus
+    uint8_t tx_err_cnt;     // Copy of TxErrorCnt in FDCAN_ErrorCounters
+    uint8_t rx_err_cnt;     // Copy of RxErrorCnt in FDCAN_ErrorCounters (rx err active) / 128 (rx err passive)
+    uint32_t last_err_code; // Copy of LastErrorCode or DataLastErrorCode in FDCAN_ProtocolStatus
 };
 
 // Structure for CAN/FD bitrate configuration
-struct can_bitrate_cfg
+struct CanBitrateCfg
 {
     uint16_t prescaler;
     uint8_t time_seg1;
@@ -94,12 +93,12 @@ HAL_StatusTypeDef can_disable(void);
 void can_process(void);
 
 // Bit rate functions
-HAL_StatusTypeDef can_set_nominal_bitrate(enum can_bitrate_nominal bitrate);
-HAL_StatusTypeDef can_set_data_bitrate(enum can_bitrate_data bitrate);
-HAL_StatusTypeDef can_set_nominal_bitrate_cfg(struct can_bitrate_cfg bitrate_cfg);
-HAL_StatusTypeDef can_set_data_bitrate_cfg(struct can_bitrate_cfg bitrate_cfg);
-struct can_bitrate_cfg can_get_bitrate_cfg(void);
-struct can_bitrate_cfg can_get_data_bitrate_cfg(void);
+HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate);
+HAL_StatusTypeDef can_set_data_bitrate(enum CanBitrateData bitrate);
+HAL_StatusTypeDef can_set_nominal_bitrate_cfg(struct CanBitrateCfg bitrate_cfg);
+HAL_StatusTypeDef can_set_data_bitrate_cfg(struct CanBitrateCfg bitrate_cfg);
+struct CanBitrateCfg can_get_bitrate_cfg(void);
+struct CanBitrateCfg can_get_data_bitrate_cfg(void);
 
 // Filter functions
 HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint32_t mask);
@@ -114,8 +113,8 @@ uint32_t can_get_filter_ext_mask(void);
 // CAN mode and status
 HAL_StatusTypeDef can_set_mode(uint32_t mode);
 HAL_StatusTypeDef can_set_auto_retransmit(FunctionalState state);
-enum can_bus_state can_get_bus_state(void);
-struct can_error_state can_get_error_state(void);
+enum CanBusState can_get_bus_state(void);
+struct CanErrorState can_get_error_state(void);
 FunctionalState can_is_tx_enabled(void);
 uint32_t can_get_bus_load_ppm(void);
 

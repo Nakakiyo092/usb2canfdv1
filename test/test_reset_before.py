@@ -6,7 +6,7 @@ import time
 from device_under_test import DeviceUnderTest
 
 
-class LoopbackTestCase(unittest.TestCase):
+class ResetBeforeTestCase(unittest.TestCase):
 
     print_on: bool
     dut: DeviceUnderTest
@@ -18,16 +18,18 @@ class LoopbackTestCase(unittest.TestCase):
 
 
     def tearDown(self):
-        # close serial
         self.dut.close()
 
 
     def test_setup(self):
-        # check response to shortest SEND in CAN loopback mode
+        # Set serial number and other settings and activate auto startup mode
         self.dut.send(b"NA123\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
         self.dut.send(b"z1011\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        self.dut.send(b"W2\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
         self.dut.send(b"M0000003F\r")
@@ -38,13 +40,13 @@ class LoopbackTestCase(unittest.TestCase):
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        self.dut.send(b"Q1\r")
+        self.dut.send(b"Q1\r")  # Auto startup enable
         self.assertEqual(self.dut.receive(), b"\r")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # update setting in RAM
+        # Update setting in RAM to check they are overwritten
         self.dut.send(b"z0000\r")
         self.assertEqual(self.dut.receive(), b"\r")
 

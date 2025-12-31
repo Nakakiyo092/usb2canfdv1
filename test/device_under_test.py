@@ -6,6 +6,7 @@ class DeviceUnderTest:
 
     print_on: bool
     ser: serial
+    slcan_ver: bytes
 
     def __init__(self):
         # initialize
@@ -20,20 +21,35 @@ class DeviceUnderTest:
 
 
     def setup(self):
-        # clear buffer
-        self.send(b"\r\r\r")
+        # Clear false characters in the buffer. See the link for details.
+        # https://github.com/Nakakiyo092/usb2canfdv1/discussions/36
+        self.send(b"\a\r\r")
         self.receive()
 
-        # reset to default status
+        # Close the CAN channel just in case
         self.send(b"C\r")
         self.receive()
+
+        # Check the SLCAN version
+        self.send(b"V\r")
+        slcan_ver = self.receive()
+        if slcan_ver[:4] == b"VL2K":
+            # CANable2.0
+            pass
+        elif slcan_ver[:4] == b"VW1K":
+            # WeAct Studio
+            pass
+        else:
+            print("NOTE: Unknown SLCAN version ", slcan_ver.decode())
+
+        # Reset to default settings
         self.send(b"S4\r")
         self.receive()
         self.send(b"Y2\r")
         self.receive()
         self.send(b"Z0\r")
         self.receive()
-        self.send(b"W2\r")
+        self.send(b"W0\r")
         self.receive()
         self.send(b"M00000000\r")
         self.receive()
@@ -46,7 +62,7 @@ class DeviceUnderTest:
         self.ser.close()
 
 
-    def print_slcan_data(self, dir: chr, data: bytes):
+    def print_data(self, dir: chr, data: bytes):
         datar = data
         datar = datar.replace(b"\r", b"[CR]")
         datar = datar.replace(b"\a", b"[BELL]")
@@ -62,7 +78,7 @@ class DeviceUnderTest:
         self.ser.write(tx_data)
 
         if (self.print_on):
-            self.print_slcan_data("T", tx_data)
+            self.print_data("T", tx_data)
 
 
     def receive(self) -> bytes:
@@ -77,7 +93,7 @@ class DeviceUnderTest:
                 break
 
         if (self.print_on):
-            self.print_slcan_data("R", rx_data)
+            self.print_data("R", rx_data)
         
         return rx_data
 
