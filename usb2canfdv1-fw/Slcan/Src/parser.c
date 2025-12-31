@@ -519,12 +519,13 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         	uint16_t timestamp_ms = slcan_get_timestamp_ms();
 
         	tmsstr[0] = 'Z';
-        	tmsstr[1] = slcan_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
-        	tmsstr[2] = slcan_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
-        	tmsstr[3] = slcan_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
-        	tmsstr[4] = slcan_nibble_to_ascii[timestamp_ms & 0xF];
-        	tmsstr[5] = '\r';
-            buf_comit_cdc_dest(6);
+        	tmsstr[1] = slcan_nibble_to_ascii[SLCAN_TIMESTAMP_MILLI];
+        	tmsstr[2] = slcan_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
+        	tmsstr[3] = slcan_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
+        	tmsstr[4] = slcan_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
+        	tmsstr[5] = slcan_nibble_to_ascii[timestamp_ms & 0xF];
+        	tmsstr[6] = '\r';
+            buf_comit_cdc_dest(7);
         }
         else if (slcan_get_timestamp_mode() == SLCAN_TIMESTAMP_MICRO)
         {
@@ -532,16 +533,17 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         	uint32_t timestamp_us = slcan_get_timestamp_us_from_tim3(TIM3->CNT);
 
         	tmsstr[0] = 'Z';
-        	tmsstr[1] = slcan_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
-        	tmsstr[2] = slcan_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
-        	tmsstr[3] = slcan_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
-        	tmsstr[4] = slcan_nibble_to_ascii[(timestamp_us >> 16) & 0xF];
-        	tmsstr[5] = slcan_nibble_to_ascii[(timestamp_us >> 12) & 0xF];
-        	tmsstr[6] = slcan_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
-        	tmsstr[7] = slcan_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
-        	tmsstr[8] = slcan_nibble_to_ascii[timestamp_us & 0xF];
-        	tmsstr[9] = '\r';
-            buf_comit_cdc_dest(10);
+        	tmsstr[1] = slcan_nibble_to_ascii[SLCAN_TIMESTAMP_MICRO];
+        	tmsstr[2] = slcan_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
+        	tmsstr[3] = slcan_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
+        	tmsstr[4] = slcan_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
+        	tmsstr[5] = slcan_nibble_to_ascii[(timestamp_us >> 16) & 0xF];
+        	tmsstr[6] = slcan_nibble_to_ascii[(timestamp_us >> 12) & 0xF];
+        	tmsstr[7] = slcan_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
+        	tmsstr[8] = slcan_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
+        	tmsstr[9] = slcan_nibble_to_ascii[timestamp_us & 0xF];
+        	tmsstr[10] = '\r';
+            buf_comit_cdc_dest(11);
         }
         else
         {
