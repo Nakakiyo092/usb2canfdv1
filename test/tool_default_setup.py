@@ -58,18 +58,5 @@ class ToolDefaultTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_serial_number(self):
-        #self.dut.print_on = True
-
-        # Check response to N
-        self.dut.send(b"N\r")
-        rx_data = self.dut.receive()
-
-        # Update serial number
-        self.dut.send(b"NAC01\r")
-        time.sleep(0.1)         # Extra wait for flash update
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
 if __name__ == "__main__":
     unittest.main()

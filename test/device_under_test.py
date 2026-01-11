@@ -18,6 +18,7 @@ class DeviceUnderTest:
         # device name should be changed
         #self.ser = serial.Serial('/dev/ttyACM0', timeout=1, write_timeout=1)
         self.ser = serial.Serial('COM9', timeout=1, write_timeout=1)
+        # TODO nicer warning if not connected
 
 
     def setup(self):
@@ -34,13 +35,13 @@ class DeviceUnderTest:
         self.send(b"V\r")
         slcan_ver = self.receive()
         if slcan_ver[:4] == b"VL2K":
-            # CANable2.0
+            # CANable2.0 "Nakakiyo092/canable2-fw"
             pass
         elif slcan_ver[:4] == b"VW1K":
-            # WeAct Studio
+            # WeAct Studio "Nakakiyo092/usb2canfdv1"
             pass
         else:
-            print("NOTE: Unknown SLCAN version ", slcan_ver.decode())
+            print("WARNING: Unsupported SLCAN version ", slcan_ver.decode())
 
         # Reset to default settings
         self.send(b"S4\r")
