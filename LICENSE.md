@@ -5,7 +5,7 @@
 ```
 The MIT License (MIT)
 
-Copyright (c) 2025 NAKANISHI Kiyomaro
+Copyright (c) 2025-2026 NAKANISHI Kiyomaro
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -32,7 +32,7 @@ SOFTWARE.
 ```
 The MIT License (MIT)
 
-Copyright (c) 2025 NAKANISHI Kiyomaro
+Copyright (c) 2025-2026 NAKANISHI Kiyomaro
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
