@@ -127,6 +127,9 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
     }
     else if (slcan_timestamp_mode == SLCAN_TIMESTAMP_MICRO)
     {
+        // If a CAN frame is re-transmitted, the reported timestamp corresponds to the final, successful transmission.
+        // See the link for details.
+        // https://github.com/Nakakiyo092/usb2canfdv1/issues/48
         uint32_t timestamp_us = slcan_get_timestamp_us_from_tim3(frame_header->RxTimestamp);
 
         buf[msg_idx++] = slcan_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
