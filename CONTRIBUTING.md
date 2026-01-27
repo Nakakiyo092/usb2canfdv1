@@ -1,9 +1,7 @@
 # Contributing
 
-Feel free to open an issue, start a discussion, fork this repository,
-or give a star to your favorite repository.
-These actions will help me discover better software.
-Pull requests are not expected to be accepted here.
+Issues, discussions, and forks may be created at the contributor’s discretion.  
+Pull requests are not expected to be accepted.
 
 
 ## Repository structure
@@ -19,7 +17,6 @@ Pull requests are not expected to be accepted here.
 
 The commands below sync changes between this repository and subtrees
 ([wiki](https://github.com/Nakakiyo092/usb2canfdv1/wiki) and [slcan-tester](https://github.com/Nakakiyo092/slcan-tester)).  
-`gh auth login` can be used to login to github.com.
 
 ```
 git subtree pull --prefix=doc doctree main --squash
@@ -30,7 +27,8 @@ git subtree push --prefix=test testtree main
 
 ## Backward compatibility
 
-TODO
+- Compatibility with CAN232 and CANUSB is mandatory.  
+- Compatibility with the SLCAN protocol, including older versions in this repository, is recommended but not required.
 
 
 ## Test policy
