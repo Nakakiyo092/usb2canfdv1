@@ -24,19 +24,26 @@
 
 #include <string.h>
 #include "stm32g0xx_hal.h"
-#include "bootloader.h"
 #include "buffer.h"
 #include "can.h"
 #include "led.h"
 #include "nvm.h"
 #include "slcan.h"
+#ifdef DEBUG
+#include "bootloader.h"
+#endif
 
+#define SLCAN_VERSION   "VW1K3"
 #define SLCAN_RET_OK    ((uint8_t*)"\r")
 #define SLCAN_RET_ERR   ((uint8_t*)"\a")
 #define SLCAN_RET_LEN   (1)
 
 // Private variables
-static char *hw_sw_ver = "VW1K3\r";
+#ifndef DEBUG
+static char *hw_sw_ver = SLCAN_VERSION "\r";
+#else
+static char *hw_sw_ver = SLCAN_VERSION "-DEBUG\r";
+#endif
 static char *hw_sw_ver_detail = "v: hardware=\"USB2CANFDV1\", software=\"" "2.0.0" "\", url=\"" "github.com/Nakakiyo092/usb2canfdv1" "\"\r";
 static char *can_info = "I3050\r";
 static char *can_info_detail = "i: protocol=\"ISO-CANFD\", clock_mhz=80, controller=\"STM32G0B1CB\"\r";
@@ -44,7 +51,6 @@ static char *can_info_detail = "i: protocol=\"ISO-CANFD\", clock_mhz=80, control
 // Private methods
 static HAL_StatusTypeDef slcan_convert_str_to_number(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_open(uint8_t *buf, uint8_t len);
-static void slcan_parse_str_open_test_mode(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_close(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_set_bitrate(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len);
@@ -56,6 +62,11 @@ static void slcan_parse_str_can_info(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_number(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_status(uint8_t *buf, uint8_t len);
 static void slcan_parse_str_auto_startup(uint8_t *buf, uint8_t len);
+#ifdef DEBUG
+static void slcan_parse_str_open_test_mode(uint8_t *buf, uint8_t len);
+static void slcan_parse_str_extended(uint8_t *buf, uint8_t len);
+static void slcan_parse_str_debug(uint8_t *buf, uint8_t len);
+#endif
 
 // Parse an incoming slcan command from the USB CDC port
 void slcan_parse_str(uint8_t *buf, uint8_t len)
@@ -81,12 +92,6 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     case 'O':
     case 'L':
         slcan_parse_str_open(buf, len);
-        return;
-    // Open channel in test mode (TODO remove for release build)
-    case '=':
-    case '+':
-    case '-':
-        slcan_parse_str_open_test_mode(buf, len);
         return;
     // Close channel
     case 'C':
@@ -139,21 +144,22 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     case 'Q':
         slcan_parse_str_auto_startup(buf, len);
         return;
-    // Enter firmware upgrade mode
-    // TODO Replace with a longer command to avoid accidental entry (!B007 / *B007)
-    // TODO Delete this function for release build
-    case 'X':
-    	bootloader_enter_update_mode();
-        break;
-    // Debug function
-    case '?':
-    {
-        uint8_t dbgstr[2];
-        dbgstr[0] = '?';
-        dbgstr[1] = '\r';
-        buf_enqueue_cdc(dbgstr, strlen((char *)dbgstr));
+#ifdef DEBUG
+    // Open channel in test mode
+    case '=':
+    case '+':
+    case '-':
+        slcan_parse_str_open_test_mode(buf, len);
         return;
-    }
+    // Parse extended command
+    case '!':
+        slcan_parse_str_extended(buf, len);
+        return;
+    // Parse debug command
+    case '?':
+        slcan_parse_str_debug(buf, len);
+        return;
+#endif
     default:
         break;
     }
@@ -372,49 +378,6 @@ void slcan_parse_str_open(uint8_t *buf, uint8_t len)
         can_set_mode(FDCAN_MODE_BUS_MONITORING);
 
     can_set_auto_retransmit(ENABLE);
-
-    // Open CAN port
-    if (can_enable() != HAL_OK)
-        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-    else
-        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
-
-    return;
-}
-
-// Open channel in test mode
-void slcan_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
-{
-    // Check command length
-    if (len != 1)
-    {
-        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-        return;
-    }
-
-    // Check bus status
-    if (can_get_bus_state() != BUS_CLOSED)
-    {
-        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-        return;
-    }
-
-    // Reset variables
-    slcan_clear_error();
-    can_clear_cycle_time();
-
-    // Set mode
-    if (buf[0] == '=')
-        can_set_mode(FDCAN_MODE_INTERNAL_LOOPBACK);
-    else if (buf[0] == '+')
-        can_set_mode(FDCAN_MODE_EXTERNAL_LOOPBACK);
-    else
-        can_set_mode(FDCAN_MODE_NORMAL);
-
-    if (buf[0] == '-')  // No retransmit mode
-        can_set_auto_retransmit(DISABLE);
-    else
-        can_set_auto_retransmit(ENABLE);
 
     // Open CAN port
     if (can_enable() != HAL_OK)
@@ -914,3 +877,100 @@ void slcan_parse_str_auto_startup(uint8_t *buf, uint8_t len)
         return;
     }
 }
+
+#ifdef DEBUG
+// Open channel in test mode
+void slcan_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
+{
+    // Check command length
+    if (len != 1)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    // Check bus status
+    if (can_get_bus_state() != BUS_CLOSED)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    // Reset variables
+    slcan_clear_error();
+    can_clear_cycle_time();
+
+    // Set mode
+    if (buf[0] == '=')
+        can_set_mode(FDCAN_MODE_INTERNAL_LOOPBACK);
+    else if (buf[0] == '+')
+        can_set_mode(FDCAN_MODE_EXTERNAL_LOOPBACK);
+    else
+        can_set_mode(FDCAN_MODE_NORMAL);
+
+    if (buf[0] == '-')  // No retransmit mode
+        can_set_auto_retransmit(DISABLE);
+    else
+        can_set_auto_retransmit(ENABLE);
+
+    // Open CAN port
+    if (can_enable() != HAL_OK)
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+    else
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+
+    return;
+}
+#endif
+
+#ifdef DEBUG
+// Parse extended command (upgrade mode)
+void slcan_parse_str_extended(uint8_t *buf, uint8_t len)
+{
+    if (can_get_bus_state() == BUS_CLOSED)
+    {
+        // Check for valid command
+        if (len != 5)
+        {
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+            return;
+        }
+
+        if (buf[1] == 0xB && buf[2] == 0x0 && buf[3] == 0x0 && buf[4] == 0x7)
+        {
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+        	bootloader_enter_update_mode();
+        }
+        else
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+            
+        return;
+    }
+    else
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+}
+#endif
+
+#ifdef DEBUG
+// Parse debug command
+void slcan_parse_str_debug(uint8_t *buf, uint8_t len)
+{
+    // Check for valid command
+    if (len != 1)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    // Debug output - no info
+    uint8_t dbgstr[2];
+    dbgstr[0] = '?';
+    dbgstr[1] = '\r';
+    buf_enqueue_cdc(dbgstr, strlen((char *)dbgstr));
+
+    return;
+}
+#endif
