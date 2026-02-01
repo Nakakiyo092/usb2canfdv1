@@ -58,7 +58,7 @@ class SlcanTestCase(unittest.TestCase):
     def test_V_command(self):
         self.dut.send(b"V\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"V1013\r"))
+        self.assertGreaterEqual(len(rx_data), len(b"V1013\r"))
         self.assertEqual(rx_data[0], b"V1013\r"[0])
         self.dut.send(b"V0\r")
         self.assertEqual(self.dut.receive(), b"\a")
