@@ -7,7 +7,7 @@ Pull requests are not expected to be accepted.
 ## Repository structure
 
 ```
-/
+.
 └── doc                     # Protocol and firmware documentation
 │   └── usb2canfdv1.wiki    # Git subtree (external wiki repo)
 ├── test                    # Test scripts for system test
