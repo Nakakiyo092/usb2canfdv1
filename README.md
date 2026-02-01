@@ -1,6 +1,6 @@
 # WeActStudio.USB2CANFDV1
 
-This repository consists of documentation and an implementation of a protocol that extends the LAWICEL CAN ASCII protocol with additional commands for CAN FD and new features.
+This repository contains documentation and an implementation of a protocol that extends the LAWICEL CAN ASCII protocol with additional commands for CAN FD and new features.
 The implementation is for the [USB2CANFDV1](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1) from WeAct Studio.  
 
 URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
@@ -30,7 +30,10 @@ Please find more information in the `doc` directory or the [wiki](https://github
 The toolchain in this repository is designed to run on a Windows PC.
 
 ### How to clone this repository
-TODO
+Please be aware that there are submodules inside `usb2canfdv1-fw\Libs`.
+```
+git clone --recursive https://github.com/Nakakiyo092/usb2canfdv1.git
+```
 
 ### How to build firmware
 Use STM32CubeIDE 1.19.0 or later.

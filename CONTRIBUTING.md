@@ -13,6 +13,8 @@ Pull requests are not expected to be accepted.
 ├── test                    # Test scripts for system test
 │   └── slcan-tester        # Git subtree (external repo)
 └── usb2canfdv1-fw          # Firmware source code
+    └── Libs                # External libraries
+        └── printf          # Git submodule (external repo)
 ```
 
 The commands below sync changes between this repository and subtrees
@@ -24,6 +26,7 @@ git subtree push --prefix=doc doctree main
 git subtree pull --prefix=test testtree main --squash
 git subtree push --prefix=test testtree main
 ```
+
 
 ## Backward compatibility
 
