@@ -29,6 +29,7 @@ Use STM32CubeIDE 1.19.0 or later.
 ## How to upgrade firmware
 Use the upgrade tool in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1).
 
-Note: After flashing this firmware, there would be an issue upgrading to another firmware.
-You should force upgrade mode by shorting DIO and GND as described in the root repository.
-There would be no command to enter firmware upgrade mode.
+> [!NOTE]
+> After flashing this firmware, there would be an issue upgrading to another firmware.
+> You should force upgrade mode by shorting DIO and GND as described in the root repository.
+> There would be no command to enter firmware upgrade mode.
