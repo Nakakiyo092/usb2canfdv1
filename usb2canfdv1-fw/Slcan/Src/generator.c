@@ -232,16 +232,18 @@ uint16_t slcan_get_timestamp_ms(void)
     return slcan_last_timestamp_ms;
 }
 
-// Gets micro second timestamp for the tim3 clock (4bytes, Resets at 3600,000,000us)
+// Gets micro second timestamp for the time tim3_us was taken (4bytes, Resets at 3600,000,000us)
+// The calculation is based on the tim3 clock and the ms tick.
 // The tim3_us does not have to be the current value but supposed to be close to it (like ~1ms).
 // The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX / 2 ~ 30ms.
+// The interval between timestamp calculation should not allow 32 bits ms timer to overflow twice.
 uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
 {
     static uint32_t slcan_last_timestamp_us = 0;
     static uint32_t slcan_last_time_ms = 0;
     static uint16_t slcan_last_time_us = 0;
 
-    uint32_t current_time_ms = HAL_GetTick();
+    uint32_t current_time_ms = HAL_GetTick();    // TODO: Check if this tick syncs to TIM3
     uint16_t current_time_us = tim3_us; // MAX 0xFFFF
     uint32_t time_diff_ms;
     uint64_t time_diff_us;
@@ -250,11 +252,11 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     time_diff_ms = (uint32_t)(current_time_ms - slcan_last_time_ms);
     time_diff_us = (uint64_t)((uint16_t)(current_time_us - slcan_last_time_us));
 
-    if (time_diff_ms <= 1 && time_diff_us > UINT16_MAX / 2)
+    if (time_diff_ms <= 1 && time_diff_us > UINT16_MAX / 2)    // TODO: Give some margin to 1ms
     {
         // Assume tim3 was sampled before the last timestamp
         // This can happen when a CAN frame is retrieved after answering a 'Z[CR]'
-        // The amount of reversal should be close to the main loop (~100us)
+        // The amount of reversal should be close to the main loop (MAX ~300us)
         time_diff_us = (uint64_t)3600000000 - (uint16_t)(slcan_last_time_us - current_time_us);
     }
     else
