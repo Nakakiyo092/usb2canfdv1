@@ -235,8 +235,9 @@ void can_process(void)
             slcan_raise_error(SLCAN_STS_DATA_OVERRUN);
         }
 
-        // Don't count the loop back frame in internal or external loop back mode. (No Tx in silent mode)
-        if (can_mode == FDCAN_MODE_NORMAL)
+        // Don't count the loop back frame in internal or external loop back mode.
+        // They are counted in the Rx frame processing.
+        if (can_mode != FDCAN_MODE_INTERNAL_LOOPBACK && can_mode != FDCAN_MODE_EXTERNAL_LOOPBACK)
         {
             bit_cnt_message += can_get_bit_number_in_tx_event(&tx_event);
             last_frame_time_cnt = tx_event.TxTimestamp;
