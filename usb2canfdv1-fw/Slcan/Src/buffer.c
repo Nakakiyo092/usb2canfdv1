@@ -53,6 +53,8 @@ static uint8_t slcan_str[SLCAN_MTU];
 static uint8_t slcan_str_index = 0;
 
 // Private prototypes
+static void buf_disable_irq();
+static void buf_enable_irq();
 
 // Initializes
 void buf_init(void)
@@ -75,9 +77,9 @@ void buf_init(void)
 void buf_process(void)
 {
     // Process cdc receive buffer
-    __disable_irq();
+    buf_disable_irq();
     uint8_t data_ready = (buf_cdc_rx.tail != buf_cdc_rx.head);
-    __enable_irq();
+    buf_enable_irq();
     if (data_ready)
     {
         //  Process one whole buffer
@@ -107,9 +109,9 @@ void buf_process(void)
         }
 
         // Move on to the next buffer
-    	__disable_irq();
+    	buf_disable_irq();
         buf_cdc_rx.tail = (buf_cdc_rx.tail + 1) % BUF_CDC_RX_NUM_BUFS;
-    	__enable_irq();
+    	buf_enable_irq();
     }
 
     // Process cdc transmit buffer
@@ -122,7 +124,7 @@ void buf_process(void)
             buf_cdc_tx.msglen[new_head] = 0;
         }
     }
-    __disable_irq();
+    buf_disable_irq();
     uint32_t new_tail = (buf_cdc_tx.tail + 1UL) % BUF_CDC_TX_NUM_BUFS;
     if (new_tail != buf_cdc_tx.head)
     {
@@ -131,7 +133,7 @@ void buf_process(void)
             buf_cdc_tx.tail = new_tail;
         }
     }
-    __enable_irq();
+    buf_enable_irq();
 
 
     // Process can transmit buffer
@@ -291,4 +293,17 @@ void buf_clear_can_buffer(void)
     buf_can_tx.tail = buf_can_tx.head;
     buf_can_tx.send = buf_can_tx.head;
     buf_can_tx.full = 0;
+}
+
+// Disable/Enable IRQ with memory barrier
+void buf_disable_irq()
+{
+    __disable_irq();
+    __DSB(); // Data Synchronization Barrier
+    __ISB(); // Instruction Synchronization Barrier
+}
+void buf_enable_irq()
+{
+    __enable_irq();
+    __ISB(); // Instruction Synchronization Barrier
 }
