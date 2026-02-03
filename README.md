@@ -36,7 +36,7 @@ git clone --recursive https://github.com/Nakakiyo092/usb2canfdv1.git
 ```
 
 ### How to build firmware
-Use STM32CubeIDE 1.19.0 or later.
+Use STM32CubeIDE 1.19.0 with FW_G0 V1.6.2.
 
 ### How to upgrade firmware
 Use the packager tool and the upgrade tool in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1/tree/master/Tools).
