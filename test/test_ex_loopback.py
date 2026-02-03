@@ -176,8 +176,8 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # Check bus load with full load
-    def test_bus_load_full(self):
+    # Check bus load with full load at 10kbps
+    def test_bus_load_full_10k(self):
         #self.dut.print_on = True
 
         self.dut.send(b"S0\r")
@@ -220,6 +220,64 @@ class ExLoopbackTestCase(unittest.TestCase):
             self.dut.receive()
             self.dut.send(tx_data)
             time.sleep(0.25)
+
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 83)    # 5% margin for test setup and calculation
+        self.assertLessEqual(int(rx_data[89:91], 10), 88)
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    # Check bus load with full load at 20kbps
+    def test_bus_load_full_20k(self):
+        #self.dut.print_on = True
+
+        self.dut.send(b"S1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"+\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Minimum stuffing
+        tx_data = b"t55585555555555555555\r"    # 112bit * 0.05ms = 5.6ms
+        for _ in range(0, 5):
+            tx_data = tx_data + tx_data    # 5.6ms * 32 = 179.2ms
+
+        # Full load for more than 1 second
+        time.sleep(1)
+        for _ in range(0, 20):
+            self.dut.receive()
+            self.dut.send(tx_data)
+            time.sleep(0.125)
+
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 95)    # 5% margin for test setup and calculation
+        self.assertLessEqual(int(rx_data[89:91], 10), 99)
+
+
+        # Maximum stuffing (~ 20% * (11 + 64) / 112 ~ 14% underestimation)
+        tx_data = b"t00080000000000000000\r"    # 112bit * 0.05ms = 5.6ms
+        for _ in range(0, 5):
+            tx_data = tx_data + tx_data    # 5.6ms * 32 = 179.2ms
+
+        # Full load for more than 1 second
+        time.sleep(1)
+        for _ in range(0, 20):
+            self.dut.receive()
+            self.dut.send(tx_data)
+            time.sleep(0.125)
 
         self.dut.receive()
         self.dut.send(b"F\r")
