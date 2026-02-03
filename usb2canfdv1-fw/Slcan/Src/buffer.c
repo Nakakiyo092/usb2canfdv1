@@ -76,9 +76,9 @@ void buf_process(void)
 {
     // Process cdc receive buffer
     __disable_irq();
-    uint8_t data_ready = (buf_cdc_rx.tail != buf_cdc_rx.head);
+    uint32_t tmp_head = buf_cdc_rx.head;
     __enable_irq();
-    if (data_ready)
+    if (buf_cdc_rx.tail != tmp_head)
     {
         //  Process one whole buffer
         for (uint32_t i = 0; i < buf_cdc_rx.msglen[buf_cdc_rx.tail]; i++)
