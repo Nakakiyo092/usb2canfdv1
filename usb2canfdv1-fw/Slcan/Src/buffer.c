@@ -79,8 +79,10 @@ void buf_process(void)
 
     // Process cdc receive buffer
     // buf_cdc_rx.head is modified in interrupt, buf_cdc_rx.tail is referenced from interrupt.
+    // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
+    // It would be safe to assube that the head/tail variables are not atomic although it's 32bits.
     __disable_irq();
-    cpy_head = buf_cdc_rx.head;     // Not sure fetching atomic variable can be interrupted, but would be safer.
+    cpy_head = buf_cdc_rx.head;
     __enable_irq();
     if (buf_cdc_rx.tail != cpy_head)
     {
@@ -113,22 +115,24 @@ void buf_process(void)
         // Move on to the next buffer
         new_tail = (buf_cdc_rx.tail + 1) % BUF_CDC_RX_NUM_BUFS;
     	__disable_irq();
-        buf_cdc_rx.tail = new_tail;     // Not sure writing atomic variable can be interrupted, but would be safer.
+        buf_cdc_rx.tail = new_tail;
     	__enable_irq();
     }
 
     // Process cdc transmit buffer
     // buf_cdc_tx.head is referenced from interrupt, buf_cdc_tx.tail is modified in interrupt.
+    // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
+    // It would be safe to assube that the head/tail variables are not atomic although it's 32bits.
     new_head = (buf_cdc_tx.head + 1UL) % BUF_CDC_TX_NUM_BUFS;
     __disable_irq();
-    cpy_tail = buf_cdc_tx.tail;     // Not sure fetching atomic variable can be interrupted, but would be safer.
+    cpy_tail = buf_cdc_tx.tail;
     __enable_irq();
     if (new_head != cpy_tail)
     {
         if (0 < buf_cdc_tx.msglen[buf_cdc_tx.head])
         {
             __disable_irq();
-            buf_cdc_tx.head = new_head; // Not sure writing atomic variable can be interrupted, but would be safer.
+            buf_cdc_tx.head = new_head;
             __enable_irq();
             buf_cdc_tx.msglen[new_head] = 0;
         }
