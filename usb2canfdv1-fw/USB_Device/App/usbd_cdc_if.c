@@ -275,6 +275,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
     slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
 
     // Listen again on the same buffer. Old data will be overwritten.
+    // TODO: Delete corrupted data i.e. all data from last [CR] till next [CR]
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);
     USBD_CDC_ReceivePacket(&hUsbDeviceFS);
     return (USBD_FAIL);
