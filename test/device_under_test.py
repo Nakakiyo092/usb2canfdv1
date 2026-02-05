@@ -21,6 +21,7 @@ class DeviceUnderTest:
         #self.ser = serial.Serial('/dev/ttyACM0', timeout=1, write_timeout=1)
         self.ser = serial.Serial('COM9', timeout=1, write_timeout=1)
         # TODO nicer to have warning if not connected
+        # TODO make COM9 a parameter
 
 
     def setup(self):
