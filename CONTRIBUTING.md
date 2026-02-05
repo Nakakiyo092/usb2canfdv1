@@ -8,13 +8,13 @@ Pull requests are not expected to be accepted.
 
 ```
 .
-└── docs                    # Protocol and firmware documentation
+└── document/               # Protocol and firmware documentation
 │   └── usb2canfdv1.wiki    # Git subtree (external wiki repo)
-├── test                    # Test scripts for system test
+├── test/                   # Test scripts for system test
 │   └── slcan-tester        # Git subtree (external repo)
-└── usb2canfdv1-fw          # Firmware source code
-    ├── Libs                # External libraries
-    │   └── printf          # Git submodule (external repo)
+└── usb2canfdv1-fw/         # Firmware source code
+    ├── Libs/               # External libraries
+    │   └── printf/         # Git submodule (external repo)
     └── ...
 ```
 
