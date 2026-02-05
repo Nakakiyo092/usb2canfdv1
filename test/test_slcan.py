@@ -27,11 +27,17 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_error_command(self):
+    def test_invalid_command(self):
         # Check response to a [BELL]
         self.dut.send(b"\a")
         self.assertEqual(self.dut.receive(), b"")      # no reply since message is incomplete without [CR]
         self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+
+
+    def test_invalid_parameter(self):
+        # Check response to a [BELL]
+        self.dut.send(b"S\a\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
 
