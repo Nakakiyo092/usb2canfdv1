@@ -74,11 +74,17 @@ void buf_init(void)
 // Process
 void buf_process(void)
 {
+    uint32_t cpy_head, new_head;
+    uint32_t cpy_tail, new_tail;
+
     // Process cdc receive buffer
+    // buf_cdc_rx.head is modified in interrupt, buf_cdc_rx.tail is referenced from interrupt.
+    // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
+    // It would be safe to assube that the head/tail variables are not atomic although it's 32bits.
     __disable_irq();
-    uint8_t data_ready = (buf_cdc_rx.tail != buf_cdc_rx.head);
+    cpy_head = buf_cdc_rx.head;
     __enable_irq();
-    if (data_ready)
+    if (buf_cdc_rx.tail != cpy_head)
     {
         //  Process one whole buffer
         for (uint32_t i = 0; i < buf_cdc_rx.msglen[buf_cdc_rx.tail]; i++)
@@ -107,23 +113,32 @@ void buf_process(void)
         }
 
         // Move on to the next buffer
+        new_tail = (buf_cdc_rx.tail + 1) % BUF_CDC_RX_NUM_BUFS;
     	__disable_irq();
-        buf_cdc_rx.tail = (buf_cdc_rx.tail + 1) % BUF_CDC_RX_NUM_BUFS;
+        buf_cdc_rx.tail = new_tail;
     	__enable_irq();
     }
 
     // Process cdc transmit buffer
-    uint32_t new_head = (buf_cdc_tx.head + 1UL) % BUF_CDC_TX_NUM_BUFS;
-    if (new_head != buf_cdc_tx.tail)
+    // buf_cdc_tx.head is referenced from interrupt, buf_cdc_tx.tail is modified in interrupt.
+    // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
+    // It would be safe to assube that the head/tail variables are not atomic although it's 32bits.
+    new_head = (buf_cdc_tx.head + 1UL) % BUF_CDC_TX_NUM_BUFS;
+    __disable_irq();
+    cpy_tail = buf_cdc_tx.tail;
+    __enable_irq();
+    if (new_head != cpy_tail)
     {
         if (0 < buf_cdc_tx.msglen[buf_cdc_tx.head])
         {
+            __disable_irq();
             buf_cdc_tx.head = new_head;
+            __enable_irq();
             buf_cdc_tx.msglen[new_head] = 0;
         }
     }
     __disable_irq();
-    uint32_t new_tail = (buf_cdc_tx.tail + 1UL) % BUF_CDC_TX_NUM_BUFS;
+    new_tail = (buf_cdc_tx.tail + 1UL) % BUF_CDC_TX_NUM_BUFS;
     if (new_tail != buf_cdc_tx.head)
     {
         if (CDC_Transmit_FS((uint8_t *)buf_cdc_tx.data[new_tail], buf_cdc_tx.msglen[new_tail]) == USBD_OK)

@@ -100,6 +100,198 @@ class ExLoopbackTestCase(unittest.TestCase):
             self.assertEqual(self.dut.receive(), b"\r")
 
 
+    # Check bus load with stepwise increasing load
+    def test_bus_load_stepwise(self):
+        #self.dut.print_on = True
+
+        self.dut.send(b"S0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"+\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        tx_data = b"t55585555555555555555\r"    # 112bit * 0.1ms = 11.2ms
+        for _ in range(0, 4):
+            tx_data = tx_data + tx_data    # 11.2ms * 16 = 179.2ms
+
+        # NOTE: The 10% point accuracy has no reasoning.
+        # It is just to give some margin for the inaccurate bus load creation.
+
+        # Check bus load in 0% mode (prove 10% point accuracy)
+        time.sleep(1)
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 0)
+        self.assertLessEqual(int(rx_data[89:91], 10), 10)
+
+        # Check bus load in 18% mode (prove 10% point accuracy)
+        time.sleep(0.5)
+        self.dut.send(tx_data)
+        time.sleep(1)
+        self.dut.send(tx_data)
+        time.sleep(0.5)
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 8)
+        self.assertLessEqual(int(rx_data[89:91], 10), 28)
+
+        # Check bus load in 36% mode (prove 10% point accuracy)
+        tx_data = tx_data + tx_data
+        time.sleep(0.5)
+        self.dut.send(tx_data)
+        time.sleep(1)
+        self.dut.send(tx_data)
+        time.sleep(0.5)
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 26)
+        self.assertLessEqual(int(rx_data[89:91], 10), 46)
+
+        # Check bus load in 72% mode (prove 10% point accuracy)
+        #tx_data = tx_data + tx_data     # Large chunk may be not sent correctly
+        time.sleep(0.25)
+        self.dut.send(tx_data)
+        time.sleep(0.5)
+        self.dut.send(tx_data)
+        time.sleep(0.5)
+        self.dut.send(tx_data)
+        time.sleep(0.5)
+        self.dut.send(tx_data)
+        time.sleep(0.25)
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 62)
+        self.assertLessEqual(int(rx_data[89:91], 10), 82)
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    # Check bus load with full load at 10kbps
+    def test_bus_load_full_10k(self):
+        #self.dut.print_on = True
+
+        self.dut.send(b"S0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"+\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Minimum stuffing
+        tx_data = b"t55585555555555555555\r"    # 112bit * 0.1ms = 11.2ms
+        for _ in range(0, 5):
+            tx_data = tx_data + tx_data    # 11.2ms * 32 = 358.4ms
+
+        # Full load for more than 1 second
+        time.sleep(1)
+        for _ in range(0, 10):
+            self.dut.receive()
+            self.dut.send(tx_data)
+            time.sleep(0.25)
+
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 95)    # 5% margin for test setup and calculation
+        self.assertLessEqual(int(rx_data[89:91], 10), 99)
+
+
+        # Maximum stuffing (~ 20% * (11 + 64) / 112 ~ 14% underestimation)
+        tx_data = b"t00080000000000000000\r"    # 112bit * 0.1ms = 11.2ms
+        for _ in range(0, 5):
+            tx_data = tx_data + tx_data    # 11.2ms * 32 = 358.4ms
+
+        # Full load for more than 1 second
+        time.sleep(1)
+        for _ in range(0, 10):
+            self.dut.receive()
+            self.dut.send(tx_data)
+            time.sleep(0.25)
+
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 83)    # 5% margin for test setup and calculation
+        self.assertLessEqual(int(rx_data[89:91], 10), 88)
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    # Check bus load with full load at 20kbps
+    def test_bus_load_full_20k(self):
+        #self.dut.print_on = True
+
+        self.dut.send(b"S1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"+\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Minimum stuffing
+        tx_data = b"t55585555555555555555\r"    # 112bit * 0.05ms = 5.6ms
+        for _ in range(0, 5):
+            tx_data = tx_data + tx_data    # 5.6ms * 32 = 179.2ms
+
+        # Full load for more than 1 second
+        time.sleep(1)
+        for _ in range(0, 20):
+            self.dut.receive()
+            self.dut.send(tx_data)
+            time.sleep(0.125)
+
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 95)    # 5% margin for test setup and calculation
+        self.assertLessEqual(int(rx_data[89:91], 10), 99)
+
+
+        # Maximum stuffing (~ 20% * (11 + 64) / 112 ~ 14% underestimation)
+        tx_data = b"t00080000000000000000\r"    # 112bit * 0.05ms = 5.6ms
+        for _ in range(0, 5):
+            tx_data = tx_data + tx_data    # 5.6ms * 32 = 179.2ms
+
+        # Full load for more than 1 second
+        time.sleep(1)
+        for _ in range(0, 20):
+            self.dut.receive()
+            self.dut.send(tx_data)
+            time.sleep(0.125)
+
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 83)    # 5% margin for test setup and calculation
+        self.assertLessEqual(int(rx_data[89:91], 10), 88)
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
     # TODO Measure and show tx delay of the tranceiver?
 
 
