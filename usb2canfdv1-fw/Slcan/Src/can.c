@@ -349,7 +349,7 @@ void can_process(void)
 
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF))
     {
-        // TODO: No slcan status flag for bus off
+        slcan_raise_error(SLCAN_STS_BUS_OFF);
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF);
     }
 
