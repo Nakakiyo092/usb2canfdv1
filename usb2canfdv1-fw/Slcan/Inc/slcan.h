@@ -60,7 +60,7 @@ enum SlcanStatusFlag
     SLCAN_STS_CAN_TX_FIFO_FULL,     /* Message loss. Not mean the buffer is just full. */
     SLCAN_STS_ERROR_WARNING,
     SLCAN_STS_DATA_OVERRUN,
-    SLCAN_STS_RESERVED,
+    SLCAN_STS_BUS_OFF,
     SLCAN_STS_ERROR_PASSIVE,
     SLCAN_STS_ARBITRATION_LOST,     /* Not supported */
     SLCAN_STS_BUS_ERROR
