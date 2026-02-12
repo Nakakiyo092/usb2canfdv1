@@ -176,7 +176,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # Check bus load with full load at 10kbps
+    # Check bus load with full load at 10kbps with classic standard frames
     def test_bus_load_full_10k_cl_std(self):
         #self.dut.print_on = True
 
@@ -234,7 +234,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # Check bus load with full load at 20kbps
+    # Check bus load with full load at 20kbps with classic standard frames
     def test_bus_load_full_20k_cl_std(self):
         #self.dut.print_on = True
 
@@ -292,7 +292,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # Check bus load with full load at 10kbps
+    # Check bus load with full load at 10kbps with classic extended frames
     def test_bus_load_full_10k_cl_ext(self):
         #self.dut.print_on = True
 
@@ -350,8 +350,8 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # Check bus load with full load at 10kbps
-    def test_bus_load_full_10k_fd_std(self):
+    # Check bus load with full load at 10kbps with short FD standard frames
+    def test_bus_load_full_10k_fds_std(self):
         #self.dut.print_on = True
 
         self.dut.send(b"S0\r")
@@ -362,7 +362,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
         # Minimum stuffing
-        tx_data = b"d55585555555555555555\r"    # ~ 10ms
+        tx_data = b"d555A" + b"55" * 16 + b"\r"    # ~ 10ms
         for _ in range(0, 5):
             tx_data = tx_data + tx_data    # 10ms * 32 = 320ms
 
@@ -384,7 +384,7 @@ class ExLoopbackTestCase(unittest.TestCase):
 
 
         # Maximum stuffing (~ 14% underestimation)
-        tx_data = b"d00080000000000000000\r"    # ~ 10ms
+        tx_data = b"d000A" + b"00" * 16 + b"\r"    # ~ 10ms
         for _ in range(0, 5):
             tx_data = tx_data + tx_data    # 10ms * 32 = 320ms
 
@@ -408,7 +408,65 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # Check bus load with full load at 10kbps
+    # Check bus load with full load at 10kbps with long FD standard frames
+    def test_bus_load_full_10k_fdl_std(self):
+        #self.dut.print_on = True
+
+        self.dut.send(b"S0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"+\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Minimum stuffing
+        tx_data = b"d555B" + b"55" * 20 + b"\r"    # ~ 10ms
+        for _ in range(0, 5):
+            tx_data = tx_data + tx_data    # 10ms * 32 = 320ms
+
+        # Full load for more than 1 second
+        time.sleep(1)
+        for _ in range(0, 10):
+            self.dut.receive()
+            self.dut.send(tx_data)
+            time.sleep(0.25)
+
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 95)    # 5% margin for test setup and calculation
+        self.assertLessEqual(int(rx_data[89:91], 10), 99)
+
+
+        # Maximum stuffing (~ 14% underestimation)
+        tx_data = b"d000B" + b"00" * 20 + b"\r"    # ~ 10ms
+        for _ in range(0, 5):
+            tx_data = tx_data + tx_data    # 10ms * 32 = 320ms
+
+        # Full load for more than 1 second
+        time.sleep(1)
+        for _ in range(0, 10):
+            self.dut.receive()
+            self.dut.send(tx_data)
+            time.sleep(0.25)
+
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"f\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 92)
+        self.assertGreaterEqual(int(rx_data[89:91], 10), 83)    # 5% margin for test setup and calculation
+        self.assertLessEqual(int(rx_data[89:91], 10), 88)
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    # Check bus load with full load at 10kbps with extended FD frames with BRS
     def test_bus_load_full_10k_brs_ext(self):
         #self.dut.print_on = True
 
