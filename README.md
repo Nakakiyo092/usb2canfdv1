@@ -27,7 +27,7 @@ URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
 Please find more information in the `doc` directory or the [wiki](https://github.com/Nakakiyo092/usb2canfdv1/wiki).
 
 ## Tool chain
-The toolchain in this repository is designed to run on a Windows PC.
+The tool chain in this repository is designed to run on a Windows PC.
 
 ### How to clone this repository
 Please be aware that there are submodules inside `usb2canfdv1-fw\Libs`.
