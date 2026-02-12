@@ -33,10 +33,10 @@
 // Bit number for each frame type WithOut Data bytes (DLC = 0)
 #define CAN_BIT_NBR_WOD_CBFF            47
 #define CAN_BIT_NBR_WOD_CEFF            67
-#define CAN_BIT_NBR_WOD_FBFF_ARBIT      30      // Bit number in arbitration phase
+#define CAN_BIT_NBR_WOD_FBFF_ARBIT      30          // Bit number in arbitration phase
 #define CAN_BIT_NBR_WOD_FEFF_ARBIT      49
-#define CAN_BIT_NBR_WOD_FXFF_DATA_S     26      // Bit number in data phase with shorter crc
-#define CAN_BIT_NBR_WOD_FXFF_DATA_L     30      // Bit number in data phase with longer crc
+#define CAN_BIT_NBR_WOD_FXFF_DATA_S     (26 + 5)    // Bit number in data phase with shorter crc (Including fixed stuff bits in CRC field)
+#define CAN_BIT_NBR_WOD_FXFF_DATA_L     (30 + 6)    // Bit number in data phase with longer crc (Including fixed stuff bits in CRC field)
 
 // Parameter to calculate bus load
 #define CAN_ROOT_CLOCK_MHZ              80
@@ -674,6 +674,8 @@ FunctionalState can_is_tx_enabled(void)
 
 // Return CAN bus load in ppm
 // The value is theoretical bus load which is a hypothetical bus load without bit stuffing.
+// Fixed stuff bits in the CRC field in a CAN FD frame are included in the calculation,
+// while variable bit stuffing (data-dependent) is not considered.
 uint32_t can_get_bus_load_ppm(void)
 {
     return can_bus_load_ppm;
