@@ -80,7 +80,7 @@ void buf_process(void)
     // Process cdc receive buffer
     // buf_cdc_rx.head is modified in interrupt, buf_cdc_rx.tail is referenced from interrupt.
     // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
-    // It would be safe to assube that the head/tail variables are not atomic although it's 32bits.
+    // Would it be neccessary to assube that the head/tail variables are not atomic? it's 8bits.
     __disable_irq();
     cpy_head = buf_cdc_rx.head;
     __enable_irq();
@@ -122,7 +122,7 @@ void buf_process(void)
     // Process cdc transmit buffer
     // buf_cdc_tx.head is referenced from interrupt, buf_cdc_tx.tail is modified in interrupt.
     // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
-    // It would be safe to assube that the head/tail variables are not atomic although it's 32bits.
+    // Would it be neccessary to assube that the head/tail variables are not atomic? it's 8bits.
     new_head = (buf_cdc_tx.head + 1UL) % BUF_CDC_TX_NUM_BUFS;
     __disable_irq();
     cpy_tail = buf_cdc_tx.tail;
