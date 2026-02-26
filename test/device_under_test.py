@@ -1,9 +1,17 @@
+"""
+A helper class for testing the SLCAN device under test.
+
+License:
+    MIT License.
+    See the accompanying LICENSE file for full terms.
+"""
+
 import time
 import serial
 
 
 class DeviceUnderTest:
-
+    """A helper class for testing the SLCAN device under test."""
     print_on: bool
     ser: serial
     slcan_ver: bytes
@@ -11,11 +19,13 @@ class DeviceUnderTest:
     fd_support: bool
 
     def __init__(self):
+        """Initialize the class."""
         # initialize
         self.print_on = False
 
 
     def open(self):
+        """Open the connection to the device."""
         # connect to serial
         # device name should be changed
         #self.ser = serial.Serial('/dev/ttyACM0', timeout=1, write_timeout=1)
@@ -25,6 +35,7 @@ class DeviceUnderTest:
 
 
     def setup(self):
+        """Setup the device for testing."""
         # Clear false characters in the buffer. See the link for details.
         # https://github.com/Nakakiyo092/usb2canfdv1/discussions/36
         self.send(b"\a\r\r")
@@ -70,15 +81,19 @@ class DeviceUnderTest:
 
 
     def close(self):
+        """Close the connection to the device."""
         # close serial
         self.ser.close()
 
 
-    def print_data(self, dir: chr, data: bytes):
+    def print_data(self, direction: chr, data: bytes):
+        """Print the data in a human-readable format.
+        param direction: 'T' for transmit, 'R' for receive
+        """
         datar = data
         datar = datar.replace(b"\r", b"[CR]")
         datar = datar.replace(b"\a", b"[BELL]")
-        if dir == "t" or dir == "T":
+        if direction in ('t', 'T'):
             print("")
             print("<<< ", datar.decode())
         else:
@@ -87,25 +102,26 @@ class DeviceUnderTest:
 
 
     def send(self, tx_data: bytes):
+        """Send data to the device."""
         self.ser.write(tx_data)
 
-        if (self.print_on):
+        if self.print_on:
             self.print_data("T", tx_data)
 
 
     def receive(self) -> bytes:
+        """Receive data from the device."""
         rx_data = b""
         cycle = 0.02    # sec
         timeout = 1     # sec
-        for i in range(0, int(timeout / cycle)):
+        for _ in range(0, int(timeout / cycle)):
             time.sleep(cycle)
             tmp = self.ser.read_all()
             rx_data = rx_data + tmp
             if len(tmp) == 0 and len(rx_data) != 0:
                 break
 
-        if (self.print_on):
+        if self.print_on:
             self.print_data("R", rx_data)
-        
-        return rx_data
 
+        return rx_data
