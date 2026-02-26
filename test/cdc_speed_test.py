@@ -78,6 +78,19 @@ def print_test_environment(dev: serial):
     print("can port status: closed")
 
 
+def print_round_trip_time(dev: serial):
+    """Print test environment information."""
+    rtt = []
+    for _ in range(0, 5):
+        time_start = time.perf_counter()
+        dev.write(b"\r")
+        dev.read_until(b"\r")
+        time_end = time.perf_counter()
+        rtt.append(int((time_end - time_start) * 1000 * 1000))
+
+    print("ping:", rtt, "us")
+
+
 def make_data_to_write(mode: str, chunk_size: int) -> bytes:
     """Make data to write to device."""
     if mode == "tx":
@@ -154,6 +167,8 @@ def main():
     device.read_all()
 
     print_test_environment(device)
+    print("")
+    print_round_trip_time(device)
     print("")
 
     data_write = make_data_to_write("tx" if args.tx else "rx", args.chunk_size)
