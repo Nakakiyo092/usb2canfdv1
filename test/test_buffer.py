@@ -21,6 +21,16 @@ class BufferTestCase(unittest.TestCase):
         self.dut.close()
 
 
+    # Check response to a command longer than the cdc rx buffer itself
+    def test_too_long_data_in_cdc_rx_buffer(self):
+        # CDC Rx buffer size: 64 * 8 = 512
+        for i in range(999):
+            self.dut.send(b"F")
+        self.assertEqual(self.dut.receive(), b"")
+        self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+
+
     # Check stored frames in CDC Tx buffer are not altered in order or content
     def test_rx_frame_in_cdc_tx_buffer(self):
         #self.dut.print_on = True

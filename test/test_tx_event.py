@@ -7,8 +7,8 @@ import random
 from device_under_test import DeviceUnderTest
 
 
-# NOTE: This test requires another device with the default setup on CAN bus.
-#       The test_nack requires the channel of the device (not dut) becoming open and closed repeatedly.
+# NOTE: This test requires another device (aux) with the default setup on CAN bus.
+#       The test_nack requires the channel of the aux device becoming open and closed repeatedly.
 class TxEventTestCase(unittest.TestCase):
 
     print_on: bool
@@ -150,7 +150,7 @@ class TxEventTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    @unittest.skip("skip this test temporarily")
+    @unittest.skip("Skip this test due to a special setup requirement")
     def test_nack(self):
         self.dut.print_on = True
         rx_data = b""
