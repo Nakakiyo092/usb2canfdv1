@@ -17,7 +17,7 @@ import serial
 def get_argparser():
     """Get argument parser for this script."""
     parser = argparse.ArgumentParser(
-        description="Test USB CDC throughput. Press 'q' + [ENTER] to quit."
+        description="Test USB CDC throughput. Press [CTRL] + 'c' to quit."
     )
     parser.add_argument(
         "devicename",
@@ -41,6 +41,12 @@ def get_argparser():
         help="test bidirectional speed (host <-> device)"
     )
     parser.add_argument(
+        "-i", "--iteration",
+        type=int,
+        default=0,
+        help="number of iterations to test (0 for infinite)"
+    )
+    parser.add_argument(
         "-d", "--duration",
         type=int,
         default=1,
@@ -53,14 +59,6 @@ def get_argparser():
         help="chunk size for each transmission"
     )
     return parser
-
-
-def check_key():
-    """Check if user input 'q' to quit the test."""
-    while True:
-        if input() == 'q':
-            print("quit now")
-            break
 
 
 def print_test_environment(dev: serial, mode: str):
@@ -173,9 +171,6 @@ def main():
         print(err)
         return
 
-    check_key_thread = threading.Thread(target=check_key)
-    check_key_thread.start()
-
     device.write(b"\a\r\r")
     device.write(b"C\r")
     time.sleep(0.1)
@@ -195,8 +190,8 @@ def main():
         "rx_msg": 0,
     }
 
+    loop_cnt = args.iteration
     flag_tx = True
-
     tick_next = int(round(time.time() * 1000)) + 1000 * args.duration
 
     while True:
@@ -224,8 +219,10 @@ def main():
             tick_next = ms + 1000 * args.duration
             flag_tx = True
 
-            if check_key_thread.is_alive() is False:
+            if loop_cnt == 1:
                 break
+            elif loop_cnt > 0:
+                loop_cnt -= 1
 
         elif ms > tick_next and flag_tx:
             tick_next = ms + 100    # Off time to reteive remaining data in buffer.
@@ -238,4 +235,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
