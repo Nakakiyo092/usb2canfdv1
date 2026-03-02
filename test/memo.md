@@ -1,6 +1,4 @@
 
-TODO PING
-
 ```powershell
 PS C:\Users\kiyomaro> function prompt { "> " }
 > (Get-CimInstance Win32_Processor).Name
@@ -11,18 +9,8 @@ PS C:\Users\kiyomaro> function prompt { "> " }
 Microsoft Windows 11 Home
 > (Get-CimInstance Win32_OperatingSystem).Version
 10.0.26200
-> $PSVersionTable
-
-Name                           Value
-----                           -----
-PSVersion                      7.5.4
-PSEdition                      Core
-GitCommitId                    7.5.4
-OS                             Microsoft Windows 10.0.26200
-Platform                       Win32NT
-PSCompatibleVersions           {1.0, 2.0, 3.0, 4.0…}
-PSRemotingProtocolVersion      2.3
-SerializationVersion           1.1.0.1
-WSManStackVersion              3.0
-
+> $PSVersionTable.PSVersion.ToString()
+7.5.4
+> python --version    
+Python 3.13.12
 ```
