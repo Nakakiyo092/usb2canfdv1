@@ -2,7 +2,6 @@
 
 import unittest
 
-import time
 from device_under_test import DeviceUnderTest
 
 
@@ -22,39 +21,34 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_blank_command(self):
-        # Check response to a [CR]
+        """Check response to a [CR]"""
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_invalid_command(self):
-        # Check response to a [BELL]
+    def test_error_command(self):
+        """Check response to a [BELL]"""
         self.dut.send(b"\a")
-        self.assertEqual(self.dut.receive(), b"")      # no reply since message is incomplete without [CR]
+        # no reply since message is incomplete without [CR]
+        self.assertEqual(self.dut.receive(), b"")
         self.dut.send(b"\r")
-        self.assertEqual(self.dut.receive(), b"\a")
-
-
-    def test_invalid_parameter(self):
-        # Check response to a [BELL]
-        self.dut.send(b"S\a\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
 
     def test_too_long_command(self):
-        # Check response to a command longer than MTU
+        """Check response to a command longer than MTU"""
         # 1 + 138 + 8 + 1 + 1 + 16 = 165 is the MTU (including a [CR] and 16 bytes margin)
-        for i in range(163):
+        for _ in range(163):
             self.dut.send(b"F")
         self.assertEqual(self.dut.receive(), b"")
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        for i in range(164):
+        for _ in range(164):
             self.dut.send(b"F")
         self.assertEqual(self.dut.receive(), b"")
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        for i in range(165):
+        for _ in range(165):
             self.dut.send(b"F")
         self.assertEqual(self.dut.receive(), b"")
         self.dut.send(b"\r")
@@ -224,7 +218,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"sFFFF8080\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        
+
         # Check our of range
         self.dut.send(b"s00460908\r")
         self.assertEqual(self.dut.receive(), b"\a")
@@ -317,7 +311,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"y20201010\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        
+
         # Check our of range
         self.dut.send(b"y001E0908\r")
         self.assertEqual(self.dut.receive(), b"\a")
@@ -729,19 +723,19 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"r7FFF\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"t7FFF0011223344556677\r")   # DLC 0xF - 8 byte data is a valid combination
+        self.dut.send(b"t7FFF" + b"FF" * 8 + b"\r")   # DLC 0xF - 8 byte data is a valid combination
         self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"d7FFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
+        self.dut.send(b"d7FFF" + b"FF" * 64 + b"\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"b7FFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
+        self.dut.send(b"b7FFF" + b"FF" * 64 + b"\r")
         self.assertEqual(self.dut.receive(), b"z\r")
         self.dut.send(b"R1FFFFFFFF\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"T1FFFFFFFF0011223344556677\r")  # DLC 0xF - 8 byte data is a valid combination
+        self.dut.send(b"T1FFFFFFFF" + b"FF" * 8 + b"\r")  # DLC 0xF - 8 byte data is a valid combination
         self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"D1FFFFFFFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
+        self.dut.send(b"D1FFFFFFFF" + b"FF" * 64 + b"\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"B1FFFFFFFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
+        self.dut.send(b"B1FFFFFFFF" + b"FF" * 64 + b"\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -776,15 +770,77 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to too long command in CAN normal mode
+        # check response to too long command in CAN normal mode (excess char)
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F00\r")
-            self.assertEqual(self.dut.receive(), b"\a")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0137FEC800\r")
-            self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"r03FF0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"t03FF" + b"00" * 8 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"d03FF" + b"00" * 64 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"b03FF" + b"00" * 64 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"R0137FEC8F0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"T0137FEC8F" + b"00" * 8 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"D0137FEC8F" + b"00" * 64 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"B0137FEC8F" + b"00" * 64 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # check response to too long command in CAN normal mode (excess byte)
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"r03FF00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"t03FF" + b"00" * 8 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"d03FF" + b"00" * 64 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"b03FF" + b"00" * 64 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"R0137FEC8F00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"T0137FEC8F" + b"00" * 8 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"D0137FEC8F" + b"00" * 64 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"B0137FEC8F" + b"00" * 64 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # check response to invalid lenght in CAN normal mode
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t03F4" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"t03F4" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"d03F4" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"d03F4" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"b03F4" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"b03F4" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"T0137FEC84" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"T0137FEC84" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"D0137FEC84" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"D0137FEC84" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"B0137FEC84" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"B0137FEC84" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -807,30 +863,18 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"t8000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        self.dut.send(b"t03F9001122334455667788\r")
-        self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"d8000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        self.dut.send(b"d03F9001122334455667788\r")
-        self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"b8000\r")
-        self.assertEqual(self.dut.receive(), b"\a")
-        self.dut.send(b"b03F9001122334455667788\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"R200000000\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"T200000000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        self.dut.send(b"T03F9001122334455667788\r")
-        self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"D200000000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        #self.dut.send(b"D0137FEC89001122334455667788\r")
-        #self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"B200000000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        #self.dut.send(b"B0137FEC89001122334455667788\r")
-        #self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 

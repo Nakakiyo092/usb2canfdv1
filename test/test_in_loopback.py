@@ -46,10 +46,10 @@ class InLoopbackTestCase(unittest.TestCase):
         tx_data = b"t03F80011223344556677\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
-        tx_data = b"d03FF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r"
+        tx_data = b"d03FF" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
-        tx_data = b"b03FF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r"
+        tx_data = b"b03FF" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
         tx_data = b"R0137FEC8F\r"
@@ -58,10 +58,10 @@ class InLoopbackTestCase(unittest.TestCase):
         tx_data = b"T0137FEC880011223344556677\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
-        tx_data = b"D0137FEC8F00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r"
+        tx_data = b"D0137FEC8F" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
-        tx_data = b"B0137FEC8F00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r"
+        tx_data = b"B0137FEC8F" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
         self.dut.send(b"C\r")
@@ -122,7 +122,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        
+
         #  send first frame and get timestamp
         self.dut.send(b"t03F0\r")
         rx_data = self.dut.receive()
@@ -386,7 +386,7 @@ class InLoopbackTestCase(unittest.TestCase):
 
         # Check timestamp difference for 20 frames sent consecutively
         tx_frame = b"t55585555555555555555"
-        for i in range(0, 20):
+        for _ in range(0, 20):
             self.dut.send(tx_frame + b"\r")
         time.sleep(0.5)
         rx_data = self.dut.receive()
@@ -405,7 +405,7 @@ class InLoopbackTestCase(unittest.TestCase):
 
         # Check timestamp difference for 20 frames with BRS sent consecutively
         tx_frame = b"B1555555585555555555555555"
-        for i in range(0, 20):
+        for _ in range(0, 20):
             self.dut.send(tx_frame + b"\r")
         time.sleep(0.5)
         rx_data = self.dut.receive()
@@ -480,7 +480,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            if cmd == b"r" or cmd == b"t":
+            if cmd in (b"r", b"t"):
                 rx_data = self.dut.receive()
                 self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r"))
                 if rx_data[1] == b"z"[0]:
@@ -496,7 +496,7 @@ class InLoopbackTestCase(unittest.TestCase):
                     self.assertEqual(rx_data, b"\r" + cmd + b"03F00\r" + b"z" + cmd + b"03F00\r")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            if cmd == b"R" or cmd == b"T":
+            if cmd in (b"R", b"T"):
                 rx_data = self.dut.receive()
                 self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r"))
                 if rx_data[1] == b"Z"[0]:
@@ -670,7 +670,7 @@ class InLoopbackTestCase(unittest.TestCase):
             self.assertEqual(self.dut.receive(), b"Z\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        
+
 
     def test_simple_filter_every_bits(self):
         # Check pass STD ID 0x000 filter comparing every bit in CAN ID

@@ -51,19 +51,14 @@ class DeviceUnderTest:
         if slcan_ver[:4] == b"VL2K":
             # CANable2.0 "Nakakiyo092/canable2-fw"
             fd_support = True
-            pass
         elif slcan_ver[:4] == b"VW1K":
             # WeAct Studio "Nakakiyo092/usb2canfdv1"
             fd_support = True
-            pass
         else:
             fd_support = False
             print("WARNING: Unsupported SLCAN version ", slcan_ver.decode())
 
-        if b"DEBUG" in slcan_ver:
-            debug_build = True
-        else:
-            debug_build = False
+        debug_build = bool(b"DEBUG" in slcan_ver)
 
         # Reset to default settings
         self.send(b"S4\r")

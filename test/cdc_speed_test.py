@@ -9,7 +9,6 @@ License:
 """
 
 import time
-import threading
 
 import argparse
 import serial
@@ -56,12 +55,12 @@ def get_argparser():
         "-c", "--chunk-size",
         type=int,
         default=1,
-        help="chunk size for each transmission"
+        help="number of times the base message is repeated to form one tx chunk"
     )
     return parser
 
 
-def print_test_environment(dev: serial, mode: str):
+def print_test_environment(dev: serial.Serial, mode: str):
     """Print test environment information."""
     print("usb port name:", dev.port)
     print("")
@@ -81,7 +80,7 @@ def print_test_environment(dev: serial, mode: str):
     if mode == "bi":
         dev.write(b"S8\r")
         dev.write(b"Y5\r")
-        dev.write(b"+\r")
+        dev.write(b"+\r")    # TODO: warning if loopback is not supported
         time.sleep(0.1)
         dev.read_all().decode()
         print("can port status: open (1M/5Mbps)")
@@ -89,10 +88,11 @@ def print_test_environment(dev: serial, mode: str):
         print("can port status: closed")
 
 
-def print_round_trip_time(dev: serial):
-    """Print test environment information."""
+def print_round_trip_time(dev: serial.Serial):
+    """Measure and print round-trip time."""
     rtt = []
     for _ in range(0, 5):
+        # Use perf_counter for better resolution (RTT is expected to be less than ms)
         time_start = time.perf_counter()
         dev.write(b"\r")
         dev.read_until(b"\r")
@@ -105,7 +105,7 @@ def print_round_trip_time(dev: serial):
 def make_data_to_write(mode: str, chunk_size: int) -> bytes:
     """Make data to write to device."""
     if mode == "rx":
-        single_msg = b"v\r"
+        single_msg = b"v\r"    # TODO: V[CR] option for wider support
     else:
         single_msg = b"00112233445566778899AABBCCDDEEFF"
         single_msg = b"B00000000F" + single_msg + single_msg + single_msg + single_msg + b"\r"
@@ -119,8 +119,8 @@ def make_data_to_write(mode: str, chunk_size: int) -> bytes:
 
 def count_message(data: bytes) -> int:
     """Count the number of messages in the data."""
-    targets = {ord("\r"), ord("\a")}
-    return sum(byte in targets for byte in data)
+    terminators = {ord("\r"), ord("\a")}
+    return sum(byte in terminators for byte in data)
 
 
 def print_speed_and_loss(stats: dict, duration: int):
@@ -137,7 +137,7 @@ def print_speed_and_loss(stats: dict, duration: int):
     print("message loss: ", stats["tx_msg"] - stats["rx_msg"], " / ", stats["tx_msg"])
 
 
-def print_device_status(dev: serial):
+def print_device_status(dev: serial.Serial):
     """Print device status information."""
     dev.write(b"F\r")
     time.sleep(0.1)
@@ -221,7 +221,8 @@ def main():
 
             if loop_cnt == 1:
                 break
-            elif loop_cnt > 0:
+
+            if loop_cnt > 0:
                 loop_cnt -= 1
 
         elif ms > tick_next and flag_tx:

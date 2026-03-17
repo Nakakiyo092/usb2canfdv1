@@ -2,7 +2,6 @@
 
 import unittest
 
-import time
 from device_under_test import DeviceUnderTest
 
 # Tool to show pre-release checklist

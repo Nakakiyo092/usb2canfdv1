@@ -2,7 +2,6 @@
 
 import unittest
 
-import time
 from device_under_test import DeviceUnderTest
 
 # Tool to get the device back to default setup
@@ -20,7 +19,7 @@ class ToolDefaultTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.dut.close()
-        
+
 
     def test_default(self):
         #self.dut.print_on = True
