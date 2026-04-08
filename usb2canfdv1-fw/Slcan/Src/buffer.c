@@ -20,7 +20,7 @@
 // THE SOFTWARE.
 ///////////////////////////////////////////////////////////////////////////////
 
-// Manage cdc and can buffer
+// Manage cdc (rx and tx) and can (tx) buffer (including error handling related to buffer full)
 
 
 #include "usbd_cdc_if.h"
@@ -82,7 +82,7 @@ void buf_process(void)
     // Process cdc receive buffer
     // buf_cdc_rx.head is modified in interrupt, buf_cdc_rx.tail is referenced from interrupt.
     // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
-    // Would it be neccessary to assube that the head/tail variables are not atomic? it's 8bits.
+    // Would it be neccessary to assume that the head/tail variables are not atomic? it's 8bits.
     buf_disable_irq();
     cpy_head = buf_cdc_rx.head;
     buf_enable_irq();
@@ -124,7 +124,7 @@ void buf_process(void)
     // Process cdc transmit buffer
     // buf_cdc_tx.head is referenced from interrupt, buf_cdc_tx.tail is modified in interrupt.
     // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
-    // Would it be neccessary to assube that the head/tail variables are not atomic? it's 8bits.
+    // Would it be neccessary to assume that the head/tail variables are not atomic? it's 8bits.
     new_head = (buf_cdc_tx.head + 1UL) % BUF_CDC_TX_NUM_BUFS;
     buf_disable_irq();
     cpy_tail = buf_cdc_tx.tail;
@@ -167,7 +167,7 @@ void buf_process(void)
         nbr_send_frames = (BUF_CAN_TXQUEUE_LEN + buf_can_tx.send - buf_can_tx.tail) % BUF_CAN_TXQUEUE_LEN;
         if (BUF_MAX_NBR_SEND_FRAMES < nbr_send_frames)
         {
-            buf_delete_can_tail();  // Assume the frame is deleted in HAL
+            buf_release_can_tail();  // Assume the frame is deleted in HAL
         }
 
         if (status != HAL_OK)
@@ -192,8 +192,10 @@ void buf_enqueue_cdc(uint8_t* buf, uint16_t len)
 }
 
 // Get destination pointer of cdc buffer for len bytes data (Start position of write access)
-// This function combined with buf_comit_cdc_dest will provide a faster access compared to buf_enqueue_cdc.
-uint8_t *buf_get_cdc_dest(uint16_t len)
+// This function combined with buf_commit_cdc_dest will provide a faster access compared to buf_enqueue_cdc.
+// Return NULL if the data does not fit in the buffer.
+// TODO The caller should not write data when NULL is returned. Or discard data and provide buffer?
+uint8_t *buf_reserve_cdc_dest(uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
@@ -205,7 +207,7 @@ uint8_t *buf_get_cdc_dest(uint16_t len)
 }
 
 // Send the data bytes in destination area over USB CDC to host
-void buf_comit_cdc_dest(uint16_t len)
+void buf_commit_cdc_dest(uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
@@ -217,6 +219,7 @@ void buf_comit_cdc_dest(uint16_t len)
 }
 
 // Get head pointer of can tx frame header
+// Return NULL if the buffer is full.
 FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
 {
     if (buf_can_tx.full)
@@ -229,11 +232,12 @@ FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
 }
 
 // Get tail pointer of can tx frame header
+// Return NULL if the buffer is empty.
 FDCAN_TxHeaderTypeDef *buf_get_can_tail_header(void)
 {
     if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);;
+        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
         return NULL;
     }
 
@@ -241,6 +245,7 @@ FDCAN_TxHeaderTypeDef *buf_get_can_tail_header(void)
 }
 
 // Get head pointer of can tx frame data bytes
+// Return NULL if the buffer is full.
 uint8_t *buf_get_can_head_data(void)
 {
     if (buf_can_tx.full)
@@ -253,11 +258,12 @@ uint8_t *buf_get_can_head_data(void)
 }
 
 // Get tail pointer of can tx frame data bytes
+// Return NULL if the buffer is empty.
 uint8_t *buf_get_can_tail_data(void)
 {
     if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);;
+        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
         return NULL;
     }
 
@@ -265,7 +271,7 @@ uint8_t *buf_get_can_tail_data(void)
 }
 
 // Send the message in head slot on the CAN bus.
-HAL_StatusTypeDef buf_comit_can_head(void)
+HAL_StatusTypeDef buf_commit_can_head(void)
 {
     if (can_is_tx_enabled() == ENABLE)
     {
@@ -289,7 +295,7 @@ HAL_StatusTypeDef buf_comit_can_head(void)
 }
 
 // Delete one frame from the can tx buffer
-HAL_StatusTypeDef buf_delete_can_tail(void)
+HAL_StatusTypeDef buf_release_can_tail(void)
 {
     while ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {

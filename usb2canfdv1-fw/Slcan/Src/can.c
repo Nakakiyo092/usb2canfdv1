@@ -30,7 +30,7 @@
 #include "led.h"
 #include "slcan.h"
 
-// Bit number for each frame type WithOut Data bytes (DLC = 0)
+// Bit number for each frame type WithOut Data bytes (from SOF to ITM)
 #define CAN_BIT_NBR_WOD_CBFF            47
 #define CAN_BIT_NBR_WOD_CEFF            67
 #define CAN_BIT_NBR_WOD_FBFF_ARBIT      30          // Bit number in arbitration phase
@@ -142,7 +142,7 @@ HAL_StatusTypeDef can_enable(void)
 
         // Setup Tx delay compensation
         // The offset value 0x28 corresponds to bitrate ~ 1Mbps @ 50% sampling point or ~ 2Mbps @ 100%.
-        // Turn off at 1Mbps and Turn on at 2Mbps
+        // Turn off for <= 1Mbps and Turn on for >= 2Mbps
         uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
         if (offset <= 0x28)
         {
@@ -153,6 +153,8 @@ HAL_StatusTypeDef can_enable(void)
         }
         else
         {
+            // The offset value would exceed the max value 0x7F at low bitrates, 
+            // but it should be fine since the compensation is not effective at such bitrates.
             HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1);
         }
 
@@ -222,13 +224,13 @@ void can_process(void)
         while (buf_get_can_tail_header() != NULL)
         {
             if (tx_event.MessageMarker == buf_get_can_tail_header()->MessageMarker) break;
-            buf_delete_can_tail();  // Assume the frame is deleted in HAL
+            buf_release_can_tail();  // Assume the frame is deleted in HAL
         }
         if (buf_get_can_tail_data() != NULL)
         {
-            uint16_t len = slcan_generate_tx_event(buf_get_cdc_dest(SLCAN_MTU), &tx_event, buf_get_can_tail_data());
-            buf_comit_cdc_dest(len);
-            buf_delete_can_tail();
+            uint16_t len = slcan_generate_tx_event(buf_reserve_cdc_dest(SLCAN_MTU), &tx_event, buf_get_can_tail_data());
+            buf_commit_cdc_dest(len);
+            buf_release_can_tail();
         }
         else
         {
@@ -249,8 +251,8 @@ void can_process(void)
     // If a message has been accepted, parse the frame
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
-        uint16_t len = slcan_generate_rx_frame(buf_get_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
-        buf_comit_cdc_dest(len);
+        uint16_t len = slcan_generate_rx_frame(buf_reserve_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
+        buf_commit_cdc_dest(len);
 
         bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
         last_frame_time_cnt = rx_msg_header.RxTimestamp;
@@ -672,6 +674,8 @@ FunctionalState can_is_tx_enabled(void)
 // The value is theoretical bus load which is a hypothetical bus load without bit stuffing.
 // Fixed stuff bits in the CRC field in a CAN FD frame are included in the calculation,
 // while variable bit stuffing (data-dependent) is not considered.
+// The calculation includes only data and remote frames that were successfully transmitted and received.
+// Error frames and overload frames are excluded from the calculation.
 uint32_t can_get_bus_load_ppm(void)
 {
     return can_bus_load_ppm;

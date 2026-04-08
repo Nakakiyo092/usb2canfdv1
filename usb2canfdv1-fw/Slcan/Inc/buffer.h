@@ -31,8 +31,8 @@
 #define BUF_CDC_RX_BUF_SIZE CDC_DATA_FS_MAX_PACKET_SIZE // Size of RX buffer item
 
 // CDC transmit buffering
-#define BUF_CDC_TX_NUM_BUFS 3
-#define BUF_CDC_TX_BUF_SIZE 4096 // Set to 64 * 64 for max single packet size
+#define BUF_CDC_TX_NUM_BUFS 3       // Should be >= 3 (triple or more buffering) to enable lock-free access.
+#define BUF_CDC_TX_BUF_SIZE 4096    // Set to 64 * 64 for max single packet size
 
 // CAN transmit buffering
 #define BUF_CAN_TXQUEUE_LEN 64   // Number of buffers allocated
@@ -46,7 +46,7 @@ struct BufCdcRx
     uint8_t tail;
 };
 
-// Transmit buffering: triple buffer
+// Transmit buffering: lock-free (triple) buffer
 struct BufCdcTx
 {
     uint8_t data[BUF_CDC_TX_NUM_BUFS][BUF_CDC_TX_BUF_SIZE];
@@ -64,15 +64,15 @@ void buf_init(void);
 void buf_process(void);
 
 void buf_enqueue_cdc(uint8_t* buf, uint16_t len);
-uint8_t *buf_get_cdc_dest(uint16_t len);
-void buf_comit_cdc_dest(uint16_t len);
+uint8_t *buf_reserve_cdc_dest(uint16_t len);
+void buf_commit_cdc_dest(uint16_t len);
 
 FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void);
 FDCAN_TxHeaderTypeDef *buf_get_can_tail_header(void);
 uint8_t *buf_get_can_head_data(void);
 uint8_t *buf_get_can_tail_data(void);
-HAL_StatusTypeDef buf_comit_can_head(void);
-HAL_StatusTypeDef buf_delete_can_tail(void);
+HAL_StatusTypeDef buf_commit_can_head(void);
+HAL_StatusTypeDef buf_release_can_tail(void);
 void buf_clear_can_buffer(void);
 
 #endif // _BUFFER_H

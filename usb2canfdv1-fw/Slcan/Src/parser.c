@@ -181,7 +181,7 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     frame_header->ErrorStateIndicator = FDCAN_ESI_ACTIVE;        // error active
     frame_header->TxEventFifoControl = FDCAN_STORE_TX_EVENTS;    // record tx events
     static uint8_t msg_marker = 0;
-    frame_header->MessageMarker = (uint32_t)(msg_marker++);      // increment counter
+    frame_header->MessageMarker = (uint32_t)(msg_marker++);      // increment counter TODO marker should not be incremented if the buffer is full. worst it will create same marker in row.
 
     // Handle each incoming command (transmit)
     switch (buf[0])
@@ -306,7 +306,7 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     }
 
     // Transmit the message
-    if (buf_comit_can_head() != HAL_OK)
+    if (buf_commit_can_head() != HAL_OK)
     {
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
@@ -478,7 +478,7 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         // Check timestamp mode
         if (slcan_get_timestamp_mode() == SLCAN_TIMESTAMP_MILLI)
         {
-        	uint8_t* tmsstr = buf_get_cdc_dest(SLCAN_MTU);
+        	uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
         	uint16_t timestamp_ms = slcan_get_timestamp_ms();
 
         	tmsstr[0] = 'Z';
@@ -488,11 +488,11 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         	tmsstr[4] = slcan_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
         	tmsstr[5] = slcan_nibble_to_ascii[timestamp_ms & 0xF];
         	tmsstr[6] = '\r';
-            buf_comit_cdc_dest(7);
+            buf_commit_cdc_dest(7);
         }
         else if (slcan_get_timestamp_mode() == SLCAN_TIMESTAMP_MICRO)
         {
-        	uint8_t* tmsstr = buf_get_cdc_dest(SLCAN_MTU);
+        	uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
         	uint32_t timestamp_us = slcan_get_timestamp_us_from_tim3(TIM3->CNT);
 
         	tmsstr[0] = 'Z';
@@ -506,7 +506,7 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         	tmsstr[8] = slcan_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
         	tmsstr[9] = slcan_nibble_to_ascii[timestamp_us & 0xF];
         	tmsstr[10] = '\r';
-            buf_comit_cdc_dest(11);
+            buf_commit_cdc_dest(11);
         }
         else
         {
@@ -527,16 +527,16 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         uint16_t timestamp_ms = slcan_get_timestamp_ms();
         uint32_t timestamp_us = slcan_get_timestamp_us_from_tim3(TIM3->CNT);
 
-        timstr = buf_get_cdc_dest(SLCAN_MTU);
+        timstr = buf_reserve_cdc_dest(SLCAN_MTU);
         timstr[0] = slcan_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
         timstr[1] = slcan_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
         timstr[2] = slcan_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
         timstr[3] = slcan_nibble_to_ascii[timestamp_ms & 0xF];
-        buf_comit_cdc_dest(4);
+        buf_commit_cdc_dest(4);
 
         buf_enqueue_cdc((uint8_t *)", time_us=0x", 12);
 
-        timstr = buf_get_cdc_dest(SLCAN_MTU);
+        timstr = buf_reserve_cdc_dest(SLCAN_MTU);
         timstr[0] = slcan_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
         timstr[1] = slcan_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
         timstr[2] = slcan_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
@@ -545,7 +545,7 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         timstr[5] = slcan_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
         timstr[6] = slcan_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
         timstr[7] = slcan_nibble_to_ascii[timestamp_us & 0xF];
-        buf_comit_cdc_dest(8);
+        buf_commit_cdc_dest(8);
 
         buf_enqueue_cdc((uint8_t *)", cycle_time_us_ave_max=[0x", 27);
 
@@ -553,19 +553,19 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
         uint16_t cycle_max = (uint16_t)(can_get_cycle_max_time_ns() >= 4095000 ? 4095 : can_get_cycle_max_time_ns() / 1000);
         can_clear_cycle_time();
 
-        timstr = buf_get_cdc_dest(SLCAN_MTU);
+        timstr = buf_reserve_cdc_dest(SLCAN_MTU);
         timstr[0] = slcan_nibble_to_ascii[(cycle_ave >> 8) & 0xF];
         timstr[1] = slcan_nibble_to_ascii[(cycle_ave >> 4) & 0xF];
         timstr[2] = slcan_nibble_to_ascii[cycle_ave & 0xF];
-        buf_comit_cdc_dest(3);
+        buf_commit_cdc_dest(3);
 
         buf_enqueue_cdc((uint8_t *)", 0x", 4);
 
-        timstr = buf_get_cdc_dest(SLCAN_MTU);
+        timstr = buf_reserve_cdc_dest(SLCAN_MTU);
         timstr[0] = slcan_nibble_to_ascii[(cycle_max >> 8) & 0xF];
         timstr[1] = slcan_nibble_to_ascii[(cycle_max >> 4) & 0xF];
         timstr[2] = slcan_nibble_to_ascii[cycle_max & 0xF];
-        buf_comit_cdc_dest(3);
+        buf_commit_cdc_dest(3);
 
         buf_enqueue_cdc((uint8_t *)"]\r", 2);
 
@@ -764,11 +764,11 @@ void slcan_parse_str_number(uint8_t *buf, uint8_t len)
     {
         // Report serial number
         uint16_t serial;
-        char* numstr = (char*)buf_get_cdc_dest(SLCAN_MTU);
+        char* numstr = (char*)buf_reserve_cdc_dest(SLCAN_MTU);
         if (nvm_get_serial_number(&serial) == HAL_OK)
         {
             snprintf(numstr, SLCAN_MTU - 1, "N%04X\r", serial);
-            buf_comit_cdc_dest(6);
+            buf_commit_cdc_dest(6);
         }
         else
         {
@@ -808,12 +808,12 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
     {
         if (buf[0] == 'F')
         {
-            uint8_t* stsstr = buf_get_cdc_dest(SLCAN_MTU);
+            uint8_t* stsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             stsstr[0] = 'F';
             stsstr[1] = slcan_nibble_to_ascii[slcan_get_status_flags() >> 4];
             stsstr[2] = slcan_nibble_to_ascii[slcan_get_status_flags() & 0xF];
             stsstr[3] = '\r';
-            buf_comit_cdc_dest(4);
+            buf_commit_cdc_dest(4);
 
             // This command also clear the RED Error LED.
             slcan_clear_error();
@@ -822,7 +822,7 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
         {
             // "f: node_sts=XXXXXXX, last_err_code=XXXX, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r"
 
-            char* stsstr = (char*)buf_get_cdc_dest(SLCAN_MTU);
+            char* stsstr = (char*)buf_reserve_cdc_dest(SLCAN_MTU);
 
             struct CanErrorState err = can_get_error_state();
 
@@ -839,7 +839,7 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
                                         (uint8_t)(err.rx_err_cnt),
                                         (uint8_t)(can_get_bus_load_ppm() >= 990000 ? 99 : can_get_bus_load_ppm() / 10000));
 
-            buf_comit_cdc_dest(92);
+            buf_commit_cdc_dest(92);
         }
     }
     // This command is only active if the CAN channel is open.
