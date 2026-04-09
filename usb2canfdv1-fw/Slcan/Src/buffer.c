@@ -83,9 +83,9 @@ void buf_process(void)
     // buf_cdc_rx.head is modified in interrupt, buf_cdc_rx.tail is referenced from interrupt.
     // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
     // Would it be neccessary to assube that the head/tail variables are not atomic? it's 8bits.
-    __disable_irq();
+    buf_disable_irq();
     cpy_head = buf_cdc_rx.head;
-    __enable_irq();
+    buf_enable_irq();
     if (buf_cdc_rx.tail != cpy_head)
     {
         //  Process one whole buffer
@@ -116,9 +116,9 @@ void buf_process(void)
 
         // Move on to the next buffer
         new_tail = (buf_cdc_rx.tail + 1) % BUF_CDC_RX_NUM_BUFS;
-        __disable_irq();
+        buf_disable_irq();
         buf_cdc_rx.tail = new_tail;
-        __enable_irq();
+        buf_enable_irq();
     }
 
     // Process cdc transmit buffer
@@ -126,20 +126,20 @@ void buf_process(void)
     // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
     // Would it be neccessary to assube that the head/tail variables are not atomic? it's 8bits.
     new_head = (buf_cdc_tx.head + 1UL) % BUF_CDC_TX_NUM_BUFS;
-    __disable_irq();
+    buf_disable_irq();
     cpy_tail = buf_cdc_tx.tail;
-    __enable_irq();
+    buf_enable_irq();
     if (new_head != cpy_tail)
     {
         if (0 < buf_cdc_tx.msglen[buf_cdc_tx.head])
         {
-            __disable_irq();
+            buf_disable_irq();
             buf_cdc_tx.head = new_head;
-            __enable_irq();
+            buf_enable_irq();
             buf_cdc_tx.msglen[new_head] = 0;
         }
     }
-    __disable_irq();
+    buf_disable_irq();
     new_tail = (buf_cdc_tx.tail + 1UL) % BUF_CDC_TX_NUM_BUFS;
     if (new_tail != buf_cdc_tx.head)
     {
