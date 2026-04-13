@@ -194,7 +194,6 @@ void buf_enqueue_cdc(uint8_t* buf, uint16_t len)
 // Get destination pointer of cdc buffer for len bytes data (Start position of write access)
 // This function combined with buf_commit_cdc_dest will provide a faster access compared to buf_enqueue_cdc.
 // Return NULL if the data does not fit in the buffer.
-// TODO The caller should not write data when NULL is returned. Or discard data and provide buffer?
 uint8_t *buf_reserve_cdc_dest(uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
