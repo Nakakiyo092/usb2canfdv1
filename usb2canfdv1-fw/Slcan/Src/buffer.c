@@ -88,8 +88,26 @@ void buf_process(void)
     buf_enable_irq();
     if (buf_cdc_rx.tail != cpy_head)
     {
-        //  Process one whole buffer
-        for (uint32_t i = 0; i < buf_cdc_rx.msglen[buf_cdc_rx.tail]; i++)
+        uint32_t idx_start = 0; // Start index of the data which is not corrupted
+
+        // Check if the data in this buffer is corrupted due to overflow
+        uint8_t is_dropped = buf_cdc_rx.data_drop[buf_cdc_rx.tail];
+        if (is_dropped)
+        {
+            slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
+            slcan_str_index = 0;
+            for (idx_start = 0; idx_start < buf_cdc_rx.msglen[buf_cdc_rx.tail]; idx_start++)
+            {
+                if (buf_cdc_rx.data[buf_cdc_rx.tail][idx_start] == '\r')    // \r = [CR] = delimiter
+                {
+                    break;
+                }
+            }
+            idx_start++;
+        }
+
+        // Process one whole buffer
+        for (uint32_t i = idx_start; i < buf_cdc_rx.msglen[buf_cdc_rx.tail]; i++)
 	    {
             if (buf_cdc_rx.data[buf_cdc_rx.tail][i] == '\r')    // \r = [CR] = delimiter
             {

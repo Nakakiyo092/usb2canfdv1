@@ -225,6 +225,7 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
     break;
 
     case CDC_GET_LINE_CODING:
+
     pbuf[0] = (uint8_t)(115200);
     pbuf[1] = (uint8_t)(115200 >> 8);
     pbuf[2] = (uint8_t)(115200 >> 16);
@@ -268,31 +269,23 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-  static uint8_t overflow_flag = 0;
   uint32_t new_head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
   if (new_head == buf_cdc_rx.tail)
   {
     // Buffer overflow
-    slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
+    buf_cdc_rx.data_drop[buf_cdc_rx.head] = 1;
 
     // Listen again on the same buffer. Old data will be overwritten.
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);
     USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-    overflow_flag = 1;
     return (USBD_FAIL);
   }
   else
   {
-    // Mark corrupted data i.e. all data around overflow from last [CR] till next [CR]
-    if (overflow_flag)
-    {
-      buf_cdc_rx.data[buf_cdc_rx.head][0] = '\a';    // Mark as invalid (\a = [BELL])
-      overflow_flag = 0;
-    }
-
     // Save length and move to next buffer
     buf_cdc_rx.msglen[buf_cdc_rx.head] = *Len;
     buf_cdc_rx.head = new_head;
+    buf_cdc_rx.data_drop[buf_cdc_rx.head] = 0;
 
     // Start listening on next buffer. Previous buffer will be processed in main loop.
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);

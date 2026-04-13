@@ -42,6 +42,7 @@ struct BufCdcRx
 {
     uint8_t data[BUF_CDC_RX_NUM_BUFS][BUF_CDC_RX_BUF_SIZE];
     uint32_t msglen[BUF_CDC_RX_NUM_BUFS];
+    uint8_t data_drop[BUF_CDC_RX_NUM_BUFS]; // Sets when data is dropped before each elament
     uint8_t head;
     uint8_t tail;
 };
