@@ -212,7 +212,6 @@ HAL_StatusTypeDef can_disable(void)
 // Process data from CAN tx/rx circular buffers
 void can_process(void)
 {
-    static uint16_t last_frame_time_cnt = 0;
     static uint32_t bit_cnt_message = 0;
     FDCAN_TxEventFifoTypeDef tx_event;
     FDCAN_RxHeaderTypeDef rx_msg_header;
@@ -242,7 +241,6 @@ void can_process(void)
         if (can_mode != FDCAN_MODE_INTERNAL_LOOPBACK && can_mode != FDCAN_MODE_EXTERNAL_LOOPBACK)
         {
             bit_cnt_message += can_get_bit_number_in_tx_event(&tx_event);
-            last_frame_time_cnt = tx_event.TxTimestamp;
         }
 
         led_blink_txd();
@@ -255,7 +253,6 @@ void can_process(void)
         buf_commit_cdc_dest(len);
 
         bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
-        last_frame_time_cnt = rx_msg_header.RxTimestamp;
 
         led_blink_rxd();
     }
@@ -264,7 +261,6 @@ void can_process(void)
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO1, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
         bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
-        last_frame_time_cnt = rx_msg_header.RxTimestamp;
 
         led_blink_rxd();
     }
