@@ -767,11 +767,11 @@ void slcan_parse_str_number(uint8_t *buf, uint8_t len)
     {
         // Report serial number
         uint16_t serial;
-        char* numstr = (char*)buf_reserve_cdc_dest(SLCAN_MTU);
+        uint8_t* numstr = buf_reserve_cdc_dest(SLCAN_MTU);
         if (numstr == NULL) return;
         if (nvm_get_serial_number(&serial) == HAL_OK)
         {
-            snprintf(numstr, SLCAN_MTU - 1, "N%04X\r", serial);
+            snprintf((char*)numstr, SLCAN_MTU - 1, "N%04X\r", serial);
             buf_commit_cdc_dest(6);
         }
         else
@@ -827,12 +827,12 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
         {
             // "f: node_sts=XXXXXXX, last_err_code=XXXX, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r"
 
-            char* stsstr = (char*)buf_reserve_cdc_dest(SLCAN_MTU);
+            uint8_t* stsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             if (stsstr == NULL) return;
 
             struct CanErrorState err = can_get_error_state();
 
-            snprintf(stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
+            snprintf((char*)stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
                                         (err.bus_off ? "BUS_OFF" : (err.err_pssv ? "ER_PSSV" : "ER_ACTV")),
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_NONE ? "NONE" : 
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_STUFF ? "STUF" : 
