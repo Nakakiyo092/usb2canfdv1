@@ -195,7 +195,7 @@ void buf_process(void)
     }
 }
 
-// Enqueue data for transmission over USB CDC to host (copy and comit = slower)
+// Enqueue data for transmission over USB CDC to host (copy and commit = slower)
 void buf_enqueue_cdc(uint8_t* buf, uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
