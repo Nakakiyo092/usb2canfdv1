@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Test USB CDC throughput.
+Test USB CDC throughput for a SLCAN device.
 
 License:
     MIT License.
@@ -108,7 +108,7 @@ def make_data_to_write(mode: str, chunk_size: int) -> bytes:
         single_msg = b"v\r"    # TODO: V[CR] option for wider support
     else:
         single_msg = b"00112233445566778899AABBCCDDEEFF"
-        single_msg = b"B00000000F" + single_msg + single_msg + single_msg + single_msg + b"\r"
+        single_msg = b"B00000000F" + single_msg * 4 + b"\r"
 
     data_write = b""
     for _ in range(0, chunk_size):
@@ -191,11 +191,11 @@ def main():
     }
 
     loop_cnt = args.iteration
-    flag_tx = True
+    phase_tx = True
     tick_next = int(round(time.time() * 1000)) + 1000 * args.duration
 
     while True:
-        if flag_tx:
+        if phase_tx:
             device.write(data_write)
             stats["tx_len"] += len(data_write)
             # For bi-directional test, tx message is counted twice to match rx count.
@@ -206,7 +206,7 @@ def main():
         stats["rx_msg"] += count_message(data_read)
 
         ms = int(round(time.time() * 1000))
-        if ms > tick_next and not flag_tx:
+        if ms > tick_next and not phase_tx:
             print_speed_and_loss(stats, args.duration)
             print("")
             print_device_status(device)
@@ -217,7 +217,7 @@ def main():
 
             ms = int(round(time.time() * 1000))
             tick_next = ms + 1000 * args.duration
-            flag_tx = True
+            phase_tx = True
 
             if loop_cnt == 1:
                 break
@@ -225,9 +225,9 @@ def main():
             if loop_cnt > 0:
                 loop_cnt -= 1
 
-        elif ms > tick_next and flag_tx:
-            tick_next = ms + 100    # Off time to reteive remaining data in buffer.
-            flag_tx = False
+        elif ms > tick_next and phase_tx:
+            tick_next = ms + 100    # Off time to retrieve remaining data in buffer.
+            phase_tx = False
 
     device.write(b"C\r")
     time.sleep(0.1)
