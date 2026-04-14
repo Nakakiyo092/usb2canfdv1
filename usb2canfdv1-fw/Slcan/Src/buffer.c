@@ -39,9 +39,9 @@ struct BufCanTx
 {
     FDCAN_TxHeaderTypeDef header[BUF_CAN_TXQUEUE_LEN];  // Header buffer
     uint8_t data[BUF_CAN_TXQUEUE_LEN][CAN_MAX_DATALEN]; // Data buffer
-    uint16_t head;                              // Head pointer
-    uint16_t send;                              // Send pointer
-    uint16_t tail;                              // Tail pointer
+    uint16_t head;                              // Head index
+    uint16_t send;                              // Send index
+    uint16_t tail;                              // Tail index
     uint8_t full;                               // Set this when it is full, clear when the tail moves one.
 };
 
@@ -55,6 +55,7 @@ static uint8_t slcan_str[SLCAN_MTU];
 static uint8_t slcan_str_index = 0;
 
 // Private prototypes
+static HAL_StatusTypeDef buf_release_can_tail(void);
 static void buf_disable_irq();
 static void buf_enable_irq();
 
@@ -81,10 +82,14 @@ void buf_process(void)
     uint32_t cpy_head, new_head;
     uint32_t cpy_tail, new_tail;
 
+	// This code for CDC buffer may include some redundant interrupt protection,
+	// but it will remain in place for safety unless removing it yields a significant performance benefit.
+	
     // Process cdc receive buffer
     // buf_cdc_rx.head is modified in interrupt, buf_cdc_rx.tail is referenced from interrupt.
-    // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
-    // Would it be neccessary to assume that the head/tail variables are not atomic? it's 8bits.
+    // buf_cdc_rx.head is referenced from main loop, buf_cdc_rx.tail is modified in main loop.
+    // The head and tail are both 8-bit variable and atomic.
+    // No need for interrupt disabling but "memory" clobber and memory barrier would be safe against compiler optimizations and CPU reordering.
     buf_disable_irq();
     cpy_head = buf_cdc_rx.head;
     buf_enable_irq();
@@ -143,12 +148,13 @@ void buf_process(void)
 
     // Process cdc transmit buffer
     // buf_cdc_tx.head is referenced from interrupt, buf_cdc_tx.tail is modified in interrupt.
-    // buf_cdc_rx and buf_cdc_tx are mixture of 32bits and non-32bits variables.
-    // Would it be neccessary to assume that the head/tail variables are not atomic? it's 8bits.
-    new_head = (buf_cdc_tx.head + 1UL) % BUF_CDC_TX_NUM_BUFS;
+    // buf_cdc_tx.head is modified in main loop, buf_cdc_tx.tail is modified in main loop.
+    // The head and tail are both 8-bit variable and atomic.
+    // No need for interrupt disabling for head but "memory" clobber and memory barrier would be safe against compiler optimizations and CPU reordering.
     buf_disable_irq();
     cpy_tail = buf_cdc_tx.tail;
     buf_enable_irq();
+    new_head = (buf_cdc_tx.head + 1) % BUF_CDC_TX_NUM_BUFS;
     if (new_head != cpy_tail)
     {
         if (0 < buf_cdc_tx.msglen[buf_cdc_tx.head])
@@ -156,11 +162,12 @@ void buf_process(void)
             buf_disable_irq();
             buf_cdc_tx.head = new_head;
             buf_enable_irq();
-            buf_cdc_tx.msglen[new_head] = 0;
+            buf_cdc_tx.msglen[buf_cdc_tx.head] = 0;
         }
     }
-    buf_disable_irq();
-    new_tail = (buf_cdc_tx.tail + 1UL) % BUF_CDC_TX_NUM_BUFS;
+    // Critical section against "CDC_TransmitCplt_FS"
+	buf_disable_irq();
+    new_tail = (buf_cdc_tx.tail + 1) % BUF_CDC_TX_NUM_BUFS;
     if (new_tail != buf_cdc_tx.head)
     {
         if (CDC_Transmit_FS((uint8_t *)buf_cdc_tx.data[new_tail], buf_cdc_tx.msglen[new_tail]) == USBD_OK)
@@ -183,16 +190,19 @@ void buf_process(void)
 
         buf_can_tx.send = (buf_can_tx.send + 1) % BUF_CAN_TXQUEUE_LEN;
 
-        uint16_t nbr_send_frames;   // Number of frames in HAL waiting for being sent
-        nbr_send_frames = (BUF_CAN_TXQUEUE_LEN + buf_can_tx.send - buf_can_tx.tail) % BUF_CAN_TXQUEUE_LEN;
-        if (BUF_MAX_NBR_SEND_FRAMES < nbr_send_frames)
+        uint16_t nbr_sent_frames;   // Number of frames in HAL waiting for being sent
+        nbr_sent_frames = (BUF_CAN_TXQUEUE_LEN + buf_can_tx.send - buf_can_tx.tail) % BUF_CAN_TXQUEUE_LEN;
+        if (BUF_MAX_NBR_SENT_FRAMES < nbr_sent_frames)
         {
-            buf_release_can_tail();  // Assume the frame is deleted in HAL
+            buf_release_can_tail();  // Assume the frame is deleted in HAL (Disabled retransmission or overflow)
+            // Do not raise error here because it shold not be for disabled retransmission.
+            // Overflow can be catched by checking the error flags, which is done in can.c.
         }
 
         if (status != HAL_OK)
         {
             slcan_raise_error(SLCAN_STS_DATA_OVERRUN);
+            // TODO Would it be better to try again later than dropping the frame?
         }
     }
 }
@@ -218,7 +228,8 @@ uint8_t *buf_reserve_cdc_dest(uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
-        slcan_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);  // The data will not fit in the buffer
+        // Raise error since the caller will not call commit after they fail to reserve buffer.
+		slcan_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);
         return NULL;
     }
 
@@ -230,14 +241,15 @@ void buf_commit_cdc_dest(uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
-        slcan_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);  // The data will not fit in the buffer
+        // The data will not fit in the buffer.
+		slcan_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);
         return;
     }
 
     buf_cdc_tx.msglen[buf_cdc_tx.head] += len;
 }
 
-// Get head pointer of can tx frame header
+// Get pointer to the frame header of the head can frame
 // Return NULL if the buffer is full.
 FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
 {
@@ -250,9 +262,9 @@ FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
     return &buf_can_tx.header[buf_can_tx.head];
 }
 
-// Get tail pointer of can tx frame header
-// Return NULL if the buffer is empty.
-FDCAN_TxHeaderTypeDef *buf_get_can_tail_header(void)
+// Get pointer to the frame header of the sent can frame with the given marker
+// Return NULL if the buffer is empty or the frame is not found.
+FDCAN_TxHeaderTypeDef *buf_get_can_sent_header(uint8_t marker)
 {
     if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
@@ -260,10 +272,20 @@ FDCAN_TxHeaderTypeDef *buf_get_can_tail_header(void)
         return NULL;
     }
 
-    return &buf_can_tx.header[buf_can_tx.tail];
+    uint8_t idx = buf_can_tx.tail;
+    while (idx != buf_can_tx.send)
+    {
+        if (buf_can_tx.header[idx].MessageMarker == marker)
+        {
+            return &buf_can_tx.header[idx];
+        }
+        idx = (idx + 1) % BUF_CAN_TXQUEUE_LEN;
+    }
+
+    return NULL;
 }
 
-// Get head pointer of can tx frame data bytes
+// Get pointer to the frame data of the head can frame
 // Return NULL if the buffer is full.
 uint8_t *buf_get_can_head_data(void)
 {
@@ -276,9 +298,9 @@ uint8_t *buf_get_can_head_data(void)
     return buf_can_tx.data[buf_can_tx.head];
 }
 
-// Get tail pointer of can tx frame data bytes
-// Return NULL if the buffer is empty.
-uint8_t *buf_get_can_tail_data(void)
+// Get pointer to the frame data of the sent can frame with the given marker
+// Return NULL if the buffer is empty or the frame is not found.
+uint8_t *buf_get_can_sent_data(uint8_t marker)
 {
     if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
@@ -286,7 +308,17 @@ uint8_t *buf_get_can_tail_data(void)
         return NULL;
     }
 
-    return buf_can_tx.data[buf_can_tx.tail];
+    uint8_t idx = buf_can_tx.tail;
+    while (idx != buf_can_tx.send)
+    {
+        if (buf_can_tx.header[idx].MessageMarker == marker)
+        {
+            return buf_can_tx.data[idx];
+        }
+        idx = (idx + 1) % BUF_CAN_TXQUEUE_LEN;
+    }
+
+    return NULL;
 }
 
 // Send the message in head slot on the CAN bus.
@@ -301,7 +333,7 @@ HAL_StatusTypeDef buf_commit_can_head(void)
             return HAL_ERROR;
         }
 
-        // Increment the head pointer
+        // Increment the head index
         buf_can_tx.head = (buf_can_tx.head + 1) % BUF_CAN_TXQUEUE_LEN;
         if (buf_can_tx.head == buf_can_tx.tail) buf_can_tx.full = 1;
     }
@@ -327,6 +359,29 @@ HAL_StatusTypeDef buf_release_can_tail(void)
     return HAL_OK;
 }
 
+// Delete frames in the can tx buffer until the frame with the given marker (including the frame).
+HAL_StatusTypeDef buf_release_can_until(uint8_t marker)
+{
+    // If the buffer is empty or the frame with the marker is not found
+    if (buf_get_can_sent_data(marker) == NULL)
+    {
+        return HAL_ERROR;
+    }
+
+    while (buf_can_tx.tail != buf_can_tx.send)
+    {
+        if (buf_can_tx.header[buf_can_tx.tail].MessageMarker == marker)
+        {
+            buf_can_tx.tail = (buf_can_tx.tail + 1) % BUF_CAN_TXQUEUE_LEN;
+            break;
+        }
+        buf_can_tx.tail = (buf_can_tx.tail + 1) % BUF_CAN_TXQUEUE_LEN;
+    }
+    buf_can_tx.full = 0;
+
+    return HAL_OK;
+}
+
 // Clear can tx buffer
 void buf_clear_can_buffer(void)
 {
@@ -345,5 +400,6 @@ void buf_disable_irq()
 void buf_enable_irq()
 {
     __enable_irq();
-    __ISB(); // Instruction Synchronization Barrier
+    __DSB();
+    __ISB();
 }
