@@ -71,6 +71,8 @@ static void slcan_parse_str_debug(uint8_t *buf, uint8_t len);
 // Parse an incoming slcan command from the USB CDC port
 void slcan_parse_str(uint8_t *buf, uint8_t len)
 {
+    static uint8_t msg_marker = 0;
+
     // Reply OK to a blank command
     if (len == 0)
     {
@@ -180,8 +182,7 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
     frame_header->BitRateSwitch = FDCAN_BRS_OFF;                 // no bitrate switch
     frame_header->ErrorStateIndicator = FDCAN_ESI_ACTIVE;        // error active
     frame_header->TxEventFifoControl = FDCAN_STORE_TX_EVENTS;    // record tx events
-    static uint8_t msg_marker = 0;
-    frame_header->MessageMarker = (uint32_t)(msg_marker++);      // increment counter TODO marker should not be incremented if the buffer is full. worst it will create same marker in row.
+    frame_header->MessageMarker = (uint32_t)msg_marker;          // increment only when the frame is queued (not here)
 
     // Handle each incoming command (transmit)
     switch (buf[0])
@@ -311,6 +312,10 @@ void slcan_parse_str(uint8_t *buf, uint8_t len)
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
+
+    // The frame is queued, so increment message marker for the next message.
+    // Don't do this before committing the frame to ensure that the marker in the buffer increments one by one.
+    msg_marker++;
 
     // Send ACK
     if (((slcan_get_report_mode() >> SLCAN_REPORT_TX) & 1) == 0)
