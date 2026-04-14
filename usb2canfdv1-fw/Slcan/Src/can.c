@@ -220,16 +220,12 @@ void can_process(void)
     // If a message has been transmitted on bus, parse the frame
     if (HAL_FDCAN_GetTxEvent(&hfdcan1, &tx_event) == HAL_OK)
     {
-        while (buf_get_can_tail_header() != NULL)
+        uint8_t *data = buf_get_can_sent_data(tx_event.MessageMarker);
+        if (data != NULL)
         {
-            if (tx_event.MessageMarker == buf_get_can_tail_header()->MessageMarker) break;
-            buf_release_can_tail();  // Assume the frame is deleted in HAL
-        }
-        if (buf_get_can_tail_data() != NULL)
-        {
-            uint16_t len = slcan_generate_tx_event(buf_reserve_cdc_dest(SLCAN_MTU), &tx_event, buf_get_can_tail_data());
+            uint16_t len = slcan_generate_tx_event(buf_reserve_cdc_dest(SLCAN_MTU), &tx_event, data);
             buf_commit_cdc_dest(len);
-            buf_release_can_tail();
+            buf_release_can_until(tx_event.MessageMarker);
         }
         else
         {
