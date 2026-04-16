@@ -29,8 +29,10 @@
 #include "led.h"
 #include "slcan.h"
 
-// Maximum number of frames stored in HAL waiting for being sent
-#define BUF_MAX_NBR_SEND_FRAMES         (3 + 3 + 2)         // SRAMCAN_TFQ_NBR 3 + SRAMCAN_TEF_NBR 3 + Margin
+// Maximum number of frames between tail and send index
+// In one main loop, max. 3 frames can be sent, 1 tx event can be processed.
+// The value below is set considering the case with 3 successful transmissions followed by 9 failed ones.
+#define BUF_MAX_NBR_SENT_FRAMES         (3 * 3 * 2)         // SRAMCAN_TFQ_NBR 3 * SRAMCAN_TEF_NBR 3 * Margin
 
 // Cirbuf structure for CAN TX frames
 struct BufCanTx
