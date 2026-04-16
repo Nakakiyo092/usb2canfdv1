@@ -181,6 +181,7 @@ static int8_t CDC_DeInit_FS(void)
 static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 {
   /* USER CODE BEGIN 5 */
+  UNUSED(length);
   switch(cmd)
   {
     case CDC_SEND_ENCAPSULATED_COMMAND:
@@ -269,6 +270,7 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
+  UNUSED(Buf);
   uint32_t new_head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
   if (new_head == buf_cdc_rx.tail)
   {
@@ -339,7 +341,7 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
   UNUSED(Buf);
   UNUSED(Len);
   UNUSED(epnum);
-  uint32_t new_tail = (buf_cdc_tx.tail + 1UL) % BUF_CDC_TX_NUM_BUFS;
+  uint32_t new_tail = (uint32_t)((buf_cdc_tx.tail + 1) % BUF_CDC_TX_NUM_BUFS);
   if (new_tail != buf_cdc_tx.head)
   {
       if (CDC_Transmit_FS((uint8_t *)buf_cdc_tx.data[new_tail], buf_cdc_tx.msglen[new_tail]) == USBD_OK)
