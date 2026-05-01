@@ -266,7 +266,6 @@ FDCAN_TxHeaderTypeDef *buf_get_can_sent_header(uint8_t marker)
 {
     if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
         return NULL;
     }
 
@@ -302,7 +301,6 @@ uint8_t *buf_get_can_sent_data(uint8_t marker)
 {
     if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
         return NULL;
     }
 
