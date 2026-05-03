@@ -21,6 +21,140 @@ class BufferTestCase(unittest.TestCase):
         self.dut.close()
 
 
+    # Check response to a command longer than the cdc rx buffer itself
+    def test_too_long_data_in_cdc_rx_buffer(self):
+        # CDC Rx buffer size: 64 * 8 = 512
+        for i in range(999):
+            self.dut.send(b"F")
+        self.assertEqual(self.dut.receive(), b"")
+        self.dut.send(b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+
+
+    def test_message_loss_in_cdc_rx_buffer(self):
+        """
+        Check no corruption of data in cdc rx buffer when it is full
+
+        Method:
+        Send data within which all message is valid command
+        but turns into an invalid command if some of the data is lost.
+        Send such data repeatedly until the rx buffer of the device is full.
+
+        Criteria:
+        The device should not respond to the false invalid command
+        which is created by data loss.
+        """
+        #self.dut.print_on = True
+        version = b""
+        tx_data = b""
+        rx_data = b""
+
+        self.dut.send(b"V\r")
+        version = self.dut.receive()
+
+        self.dut.send(b"O\r")   # Need to use F
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Rx buffer size: 8 * 64
+        for _ in range(2500):
+            tx_data += b"V\r\r" # 2 char loss will create VV\r. V\r version is in the tx test.
+        for _ in range(10):
+            if self.dut.ser.write(tx_data) != len(tx_data):
+                print("Failed to write all data to the device")
+            rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data = rx_data.replace(version, b"")
+        rx_data = rx_data.replace(b"\r", b"")
+        self.assertEqual(rx_data, b"")  # Confirm no \a
+        time.sleep(0.1)
+        self.dut.send(b"\r")    # Flush the buffer
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F03\r")  # Or F01
+
+
+    @unittest.skip("This test does not create rx buffer overflow")
+    def test_message_loss_in_cdc_rx_buffer_fail(self):
+        """
+        Check no corruption of data in cdc rx buffer when it is full
+
+        Method:
+        Send data within which all message is invalid command
+        but turns into a valid command if some of the data is lost.
+        Send such data repeatedly until the rx buffer of the device is full.
+
+        Criteria:
+        The device should not respond to the false valid command
+        which is created by data loss.
+        """
+        #self.dut.print_on = True
+
+        self.dut.send(b"O\r")   # Need to use F
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Catch char-level loss: 1, 4, 7, 10, 13, 16, 19 ...
+        tx_data = b""
+        rx_data = b""
+        for _ in range(900):
+            tx_data += b"VV\r"
+        for _ in range(10):
+            if self.dut.ser.write(tx_data) != len(tx_data):
+                print("Failed to write all data to the device")
+            rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data = rx_data.replace(b"\a", b"")
+        rx_data = rx_data.replace(b"\r", b"")
+        self.assertEqual(rx_data, b"")
+        time.sleep(0.1)
+        self.dut.send(b"\r")    # Flush the buffer
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F03\r")  # Or F01
+
+        # Catch char-level loss: 1, 2, 5, 6, 9, 10, 13, 14, 17, 18 ...
+        tx_data = b""
+        rx_data = b""
+        for _ in range(800):
+            tx_data += b"VV\r\r"
+        for _ in range(10):
+            if self.dut.ser.write(tx_data) != len(tx_data):
+                print("Failed to write all data to the device")
+            rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data = rx_data.replace(b"\a", b"")
+        rx_data = rx_data.replace(b"\r", b"")
+        self.assertEqual(rx_data, b"")
+        time.sleep(0.1)
+        self.dut.send(b"\r")    # Flush the buffer
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F03\r")
+
+        # Catch dchar-level loss: 1, 2, 3, 6, 7, 8, 11, 12, 13, 16, 17, 18 ...
+        tx_data = b""
+        rx_data = b""
+        for _ in range(700):
+            tx_data += b"VV\r\r\r"
+        for _ in range(10):
+            if self.dut.ser.write(tx_data) != len(tx_data):
+                print("Failed to write all data to the device")
+            rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data = rx_data.replace(b"\a", b"")
+        rx_data = rx_data.replace(b"\r", b"")
+        self.assertEqual(rx_data, b"")
+        time.sleep(0.1)
+        self.dut.send(b"\r")    # Flush the buffer
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F03\r")
+
+
+    # Check stored frames in CDC Tx buffer are not altered in order or content
     def test_rx_frame_in_cdc_tx_buffer(self):
         """Check stored frames in CDC Tx buffer are not altered in order or content"""
         #self.dut.print_on = True
@@ -75,6 +209,48 @@ class BufferTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_message_loss_in_cdc_tx_buffer(self):
+        """
+        Check no corruption of data in cdc tx buffer when it is full
+
+        Method:
+        Send many commands to the device and occasionally receive responses
+        until the tx buffer of the device is full.
+
+        Criteria:
+        Data loss is acceptable if the whole message is lost,
+        but the device should not send any corrupted data.
+        """
+        #self.dut.print_on = True
+        version = b""
+        tx_data = b""
+        rx_data = b""
+
+        self.dut.send(b"V\r")
+        version = self.dut.receive()
+
+        self.dut.send(b"O\r")   # Need to use F
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Tx buffer size: 3 * 4096
+        for _ in range(2500):   # * 6 bytes of reply
+            tx_data += b"V\r"
+        for _ in range(10):
+            if self.dut.ser.write(tx_data) != len(tx_data):
+                print("Failed to write all data to the device")
+            rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data += self.dut.receive()
+        rx_data = rx_data.replace(version, b"")
+        self.assertEqual(rx_data, b"")  # Confirm no \a as a rx test
+        time.sleep(0.1)
+        self.dut.send(b"\r")    # Flush the buffer
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F03\r")  # Or F02
+
+
+    # Check stored frames in CAN Rx buffer are not alterd in order or content
     def test_can_rx_buffer(self):
         """Check stored frames in CAN Rx buffer are not altered in order or content"""
         #self.dut.print_on = True

@@ -203,8 +203,8 @@ class ErrorTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"F00\r")
 
         # TODO: This process creates overflow in CDC Tx buffer not in CAN Rx buffer
-        #  the buffer can not store 800 messages (amount depends on PC env.)
-        for _ in range(0, 800):
+        #  the buffer can not store 2000 messages (The amount depends on PC env due to OS buffer.)
+        for _ in range(0, 2000):
             self.dut.send(b"t03F80011223344556677\r")
             time.sleep(0.001)
 
@@ -214,7 +214,6 @@ class ErrorTestCase(unittest.TestCase):
 
         # Check CAN Rx Full error is reported for CDC Tx overflow
         self.dut.send(b"F\r")
-        #  CAN Rx Full (because this type of overflow is caused typically by too many can frame)
         self.assertEqual(self.dut.receive(), b"F01\r")
 
         # Check error clear

@@ -212,7 +212,6 @@ HAL_StatusTypeDef can_disable(void)
 // Process data from CAN tx/rx circular buffers
 void can_process(void)
 {
-    static uint16_t last_frame_time_cnt = 0;
     static uint32_t bit_cnt_message = 0;
     FDCAN_TxEventFifoTypeDef tx_event;
     FDCAN_RxHeaderTypeDef rx_msg_header;
@@ -221,16 +220,12 @@ void can_process(void)
     // If a message has been transmitted on bus, parse the frame
     if (HAL_FDCAN_GetTxEvent(&hfdcan1, &tx_event) == HAL_OK)
     {
-        while (buf_get_can_tail_header() != NULL)
+        uint8_t *data = buf_get_can_sent_data(tx_event.MessageMarker);
+        if (data != NULL)
         {
-            if (tx_event.MessageMarker == buf_get_can_tail_header()->MessageMarker) break;
-            buf_release_can_tail();  // Assume the frame is deleted in HAL
-        }
-        if (buf_get_can_tail_data() != NULL)
-        {
-            uint16_t len = slcan_generate_tx_event(buf_reserve_cdc_dest(SLCAN_MTU), &tx_event, buf_get_can_tail_data());
+            uint16_t len = slcan_generate_tx_event(buf_reserve_cdc_dest(SLCAN_MTU), &tx_event, data);
             buf_commit_cdc_dest(len);
-            buf_release_can_tail();
+            buf_release_can_until(tx_event.MessageMarker);
         }
         else
         {
@@ -242,7 +237,6 @@ void can_process(void)
         if (can_mode != FDCAN_MODE_INTERNAL_LOOPBACK && can_mode != FDCAN_MODE_EXTERNAL_LOOPBACK)
         {
             bit_cnt_message += can_get_bit_number_in_tx_event(&tx_event);
-            last_frame_time_cnt = tx_event.TxTimestamp;
         }
 
         led_blink_txd();
@@ -255,7 +249,6 @@ void can_process(void)
         buf_commit_cdc_dest(len);
 
         bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
-        last_frame_time_cnt = rx_msg_header.RxTimestamp;
 
         led_blink_rxd();
     }
@@ -264,7 +257,6 @@ void can_process(void)
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO1, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
         bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
-        last_frame_time_cnt = rx_msg_header.RxTimestamp;
 
         led_blink_rxd();
     }
