@@ -344,10 +344,15 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
   uint32_t new_tail = (uint32_t)((buf_cdc_tx.tail + 1) % BUF_CDC_TX_NUM_BUFS);
   if (new_tail != buf_cdc_tx.head)
   {
-      if (CDC_Transmit_FS((uint8_t *)buf_cdc_tx.data[new_tail], buf_cdc_tx.msglen[new_tail]) == USBD_OK)
-      {
-          buf_cdc_tx.tail = new_tail;
-      }
+    if (CDC_Transmit_FS((uint8_t *)buf_cdc_tx.data[new_tail], buf_cdc_tx.msglen[new_tail]) == USBD_OK)
+    {
+      buf_cdc_tx.tail = new_tail;
+    }
+    else
+    {
+      // If the transmission completes while interrupts are disabled in the main loop.
+      result = USBD_FAIL;
+    }
   }
   /* USER CODE END 13 */
   return result;
