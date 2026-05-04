@@ -22,6 +22,7 @@
 
 // Parse incoming slcan commands.
 
+#include <stdio.h>
 #include <string.h>
 #include "stm32g0xx_hal.h"
 #include "buffer.h"
