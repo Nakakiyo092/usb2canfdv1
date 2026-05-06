@@ -8,14 +8,11 @@ Pull requests are not expected to be accepted.
 
 ```
 .
-└── document/               # Protocol and firmware documentation
+└── doc/                    # Protocol and firmware documentation
 │   └── usb2canfdv1.wiki    # Git subtree (external wiki repo)
 ├── test/                   # Test scripts for system test
 │   └── slcan-tester        # Git subtree (external repo)
 └── usb2canfdv1-fw/         # Firmware source code
-    ├── Libs/               # External libraries
-    │   └── printf/         # Git submodule (external repo)
-    └── ...
 ```
 
 The commands below sync changes between this repository and subtrees
@@ -23,10 +20,10 @@ The commands below sync changes between this repository and subtrees
 It would be best practice to sync at release time.
 
 ```
-git subtree pull --prefix=doc doctree main --squash
-git subtree push --prefix=doc doctree main
-git subtree pull --prefix=test testtree main --squash
-git subtree push --prefix=test testtree main
+git subtree pull --prefix=doc doctree master --squash
+git subtree push --prefix=doc doctree master --squash
+git subtree pull --prefix=test testtree merge
+git subtree push --prefix=test testtree merge
 ```
 
 

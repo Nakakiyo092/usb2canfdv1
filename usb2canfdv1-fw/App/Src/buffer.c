@@ -22,7 +22,6 @@
 
 // Manage cdc (rx and tx) and can (tx) buffer (including error handling related to buffer full)
 
-
 #include "usbd_cdc_if.h"
 #include "buffer.h"
 #include "can.h"

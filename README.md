@@ -29,12 +29,6 @@ Please find more information in the `doc` directory or the [wiki](https://github
 ## Toolchain
 The toolchain in this repository is designed to run on a Windows PC.
 
-### How to clone this repository
-Please be aware that there are submodules inside `usb2canfdv1-fw\Libs`.
-```
-git clone --recursive https://github.com/Nakakiyo092/usb2canfdv1.git
-```
-
 ### How to build firmware
 Use STM32CubeIDE 1.19.0 with FW_G0 V1.6.2.
 
