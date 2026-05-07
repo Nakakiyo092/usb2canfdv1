@@ -8,7 +8,7 @@ Pull requests are not expected to be accepted.
 
 ```
 .
-└── doc/                    # Protocol and firmware documentation
+├── doc/                    # Protocol and firmware documentation
 │   └── usb2canfdv1.wiki    # Git subtree (external wiki repo)
 ├── test/                   # Test scripts for system test
 │   └── slcan-tester        # Git subtree (external repo)
@@ -17,7 +17,7 @@ Pull requests are not expected to be accepted.
 
 The commands below sync changes between this repository and subtrees
 ([wiki](https://github.com/Nakakiyo092/usb2canfdv1/wiki) and [slcan-tester](https://github.com/Nakakiyo092/slcan-tester)).  
-It would be best practice to sync at release time.
+It would be a good practice to sync at release time.
 
 ```
 git subtree pull --prefix=doc doctree master --squash
@@ -31,7 +31,7 @@ git subtree push --prefix=test testtree merge
 
 - Compatibility with LAWICEL CAN ASCII protocol is mandatory.
 - Compatibility with the SLCAN protocol, including older versions in this repository, is not required.
-- That said, breaking changes should be reserved for major releases.
+- Nevertheless, breaking changes should be limited to major releases.
 
 
 ## Test policy
