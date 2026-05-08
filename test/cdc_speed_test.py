@@ -61,7 +61,7 @@ def get_argparser():
 
 
 def setup_device_under_test(dev: serial.Serial, mode: str):
-    """Setup and print test device information."""
+    """Setup device and print test information."""
     print("usb port name:", dev.port)
     print("")
 
@@ -83,13 +83,13 @@ def setup_device_under_test(dev: serial.Serial, mode: str):
     print("")
 
     if mode == "bi":
-        # Maximum speed
+        # Setup maximum CAN speed to stress the device
         dev.write(b"S8\r")
         dev.write(b"Y5\r")
         dev.write(b"+\r")    # TODO: warning if loopback is not supported
         time.sleep(0.1)
         dev.read_all()
-        print("can port status: open (1M/5Mbps)")
+        print("can port status: open/loopback (1M/5Mbps)")
     else:
         print("can port status: closed")
 
@@ -130,7 +130,7 @@ def count_message(data: bytes) -> int:
 
 
 def print_speed_and_loss(stats: dict, duration: int):
-    """Print the speed and message loss."""
+    """Print the speed and message loss. The argument duration is in seconds."""
     if duration == 0:
         print("tx speed: ", "N/A")
         print("rx speed: ", "N/A")
@@ -199,7 +199,7 @@ def main():
         if phase_tx:
             device.write(data_write)
             stats["tx_len"] += len(data_write)
-            # For bi-directional test, tx message is counted twice to match rx count.
+            # For bi-directional test, tx message is counted twice to match rx count. TODO move this logic to printer
             stats["tx_msg"] += args.chunk_size if mode != "bi" else args.chunk_size * 2
 
         data_read = device.read_all()
