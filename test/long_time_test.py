@@ -4,7 +4,8 @@
 Collection of tests which take long time to complete.
 
 - Verify the us timestamp against the rounding compensation result (~66ms)
-- Compare clock accuracy between hast and device
+- Compare clock accuracy between host and device
+- Bus error rate (need another device to communicate with)
 
 License:
     MIT License.
@@ -14,35 +15,23 @@ License:
 # TODO change all
 
 import time
+import random
 
 import argparse
 import serial
 
+TIMESTAMP_PERIOD_US = 3600 * 1000 * 1000
+TIMESTAMP_DIFF_THRESHOLD_US = 0xFFFF / 2
+
 def get_argparser():
     """Get argument parser for this script."""
     parser = argparse.ArgumentParser(
-        description="Test USB CDC throughput. Press [CTRL] + 'c' to quit."
+        description="Run collection of long time tests. Press [CTRL] + 'c' to quit."
     )
     parser.add_argument(
         "devicename",
         type=str,
         help="device name like COM9 or /dev/ttyACM0 (required)"
-    )
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "-r", "--rx", 
-        action="store_true",
-        help="test receiving speed (device -> host)"
-    )
-    group.add_argument(
-        "-t", "--tx", 
-        action="store_true",
-        help="test transmitting speed (host -> device)"
-    )
-    group.add_argument(
-        "-b", "--bi", 
-        action="store_true",
-        help="test bidirectional speed (host <-> device)"
     )
     parser.add_argument(
         "-i", "--iteration",
@@ -54,7 +43,7 @@ def get_argparser():
         "-d", "--duration",
         type=int,
         default=1,
-        help="time to test in seconds"
+        help="time to test in hours"
     )
     parser.add_argument(
         "-c", "--chunk-size",
@@ -62,13 +51,24 @@ def get_argparser():
         default=1,
         help="number of times the base message is repeated to form one tx chunk"
     )
+    parser.add_argument(
+        "-w", "--with-receiver",
+        type=bool,
+        default=False,
+        help="run the test with another device receiving the messages"
+    )
     return parser
 
 
-def print_test_environment(dev: serial.Serial, mode: str):
-    """Print test environment information."""
+def setup_device_under_test(dev: serial.Serial, with_receiver: bool):
+    """Setup device and print test information."""
     print("usb port name:", dev.port)
     print("")
+
+    dev.write(b"\a\r\r")    # Flush the buffer
+    dev.write(b"C\r")
+    time.sleep(0.1)
+    dev.read_all()
 
     dev.write(b"N\r")
     time.sleep(0.1)
@@ -82,19 +82,30 @@ def print_test_environment(dev: serial.Serial, mode: str):
     print("   ", dev.read_all().decode())
     print("")
 
-    if mode == "bi":
-        dev.write(b"S8\r")
-        dev.write(b"Y5\r")
-        dev.write(b"+\r")    # TODO: warning if loopback is not supported
+    # Setup maximum CAN speed to stress the device
+    dev.write(b"S8\r")
+    dev.write(b"Y5\r")
+    dev.write(b"z2002\r")
+    time.sleep(0.1)
+    dev.read_all()
+    
+    if with_receiver:
+        dev.write(b"O\r")    # TODO: warning if loopback is not supported
         time.sleep(0.1)
-        dev.read_all().decode()
-        print("can port status: open (1M/5Mbps)")
+        dev.read_all()
+        print("can port status: open/normal (1M/5Mbps)")
     else:
-        print("can port status: closed")
+        dev.write(b"+\r")
+        time.sleep(0.1)
+        dev.read_all()
+        print("can port status: open/loopback (1M/5Mbps)")
 
 
-def print_round_trip_time(dev: serial.Serial):
-    """Measure and print round-trip time."""
+def print_round_trip_time(dev: serial.Serial) -> int:
+    """Print round-trip time. Return average RTT in us.
+    
+    Returns -1 on error.
+    """
     rtt = []
     for _ in range(0, 5):
         # Use perf_counter for better resolution (RTT is expected to be less than ms)
@@ -106,60 +117,67 @@ def print_round_trip_time(dev: serial.Serial):
 
     print("ping:", rtt, "us")
 
+    if len(rtt) == 0:
+        return -1
 
-def make_data_to_write(mode: str, chunk_size: int) -> bytes:
+    return sum(rtt) / len(rtt)
+
+
+def make_data_to_write() -> bytes:
     """Make data to write to device."""
-    if mode == "rx":
-        single_msg = b"v\r"    # TODO: V[CR] option for wider support
-    else:
-        single_msg = b"00112233445566778899AABBCCDDEEFF"
-        single_msg = b"B00000000F" + single_msg * 4 + b"\r"
+    single_msg = b"00112233445566778899AABBCCDDEEFF"
+    single_msg = b"B00000000F" + single_msg * 4 + b"\r"
 
-    data_write = b""
-    for _ in range(0, chunk_size):
-        data_write = data_write + single_msg
+    data_write = single_msg
 
     return data_write
 
 
-def count_message(data: bytes) -> int:
-    """Count the number of messages in the data."""
-    terminators = {ord("\r"), ord("\a")}
-    return sum(byte in terminators for byte in data)
+def extract_timestamp_from_tx_event(msg: bytes) -> int:
+    """Extract 4-byte microsecond timestamp from TX event message.
+    
+    TX Event format: b'Z' + frame_data + timestamp_hex(8 chars)
+    Returns timestamp in microseconds (0-3,600,000,000).
+    Returns -1 on error.
+    """
+    if len(msg) < 10 or msg[0:1] != b"Z":
+        return -1
+    
+    try:
+        timestamp_hex = msg[-9:-1].decode()     # Last 8 chars before '\r'
+        return int(timestamp_hex, 16)
+    except (ValueError, UnicodeDecodeError):
+        print("ERROR: Failed to extract timestamp from message:", msg)
+        return -1
 
 
-def print_speed_and_loss(stats: dict, duration: int):
-    """Print the speed and message loss."""
-    if duration == 0:
-        print("tx speed: ", "N/A")
-        print("rx speed: ", "N/A")
+def calc_timestamp_diff(ts_new: int, ts_old: int) -> int:
+    """Calculate timestamp difference with 66ms period compensation.
+    
+    Timestamp counter resets at 3600000000 us.
+    Returns difference in microseconds.
+    """
+    if ts_new >= ts_old:
+        return ts_new - ts_old
     else:
-        tx_speed = stats["tx_len"] / 1000 / duration
-        rx_speed = stats["rx_len"] / 1000 / duration
-        print("tx speed: ", f"{tx_speed:8.2f}", "kB/s\t", f"{tx_speed * 8:8.2f}", "kbits/s")
-        print("rx speed: ", f"{rx_speed:8.2f}", "kB/s\t", f"{rx_speed * 8:8.2f}", "kbits/s")
-
-    print("message loss: ", stats["tx_msg"] - stats["rx_msg"], " / ", stats["tx_msg"])
+        # Overflow occurred
+        return (TIMESTAMP_PERIOD_US - ts_old) + ts_new
 
 
-def print_device_status(dev: serial.Serial):
-    """Print device status information."""
-    dev.write(b"F\r")
-    time.sleep(0.1)
-    print("device status:", dev.read_all().decode())
-    print("detail:")
-
-    dev.write(b"f\r")
-    time.sleep(0.1)
-    resp = dev.read_all().decode()
-    if resp != "\a":
-        print("   ", resp)
-
-    dev.write(b"z\r")
-    time.sleep(0.1)
-    resp = dev.read_all().decode()
-    if resp != "\a":
-        print("   ", resp)
+def print_timestamp_verification(stats: dict):
+    """Print timestamp verification results."""
+    if stats["ts_verified"] == 0:
+        print("timestamp verification: 0 samples (need at least 2)")
+        return
+    
+    avg_error = stats["ts_error_sum"] / stats["ts_verified"]
+    max_error = stats["ts_error_max"]
+    failure_count = stats["ts_failure_count"]
+    
+    print(f"timestamp verification: {stats['ts_verified']} samples")
+    print(f"  average error: {avg_error:.1f} us")
+    print(f"  max error: {max_error} us")
+    print(f"  failures (>{TIMESTAMP_DIFF_THRESHOLD_US} us): {failure_count}")
 
 
 def main():
@@ -167,77 +185,106 @@ def main():
     argparser = get_argparser()
     args = argparser.parse_args()
 
-    mode = "bi" if args.bi else "tx" if args.tx else "rx"
-
     try:
         device = serial.Serial(args.devicename, timeout=1, write_timeout=1)
     except Exception as err:
         print("ERROR: Could not open device ", args.devicename)
         print(err)
+        print("The script is aborting.")
         return
 
-    device.write(b"\a\r\r")
-    device.write(b"C\r")
-    time.sleep(0.1)
-    device.read_all()
-
-    print_test_environment(device, mode)
+    setup_device_under_test(device, args.with_receiver)
     print("")
-    print_round_trip_time(device)
+    rtt = print_round_trip_time(device)
     print("")
 
-    data_write = make_data_to_write(mode, args.chunk_size)
+    data_write = make_data_to_write()
 
     stats = {
-        "tx_len": 0,
-        "rx_len": 0,
-        "tx_msg": 0,
-        "rx_msg": 0,
+        "ts_verified": 0,
+        "ts_error_sum": 0,
+        "ts_error_max": 0,
+        "ts_failure_count": 0,
     }
 
-    loop_cnt = args.iteration
-    phase_tx = True
-    tick_next = int(round(time.time() * 1000)) + 1000 * args.duration
+    # Timestamp tracking
+    host_tx_time_us_list = []
+    host_tx_time_us_prev = -1
+    device_ts = -1
+    device_ts_prev = -1
+    pending_rx = b""
+
+    tick_start = int(round(time.time() * 1000))
+    tick_tx = tick_start
+    tick_stats = tick_start + 1000 * 60  # First stats output after 60 seconds
+    tick_end = tick_start + 1000 * 3600 * args.duration
 
     while True:
-        if phase_tx:
-            device.write(data_write)
-            stats["tx_len"] += len(data_write)
-            # For bi-directional test, tx message is counted twice to match rx count.
-            stats["tx_msg"] += args.chunk_size if mode != "bi" else args.chunk_size * 2
+        # Read and process incoming message.
+        chunk = device.read_all()
+        if chunk:
+            pending_rx += chunk
+            while True:
+                delimiter_index = pending_rx.find(b"\r")
+                if delimiter_index == -1:
+                    break
 
-        data_read = device.read_all()
-        stats["rx_len"] += len(data_read)
-        stats["rx_msg"] += count_message(data_read)
+                msg = pending_rx[:delimiter_index + 1]
+                pending_rx = pending_rx[delimiter_index + 1:]
+
+                if msg.startswith(b"Z"):
+                    device_ts = extract_timestamp_from_tx_event(msg)
+                    if device_ts < 0:
+                        print("The script is aborting.")
+                        return
+
+                    # Perform timestamp verification if we have previous values
+                    if host_tx_time_us_prev >= 0 and device_ts_prev >= 0 and host_tx_time_us_list:
+                        host_diff_us = host_tx_time_us_list[0] - host_tx_time_us_prev
+                        device_diff_us = calc_timestamp_diff(device_ts, device_ts_prev)
+                        error_us = abs(host_diff_us - device_diff_us)
+                        
+                        stats["ts_verified"] += 1
+                        stats["ts_error_sum"] += error_us
+                        stats["ts_error_max"] = max(stats["ts_error_max"], error_us)
+                        
+                        if error_us > TIMESTAMP_DIFF_THRESHOLD_US:
+                            print(f"WARNING: Timestamp verification failed for message {msg.strip()}: device_ts={device_ts}, device_ts_prev={device_ts_prev}")
+                            stats["ts_failure_count"] += 1
+                    
+                    host_tx_time_us_prev = host_tx_time_us_list.pop(0)
+                    device_ts_prev = device_ts
 
         ms = int(round(time.time() * 1000))
-        if ms > tick_next and not phase_tx:
-            print_speed_and_loss(stats, args.duration)
+        if ms > tick_tx:
+            if random.randint(0, 100) <= 95:
+                # Short delay to check max 2 compensation as a most likely case (66ms * 2 = 132ms)
+                tick_tx = ms + random.randint(0, 150)
+            else:
+                # Long delay to check max ~100 compensation as an extreme case (66ms * 100 = 6600ms)
+                # The rough device clock accuracy (0.5%) limits the max duration to around 66ms / 2 / 0.005 = 6600ms.
+                tick_tx = ms + random.randint(0, 6600)
+
+            # Record host TX timestamp in microseconds (perf_counter returns seconds, convert to us)
+            host_tx_time_us_list.append(int(round(time.perf_counter() * 1000 * 1000)))
+
+            device.write(b"F\r")    # Status check
+            device.write(data_write)
+
+        if ms > tick_stats:
+            tick_stats = ms + 1000 * 60  # Print stats every 60 seconds
+
+            print_timestamp_verification(stats)
             print("")
-            print_device_status(device)
-            print("")
 
-            for key in stats:
-                stats[key] = 0
-
-            ms = int(round(time.time() * 1000))
-            tick_next = ms + 1000 * args.duration
-            phase_tx = True
-
-            if loop_cnt == 1:
-                break
-
-            if loop_cnt > 0:
-                loop_cnt -= 1
-
-        elif ms > tick_next and phase_tx:
-            tick_next = ms + 100    # Off time to retrieve remaining data in buffer.
-            phase_tx = False
+        if ms > tick_end:
+            break
 
     device.write(b"C\r")
     time.sleep(0.1)
     device.read_all()
     device.close()
+
 
 
 if __name__ == "__main__":
