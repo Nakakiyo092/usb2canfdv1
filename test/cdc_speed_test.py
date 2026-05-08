@@ -60,10 +60,15 @@ def get_argparser():
     return parser
 
 
-def print_test_environment(dev: serial.Serial, mode: str):
-    """Print test environment information."""
+def setup_device_under_test(dev: serial.Serial, mode: str):
+    """Setup and print test device information."""
     print("usb port name:", dev.port)
     print("")
+
+    dev.write(b"\a\r\r")    # Flush the buffer
+    dev.write(b"C\r")
+    time.sleep(0.1)
+    dev.read_all()
 
     dev.write(b"N\r")
     time.sleep(0.1)
@@ -78,11 +83,12 @@ def print_test_environment(dev: serial.Serial, mode: str):
     print("")
 
     if mode == "bi":
+        # Maximum speed
         dev.write(b"S8\r")
         dev.write(b"Y5\r")
         dev.write(b"+\r")    # TODO: warning if loopback is not supported
         time.sleep(0.1)
-        dev.read_all().decode()
+        dev.read_all()
         print("can port status: open (1M/5Mbps)")
     else:
         print("can port status: closed")
@@ -171,12 +177,7 @@ def main():
         print(err)
         return
 
-    device.write(b"\a\r\r")
-    device.write(b"C\r")
-    time.sleep(0.1)
-    device.read_all()
-
-    print_test_environment(device, mode)
+    setup_device_under_test(device, mode)
     print("")
     print_round_trip_time(device)
     print("")

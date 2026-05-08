@@ -34,7 +34,7 @@ jobs:
 
       - name: Verify CLI help
         run: |
-          python3 ./test/cdc_speed_test.py --help
+          python3 cdc_speed_test.py --help
 
   macOS:
     runs-on: macos-latest
@@ -54,7 +54,7 @@ jobs:
 
       - name: Verify CLI help
         run: |
-          python3 ./test/cdc_speed_test.py --help
+          python3 cdc_speed_test.py --help
 
   Windows:
     runs-on: windows-latest
@@ -74,7 +74,7 @@ jobs:
 
       - name: Verify CLI help
         run: |
-          python .\test\cdc_speed_test.py --help
+          python cdc_speed_test.py --help
 
   Lint:
     runs-on: ${{ matrix.os }}
@@ -104,6 +104,6 @@ jobs:
           
       - name: Assess pylint score
         run: |
-          pylint --fail-under=9 test/device_under_test.py
-          pylint --fail-under=9 test/cdc_speed_test.py
+          pylint --fail-under=9 device_under_test.py
+          pylint --fail-under=9 cdc_speed_test.py
 #          pylint --fail-under=9 $(git ls-files '*.py')
