@@ -323,7 +323,7 @@ def main():
                         while drift_us < -3600_000_000 // 2:
                             drift_us += 3600_000_000
                         # Supposed initial RTT is 0 and current RTT is 2 * ave. RTT (or reverse) as the worst case.
-                        # Then include safety margin 6 as the RTT can sometimes be much higher than the average (like x10).
+                        # Then include safety margin (six sigma) as the RTT can sometimes be much higher than the average (like x10).
                         drift_upper_bound_us = abs(drift_us) + 6 * 2 * rtt
                         drift_lower_bound_us = abs(drift_us) - 6 * 2 * rtt
                         if drift_lower_bound_us < 0:
@@ -350,13 +350,17 @@ def main():
 
         ms = int(round(time.time() * 1000))
         if ms > tick_tx:
-            if random.randint(0, 100) <= 95:
+            rnd = random.randint(0, 100)
+            if rnd <= 90:
                 # Short delay to check max 2 compensation as a most likely case (66ms * 2 = 132ms)
                 tick_tx = ms + random.randint(0, 150)
-            else:
+            elif rnd <= 95:
                 # Long delay to check max ~100 compensation as an extreme case (66ms * 100 = 6600ms)
                 # The rough device clock accuracy (0.5%) limits the max duration to around 66ms / 2 / 0.005 = 6600ms.
                 tick_tx = ms + random.randint(0, 6600)
+            else:
+                # No delay to stress the buffer and increase the number of frames as another extreme case
+                tick_tx = ms + 0
 
             # Record host TX timestamp in microseconds (perf_counter returns seconds, convert to us)
             host_tx_time_us_list.append(int(round(time.perf_counter() * 1000 * 1000)))
