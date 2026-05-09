@@ -3,17 +3,14 @@
 """
 Collection of tests which take long time to complete.
 
+- CAN bus error and buffer error rate (loopback as default or with receiver option)
 - Verify the us timestamp against the rounding compensation result (~66ms)
 - Compare clock accuracy between host and device
-- Bus error rate (need another device to communicate with)
 
 License:
     MIT License.
     See the accompanying LICENSE file for full terms.
 """
-
-# TODO Compare clock accuracy between host and device
-# TODO Bus error rate
 
 import time
 import random
@@ -21,7 +18,7 @@ import random
 import argparse
 import serial
 
-ROUND_TRIP_TIME_SAMPLES = 5
+ROUND_TRIP_TIME_SAMPLES = 10
 STATS_INTERVAL_MS = 60_000
 TIMESTAMP_PERIOD_US = 3600_000_000
 TIMESTAMP_DIFF_THRESHOLD_US = 0xFFFF // 2
@@ -116,6 +113,8 @@ def print_round_trip_time(dev: serial.Serial) -> int:
         rtt.append(int((time_end - time_start) * 1000 * 1000))
 
     print("ping:", rtt, "us")
+    if 6 * sum(rtt) // len(rtt) > TIMESTAMP_DIFF_THRESHOLD_US:  # Six sigma
+        print("WARNING: The round trip time is too large to verify the timestamp.")
     print("")
 
     if len(rtt) == 0:
@@ -171,6 +170,8 @@ def print_status_check(stats: dict):
     print(f"  no error: {stats['st_no_error_count']}")
     print(f"  buffer error: {stats['st_buf_error_count']}")
     print(f"  can bus error: {stats['st_can_error_count']}")
+    if stats['st_buf_error_count'] or stats['st_can_error_count']:
+        print("WARNING: There was buffer or bus error which can affect timer verification.")
     print("")
 
 
@@ -192,6 +193,23 @@ def print_timestamp_verification(stats: dict):
     print("")
 
 
+def print_clock_accuracy(stats: dict):
+    """Print clock drift statistics."""
+    if stats["clock_samples"] == 0:
+        print("clock accuracy: 0 samples (need at least 1)")
+        print("")
+        return
+    print(f"clock accuracy: {stats['clock_duration'] // 1000_000} sec")
+    print(f"  clock offset: {stats['clock_drift'] / 1000:.3f} ms")
+    if stats['clock_duration'] > 0:
+        print(f"  drift upper bound: {stats['clock_drift_upper_bound'] / stats['clock_duration'] * 1000_000:.3f} ppm")
+        print(f"  drift lower bound: {stats['clock_drift_lower_bound'] / stats['clock_duration'] * 1000_000:.3f} ppm")
+    else:
+        print(f"  drift upper bound: N/A ppm")
+        print(f"  drift lower bound: N/A ppm")
+    print("")
+
+
 def main():
     """Main function."""
     argparser = get_argparser()
@@ -201,6 +219,7 @@ def main():
         device = serial.Serial(args.devicename, timeout=1, write_timeout=1)
     except Exception as err:
         print("ERROR: Could not open device ", args.devicename)
+        print("")
         print(err)
         print("")
         print("The script is aborting.")
@@ -223,12 +242,19 @@ def main():
         "ts_error_sum": 0,
         "ts_error_max": 0,
         "ts_failure_count": 0,
+        "clock_samples": 0,
+        "clock_drift": 0,
+        "clock_duration": 0,
+        "clock_drift_upper_bound": 0,
+        "clock_drift_lower_bound": 0,
     }
 
     # Timestamp tracking
     host_tx_time_us_list = []
+    host_tx_time_us_initial = -1
     host_tx_time_us_prev = -1
     device_ts = -1
+    device_ts_initial = -1
     device_ts_prev = -1
     pending_rx = b""
 
@@ -277,6 +303,7 @@ def main():
 
                     # Perform timestamp verification if we have previous values
                     if host_tx_time_us_prev >= 0 and device_ts_prev >= 0 and host_tx_time_us_list:
+                        # Compare with the last timestamp
                         host_diff_us = host_tx_time_us_list[0] - host_tx_time_us_prev
                         device_diff_us = calc_timestamp_diff(device_ts, device_ts_prev)
                         error_us = abs(host_diff_us - device_diff_us)
@@ -288,7 +315,36 @@ def main():
                         if error_us > TIMESTAMP_DIFF_THRESHOLD_US:
                             print(f"WARNING: Timestamp verification failed for message {msg.strip()}: device_ts={device_ts}, device_ts_prev={device_ts_prev}")
                             stats["ts_failure_count"] += 1
-                    
+
+                        # Compare with the initial timestamp
+                        host_interval_us = host_tx_time_us_list[0] - host_tx_time_us_initial
+                        device_interval_us = calc_timestamp_diff(device_ts, device_ts_initial)
+                        drift_us = device_interval_us - host_interval_us
+                        while drift_us < -3600_000_000 // 2:
+                            drift_us += 3600_000_000
+                        # Supposed initial RTT is 0 and current RTT is 2 * ave. RTT (or reverse) as the worst case.
+                        # Then include safety margin 6 as the RTT can sometimes be much higher than the average (like x10).
+                        drift_upper_bound_us = abs(drift_us) + 6 * 2 * rtt
+                        drift_lower_bound_us = abs(drift_us) - 6 * 2 * rtt
+                        if drift_lower_bound_us < 0:
+                            drift_lower_bound_us = 0
+
+                        stats["clock_samples"] += 1
+                        stats["clock_drift"] = drift_us
+                        stats["clock_duration"] = host_interval_us
+                        stats["clock_drift_upper_bound"] = drift_upper_bound_us
+                        stats["clock_drift_lower_bound"] = drift_lower_bound_us
+
+                    # Store initial timestamp if we have the first values
+                    elif host_tx_time_us_list:
+                        host_tx_time_us_initial = host_tx_time_us_list[0]
+                        device_ts_initial = device_ts
+
+                    else:
+                        print("ERROR: Something went wrong.")
+                        print("The script is aborting.")
+                        return
+
                     host_tx_time_us_prev = host_tx_time_us_list.pop(0)
                     device_ts_prev = device_ts
 
@@ -319,6 +375,7 @@ def main():
             print("")
             print_status_check(stats)
             print_timestamp_verification(stats)
+            print_clock_accuracy(stats)
 
         if ms > tick_end:
             break
