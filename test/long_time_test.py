@@ -350,13 +350,17 @@ def main():
 
         ms = int(round(time.time() * 1000))
         if ms > tick_tx:
-            if random.randint(0, 100) <= 95:
+            rnd = random.randint(0, 100)
+            if rnd <= 90:
                 # Short delay to check max 2 compensation as a most likely case (66ms * 2 = 132ms)
                 tick_tx = ms + random.randint(0, 150)
-            else:
+            elif rnd <= 95:
                 # Long delay to check max ~100 compensation as an extreme case (66ms * 100 = 6600ms)
                 # The rough device clock accuracy (0.5%) limits the max duration to around 66ms / 2 / 0.005 = 6600ms.
                 tick_tx = ms + random.randint(0, 6600)
+            else:
+                # No delay to stress the buffer and increase the number of frames as another extreme case
+                tick_tx = ms + 0
 
             # Record host TX timestamp in microseconds (perf_counter returns seconds, convert to us)
             host_tx_time_us_list.append(int(round(time.perf_counter() * 1000 * 1000)))
