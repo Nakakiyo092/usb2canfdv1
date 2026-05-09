@@ -12,7 +12,8 @@ License:
     See the accompanying LICENSE file for full terms.
 """
 
-# TODO change all
+# TODO Compare clock accuracy between host and device
+# TODO Bus error rate
 
 import time
 import random
@@ -154,7 +155,7 @@ def extract_timestamp_from_tx_event(msg: bytes) -> int:
 def calc_timestamp_diff(ts_new: int, ts_old: int) -> int:
     """Calculate timestamp difference with 66ms period compensation.
     
-    Timestamp counter resets at 3600000000 us.
+    Timestamp counter resets at 3600_000_000 us.
     Returns difference in microseconds.
     """
     if ts_new >= ts_old:
@@ -164,10 +165,20 @@ def calc_timestamp_diff(ts_new: int, ts_old: int) -> int:
         return (TIMESTAMP_PERIOD_US - ts_old) + ts_new
 
 
+def print_status_check(stats: dict):
+    """Print status check results."""
+    print(f"status check: {stats['st_checked']} samples")
+    print(f"  no error: {stats['st_no_error_count']}")
+    print(f"  buffer error: {stats['st_buf_error_count']}")
+    print(f"  can bus error: {stats['st_can_error_count']}")
+    print("")
+
+
 def print_timestamp_verification(stats: dict):
     """Print timestamp verification results."""
     if stats["ts_verified"] == 0:
-        print("timestamp verification: 0 samples (need at least 2)")
+        print("timestamp verification: 0 samples (need at least 1)")
+        print("")
         return
     
     avg_error = stats["ts_error_sum"] / stats["ts_verified"]
@@ -201,6 +212,13 @@ def main():
     data_write = make_data_to_write()
 
     stats = {
+        "tx_requests": 0,
+        "tx_complete": 0,
+        "st_checked": 0,
+        "st_no_error_count": 0,
+        "st_buf_error_count": 0,
+        "st_can_error_count": 0,
+        "st_can_error_count": 0,
         "ts_verified": 0,
         "ts_error_sum": 0,
         "ts_error_max": 0,
@@ -232,7 +250,23 @@ def main():
                 msg = pending_rx[:delimiter_index + 1]
                 pending_rx = pending_rx[delimiter_index + 1:]
 
+                if msg.startswith(b"F"):
+                    stats["st_checked"] += 1
+                    if len(msg) >= 3:
+                        flags = int(msg[1:3].decode(), 16)
+                        if flags & 0b00001011:
+                            print("WARNING: Buffer error detected in status check message:", msg.strip())
+                            stats["st_buf_error_count"] += 1
+                        elif flags & 0b10110100:
+                            print("WARNING: CAN bus error detected in status check message:", msg.strip())
+                            stats["st_can_error_count"] += 1
+                        else:
+                            stats["st_no_error_count"] += 1
+                    else:
+                        print("WARNING: Malformed status check message (too short):", msg.strip())
+
                 if msg.startswith(b"Z"):
+                    stats["tx_complete"] += 1
                     device_ts = extract_timestamp_from_tx_event(msg)
                     if device_ts < 0:
                         print("The script is aborting.")
@@ -270,10 +304,17 @@ def main():
 
             device.write(b"F\r")    # Status check
             device.write(data_write)
+            stats["tx_requests"] += 1
 
         if ms > tick_stats:
             tick_stats = ms + STATS_INTERVAL_MS
 
+            print("")
+            print(f"--- Stats at {(ms - tick_start) / 3600 / 1000:.3f} hours ---")
+            print("")
+            print(f"sent frames: {stats["tx_complete"]} / {stats["tx_requests"]}")
+            print("")
+            print_status_check(stats)
             print_timestamp_verification(stats)
 
         if ms > tick_end:
@@ -286,4 +327,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
+        # TODO close USB port cleanly
         pass
