@@ -243,6 +243,9 @@ def main():
         if chunk:
             pending_rx += chunk
             while True:
+                while pending_rx.startswith(b"\a"):
+                    pending_rx = pending_rx[1:]
+
                 delimiter_index = pending_rx.find(b"\r")
                 if delimiter_index == -1:
                     break
@@ -255,10 +258,10 @@ def main():
                     if len(msg) >= 3:
                         flags = int(msg[1:3].decode(), 16)
                         if flags & 0b00001011:
-                            print("WARNING: Buffer error detected in status check message:", msg.strip())
+                            #print("WARNING: Buffer error detected in status check message:", msg.strip())
                             stats["st_buf_error_count"] += 1
                         elif flags & 0b10110100:
-                            print("WARNING: CAN bus error detected in status check message:", msg.strip())
+                            #print("WARNING: CAN bus error detected in status check message:", msg.strip())
                             stats["st_can_error_count"] += 1
                         else:
                             stats["st_no_error_count"] += 1
