@@ -13,6 +13,9 @@ import time
 import argparse
 import serial
 
+ROUND_TRIP_TIME_SAMPLES = 5
+STATS_INTERVAL_MS = 60_000
+
 def get_argparser():
     """Get argument parser for this script."""
     parser = argparse.ArgumentParser(
@@ -94,10 +97,21 @@ def setup_device_under_test(dev: serial.Serial, mode: str):
         print("can port status: closed")
 
 
-def print_round_trip_time(dev: serial.Serial):
-    """Measure and print round-trip time."""
+def cleanup_device_under_test(dev: serial.Serial):
+    """Close the device cleanly at the end of the test."""
+    dev.write(b"C\r")
+    time.sleep(0.1)
+    dev.read_all()
+    dev.close()
+
+
+def print_round_trip_time(dev: serial.Serial) -> int:
+    """Print round-trip time. Return average RTT in us.
+    
+    Returns -1 on error.
+    """
     rtt = []
-    for _ in range(0, 5):
+    for _ in range(0, ROUND_TRIP_TIME_SAMPLES):
         # Use perf_counter for better resolution (RTT is expected to be less than ms)
         time_start = time.perf_counter()
         dev.write(b"\r")
@@ -106,6 +120,12 @@ def print_round_trip_time(dev: serial.Serial):
         rtt.append(int((time_end - time_start) * 1000 * 1000))
 
     print("ping:", rtt, "us")
+    print("")
+
+    if len(rtt) == 0:
+        return -1
+
+    return sum(rtt) // len(rtt)
 
 
 def make_data_to_write(mode: str, chunk_size: int) -> bytes:
@@ -230,14 +250,12 @@ def main():
             tick_next = ms + 100    # Off time to retrieve remaining data in buffer.
             phase_tx = False
 
-    device.write(b"C\r")
-    time.sleep(0.1)
-    device.read_all()
-    device.close()
+    cleanup_device_under_test(device)
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
+        # TODO close USB port cleanly
         pass
