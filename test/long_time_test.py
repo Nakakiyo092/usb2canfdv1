@@ -20,8 +20,10 @@ import random
 import argparse
 import serial
 
-TIMESTAMP_PERIOD_US = 3600 * 1000 * 1000
-TIMESTAMP_DIFF_THRESHOLD_US = 0xFFFF / 2
+ROUND_TRIP_TIME_SAMPLES = 5
+STATS_INTERVAL_MS = 60_000
+TIMESTAMP_PERIOD_US = 3600_000_000
+TIMESTAMP_DIFF_THRESHOLD_US = 0xFFFF // 2
 
 def get_argparser():
     """Get argument parser for this script."""
@@ -34,27 +36,14 @@ def get_argparser():
         help="device name like COM9 or /dev/ttyACM0 (required)"
     )
     parser.add_argument(
-        "-i", "--iteration",
-        type=int,
-        default=0,
-        help="number of iterations to test (0 for infinite)"
-    )
-    parser.add_argument(
         "-d", "--duration",
         type=int,
         default=1,
         help="time to test in hours"
     )
     parser.add_argument(
-        "-c", "--chunk-size",
-        type=int,
-        default=1,
-        help="number of times the base message is repeated to form one tx chunk"
-    )
-    parser.add_argument(
         "-w", "--with-receiver",
-        type=bool,
-        default=False,
+        action="store_true",
         help="run the test with another device receiving the messages"
     )
     return parser
@@ -100,6 +89,16 @@ def setup_device_under_test(dev: serial.Serial, with_receiver: bool):
         dev.read_all()
         print("can port status: open/loopback (1M/5Mbps)")
 
+    print("")
+
+
+def cleanup_device_under_test(dev: serial.Serial):
+    """Close the device cleanly at the end of the test."""
+    dev.write(b"C\r")
+    time.sleep(0.1)
+    dev.read_all()
+    dev.close()
+
 
 def print_round_trip_time(dev: serial.Serial) -> int:
     """Print round-trip time. Return average RTT in us.
@@ -107,7 +106,7 @@ def print_round_trip_time(dev: serial.Serial) -> int:
     Returns -1 on error.
     """
     rtt = []
-    for _ in range(0, 5):
+    for _ in range(0, ROUND_TRIP_TIME_SAMPLES):
         # Use perf_counter for better resolution (RTT is expected to be less than ms)
         time_start = time.perf_counter()
         dev.write(b"\r")
@@ -116,11 +115,12 @@ def print_round_trip_time(dev: serial.Serial) -> int:
         rtt.append(int((time_end - time_start) * 1000 * 1000))
 
     print("ping:", rtt, "us")
+    print("")
 
     if len(rtt) == 0:
         return -1
 
-    return sum(rtt) / len(rtt)
+    return sum(rtt) // len(rtt)
 
 
 def make_data_to_write() -> bytes:
@@ -178,6 +178,7 @@ def print_timestamp_verification(stats: dict):
     print(f"  average error: {avg_error:.1f} us")
     print(f"  max error: {max_error} us")
     print(f"  failures (>{TIMESTAMP_DIFF_THRESHOLD_US} us): {failure_count}")
+    print("")
 
 
 def main():
@@ -190,13 +191,12 @@ def main():
     except Exception as err:
         print("ERROR: Could not open device ", args.devicename)
         print(err)
+        print("")
         print("The script is aborting.")
         return
 
     setup_device_under_test(device, args.with_receiver)
-    print("")
     rtt = print_round_trip_time(device)
-    print("")
 
     data_write = make_data_to_write()
 
@@ -216,7 +216,7 @@ def main():
 
     tick_start = int(round(time.time() * 1000))
     tick_tx = tick_start
-    tick_stats = tick_start + 1000 * 60  # First stats output after 60 seconds
+    tick_stats = tick_start + STATS_INTERVAL_MS
     tick_end = tick_start + 1000 * 3600 * args.duration
 
     while True:
@@ -272,19 +272,14 @@ def main():
             device.write(data_write)
 
         if ms > tick_stats:
-            tick_stats = ms + 1000 * 60  # Print stats every 60 seconds
+            tick_stats = ms + STATS_INTERVAL_MS
 
             print_timestamp_verification(stats)
-            print("")
 
         if ms > tick_end:
             break
 
-    device.write(b"C\r")
-    time.sleep(0.1)
-    device.read_all()
-    device.close()
-
+    cleanup_device_under_test(device)
 
 
 if __name__ == "__main__":
