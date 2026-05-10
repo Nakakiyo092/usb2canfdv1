@@ -240,6 +240,7 @@ def main():
     stats = {
         "tx_requests": 0,
         "tx_complete": 0,
+        "tx_rejected": 0,
         "st_checked": 0,
         "st_no_error_count": 0,
         "st_buf_error_count": 0,
@@ -279,6 +280,7 @@ def main():
             while True:
                 while pending_rx.startswith(b"\a"):
                     pending_rx = pending_rx[1:]
+                    stats["tx_rejected"] += 1   # Maybe NACK for F but NACK for frame is more likely.
 
                 delimiter_index = pending_rx.find(b"\r")
                 if delimiter_index == -1:
@@ -357,18 +359,18 @@ def main():
                     device_ts_prev = device_ts
 
         ms = int(round(time.time() * 1000))
-        if ms > tick_tx:
-            rnd = random.randint(0, 100)
-            if rnd <= 90:
+        if ms >= tick_tx:
+            rnd = random.randint(1, 1000)
+            if rnd <= 20:
                 # Short delay to check max 2 compensation as a most likely case (66ms * 2 = 132ms)
                 tick_tx = ms + random.randint(0, 150)
-            elif rnd <= 95:
-                # Long delay to check max ~100 compensation as an extreme case (66ms * 100 = 6600ms)
+            elif rnd <= 999:
+                # No delay to stress the buffer and increase the number of frames as an extreme case
+                tick_tx = ms + 0
+            else:
+                # Long delay to check max ~100 compensation as another extreme case (66ms * 100 = 6600ms)
                 # The rough device clock accuracy (0.5%) limits the max duration to around 66ms / 2 / 0.005 = 6600ms.
                 tick_tx = ms + random.randint(0, 6600)
-            else:
-                # No delay to stress the buffer and increase the number of frames as another extreme case
-                tick_tx = ms + 0
 
             # Record host TX timestamp in us (perf_counter returns seconds, convert to us)
             host_tx_time_us_list.append(int(round(time.perf_counter() * 1000 * 1000)))
@@ -377,19 +379,19 @@ def main():
             stats["tx_requests"] += 1
             device.write(b"F\r")        # Status check
 
-        if ms > tick_stats:
+        if ms >= tick_stats:
             tick_stats = ms + STATS_INTERVAL_MS
 
             print("")
             print(f"--- Stats at {(ms - tick_start) / 3600 / 1000:.3f} hours ---")
             print("")
-            print(f"sent frames: {stats["tx_complete"]} / {stats["tx_requests"]}")
+            print(f"sent frames: {stats["tx_complete"]} / {stats["tx_requests"]} (-{stats["tx_rejected"]})")
             print("")
             print_status_check(stats)
             print_timestamp_verification(stats)
             print_clock_accuracy(stats)
 
-        if ms > tick_end:
+        if ms >= tick_end:
             break
 
     cleanup_device_under_test(device)
