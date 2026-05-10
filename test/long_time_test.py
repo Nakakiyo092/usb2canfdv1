@@ -18,10 +18,13 @@ import random
 import argparse
 import serial
 
+
 ROUND_TRIP_TIME_SAMPLES = 10
 STATS_INTERVAL_MS = 60_000
 TIMESTAMP_PERIOD_US = 3600_000_000
 TIMESTAMP_DIFF_THRESHOLD_US = 0xFFFF // 2
+RTT_SAFETY_MARGIN = 6   # Six sigma
+
 
 def get_argparser():
     """Get argument parser for this script."""
@@ -99,8 +102,9 @@ def cleanup_device_under_test(dev: serial.Serial):
 
 
 def print_round_trip_time(dev: serial.Serial) -> int:
-    """Print round-trip time. Return average RTT in us.
+    """Print round-trip time.
     
+    Returns average RTT in us.
     Returns -1 on error.
     """
     rtt = []
@@ -110,23 +114,25 @@ def print_round_trip_time(dev: serial.Serial) -> int:
         dev.write(b"\r")
         dev.read_until(b"\r")
         time_end = time.perf_counter()
-        rtt.append(int((time_end - time_start) * 1000 * 1000))
+        rtt.append(int((time_end - time_start) * 1000 * 1000))  # Convert sec to us
 
     print("ping:", rtt, "us")
-    if 6 * sum(rtt) // len(rtt) > TIMESTAMP_DIFF_THRESHOLD_US:  # Six sigma
-        print("WARNING: The round trip time is too large to verify the timestamp.")
-    print("")
 
     if len(rtt) == 0:
         return -1
 
-    return sum(rtt) // len(rtt)
+    ave_rtt = sum(rtt) // len(rtt)
+    if RTT_SAFETY_MARGIN * ave_rtt > TIMESTAMP_DIFF_THRESHOLD_US:
+        print("WARNING: The round trip time is too large to verify the timestamp.")
+    print("")
+
+    return ave_rtt
 
 
 def make_data_to_write() -> bytes:
     """Make data to write to device."""
     single_msg = b"00112233445566778899AABBCCDDEEFF"
-    single_msg = b"B00000000F" + single_msg * 4 + b"\r"
+    single_msg = b"B00000000F" + single_msg * 4 + b"\r" # a frame with 64 bytes data
 
     data_write = single_msg
 
@@ -134,13 +140,13 @@ def make_data_to_write() -> bytes:
 
 
 def extract_timestamp_from_tx_event(msg: bytes) -> int:
-    """Extract 4-byte microsecond timestamp from TX event message.
+    """Extract 4-byte us timestamp from TX event message.
     
-    TX Event format: b'Z' + frame_data + timestamp_hex(8 chars)
-    Returns timestamp in microseconds (0-3,600,000,000).
+    TX Event format: b'Z' + frame_data + timestamp_hex(8 chars) + b'\r'
+    Returns timestamp in us (0-3,600,000,000).
     Returns -1 on error.
     """
-    if len(msg) < 10 or msg[0:1] != b"Z":
+    if len(msg) < len(b"ZTTTTTTTT\r") or msg[0:1] != b"Z":
         return -1
     
     try:
@@ -152,10 +158,10 @@ def extract_timestamp_from_tx_event(msg: bytes) -> int:
 
 
 def calc_timestamp_diff(ts_new: int, ts_old: int) -> int:
-    """Calculate timestamp difference with 66ms period compensation.
+    """Calculate timestamp difference with 1 hour period compensation.
     
     Timestamp counter resets at 3600_000_000 us.
-    Returns difference in microseconds.
+    Returns difference in us.
     """
     if ts_new >= ts_old:
         return ts_new - ts_old
@@ -199,11 +205,12 @@ def print_clock_accuracy(stats: dict):
         print("clock accuracy: 0 samples (need at least 1)")
         print("")
         return
+
     print(f"clock accuracy: {stats['clock_duration'] // 1000_000} sec")
-    print(f"  clock offset: {stats['clock_drift'] / 1000:.3f} ms")
+    print(f"  clock offset: {stats['clock_offset'] / 1000:.3f} ms")
     if stats['clock_duration'] > 0:
-        print(f"  drift upper bound: {stats['clock_drift_upper_bound'] / stats['clock_duration'] * 1000_000:.3f} ppm")
-        print(f"  drift lower bound: {stats['clock_drift_lower_bound'] / stats['clock_duration'] * 1000_000:.3f} ppm")
+        print(f"  drift upper bound: {stats['clock_offset_upper_bound'] / stats['clock_duration'] * 1000_000:.3f} ppm")
+        print(f"  drift lower bound: {stats['clock_offset_lower_bound'] / stats['clock_duration'] * 1000_000:.3f} ppm")
     else:
         print(f"  drift upper bound: N/A ppm")
         print(f"  drift lower bound: N/A ppm")
@@ -237,16 +244,15 @@ def main():
         "st_no_error_count": 0,
         "st_buf_error_count": 0,
         "st_can_error_count": 0,
-        "st_can_error_count": 0,
         "ts_verified": 0,
         "ts_error_sum": 0,
         "ts_error_max": 0,
         "ts_failure_count": 0,
         "clock_samples": 0,
-        "clock_drift": 0,
+        "clock_offset": 0,
         "clock_duration": 0,
-        "clock_drift_upper_bound": 0,
-        "clock_drift_lower_bound": 0,
+        "clock_offset_upper_bound": 0,
+        "clock_offset_lower_bound": 0,
     }
 
     # Timestamp tracking
@@ -256,12 +262,14 @@ def main():
     device_ts = -1
     device_ts_initial = -1
     device_ts_prev = -1
+
     pending_rx = b""
 
     tick_start = int(round(time.time() * 1000))
     tick_tx = tick_start
     tick_stats = tick_start + STATS_INTERVAL_MS
-    tick_end = tick_start + 1000 * 3600 * args.duration
+    tick_end = tick_start + 3600 * 1000 * args.duration     # Hours to ms
+    tick_end += 2 * STATS_INTERVAL_MS   # Add extra time to print the last stats
 
     while True:
         # Read and process incoming message.
@@ -323,17 +331,17 @@ def main():
                         while drift_us < -3600_000_000 // 2:
                             drift_us += 3600_000_000
                         # Supposed initial RTT is 0 and current RTT is 2 * ave. RTT (or reverse) as the worst case.
-                        # Then include safety margin (six sigma) as the RTT can sometimes be much higher than the average (like x10).
-                        drift_upper_bound_us = abs(drift_us) + 6 * 2 * rtt
-                        drift_lower_bound_us = abs(drift_us) - 6 * 2 * rtt
+                        # Then include safety margin as the RTT can sometimes be much higher than the average (like x10).
+                        drift_upper_bound_us = abs(drift_us) + RTT_SAFETY_MARGIN * 2 * rtt
+                        drift_lower_bound_us = abs(drift_us) - RTT_SAFETY_MARGIN * 2 * rtt
                         if drift_lower_bound_us < 0:
                             drift_lower_bound_us = 0
 
                         stats["clock_samples"] += 1
-                        stats["clock_drift"] = drift_us
+                        stats["clock_offset"] = drift_us
                         stats["clock_duration"] = host_interval_us
-                        stats["clock_drift_upper_bound"] = drift_upper_bound_us
-                        stats["clock_drift_lower_bound"] = drift_lower_bound_us
+                        stats["clock_offset_upper_bound"] = drift_upper_bound_us
+                        stats["clock_offset_lower_bound"] = drift_lower_bound_us
 
                     # Store initial timestamp if we have the first values
                     elif host_tx_time_us_list:
@@ -362,12 +370,12 @@ def main():
                 # No delay to stress the buffer and increase the number of frames as another extreme case
                 tick_tx = ms + 0
 
-            # Record host TX timestamp in microseconds (perf_counter returns seconds, convert to us)
+            # Record host TX timestamp in us (perf_counter returns seconds, convert to us)
             host_tx_time_us_list.append(int(round(time.perf_counter() * 1000 * 1000)))
 
-            device.write(b"F\r")    # Status check
-            device.write(data_write)
+            device.write(data_write)    # Tx a frame
             stats["tx_requests"] += 1
+            device.write(b"F\r")        # Status check
 
         if ms > tick_stats:
             tick_stats = ms + STATS_INTERVAL_MS

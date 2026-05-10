@@ -13,8 +13,10 @@ import time
 import argparse
 import serial
 
+
 ROUND_TRIP_TIME_SAMPLES = 5
 STATS_INTERVAL_MS = 60_000
+
 
 def get_argparser():
     """Get argument parser for this script."""
@@ -96,6 +98,8 @@ def setup_device_under_test(dev: serial.Serial, mode: str):
     else:
         print("can port status: closed")
 
+    print("")
+
 
 def cleanup_device_under_test(dev: serial.Serial):
     """Close the device cleanly at the end of the test."""
@@ -106,8 +110,9 @@ def cleanup_device_under_test(dev: serial.Serial):
 
 
 def print_round_trip_time(dev: serial.Serial) -> int:
-    """Print round-trip time. Return average RTT in us.
+    """Print round-trip time.
     
+    Returns average RTT in us.
     Returns -1 on error.
     """
     rtt = []
@@ -134,7 +139,7 @@ def make_data_to_write(mode: str, chunk_size: int) -> bytes:
         single_msg = b"v\r"    # TODO: V[CR] option for wider support
     else:
         single_msg = b"00112233445566778899AABBCCDDEEFF"
-        single_msg = b"B00000000F" + single_msg * 4 + b"\r"
+        single_msg = b"B00000000F" + single_msg * 4 + b"\r" # a frame with 64 bytes data
 
     data_write = b""
     for _ in range(0, chunk_size):
@@ -161,6 +166,7 @@ def print_speed_and_loss(stats: dict, duration: int):
         print("rx speed: ", f"{rx_speed:8.2f}", "kB/s\t", f"{rx_speed * 8:8.2f}", "kbits/s")
 
     print("message loss: ", stats["tx_msg"] - stats["rx_msg"], " / ", stats["tx_msg"])
+    print("")
 
 
 def print_device_status(dev: serial.Serial):
@@ -182,6 +188,8 @@ def print_device_status(dev: serial.Serial):
     if resp != "\a":
         print("   ", resp)
 
+    print("")
+
 
 def main():
     """Main function."""
@@ -198,9 +206,7 @@ def main():
         return
 
     setup_device_under_test(device, mode)
-    print("")
     print_round_trip_time(device)
-    print("")
 
     data_write = make_data_to_write(mode, args.chunk_size)
 
@@ -229,9 +235,7 @@ def main():
         ms = int(round(time.time() * 1000))
         if ms > tick_next and not phase_tx:
             print_speed_and_loss(stats, args.duration)
-            print("")
             print_device_status(device)
-            print("")
 
             for key in stats:
                 stats[key] = 0
