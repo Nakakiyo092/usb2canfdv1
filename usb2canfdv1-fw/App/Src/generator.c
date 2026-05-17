@@ -199,6 +199,11 @@ uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_even
     else
         buf[0] = 'Z';
 
+    // Deliberately reuse slcan_generate_frame by mapping Tx event fields into
+    // an FDCAN_RxHeaderTypeDef. The two HAL structs share the same field names
+    // for the data we need (Identifier, IdType, DataLength, etc.), so the
+    // mapping is 1-to-1.  If a future HAL update renames or reorders these
+    // fields the compiler will catch the mismatch.
     FDCAN_RxHeaderTypeDef frame_header;
     frame_header.Identifier = tx_event->Identifier;
     frame_header.IdType = tx_event->IdType;
