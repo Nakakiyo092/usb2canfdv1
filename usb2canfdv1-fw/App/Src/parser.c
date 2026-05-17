@@ -34,7 +34,8 @@
 #include "bootloader.h"
 #endif
 
-#define SLCAN_VERSION   "VW1K4"
+#define SLCAN_VERSION       "VW1K4"
+#define SLCAN_SW_VERSION    "2.1.0"
 #define SLCAN_RET_OK    ((uint8_t*)"\r")
 #define SLCAN_RET_ERR   ((uint8_t*)"\a")
 #define SLCAN_RET_LEN   (1)
@@ -45,7 +46,7 @@ static char *hw_sw_ver = SLCAN_VERSION "\r";
 #else
 static char *hw_sw_ver = SLCAN_VERSION "-DEBUG\r";
 #endif
-static char *hw_sw_ver_detail = "v: hardware=\"USB2CANFDV1\", software=\"" "2.1.0" "\", url=\"" "github.com/Nakakiyo092/usb2canfdv1" "\"\r";
+static char *hw_sw_ver_detail = "v: hardware=\"USB2CANFDV1\", software=\"" SLCAN_SW_VERSION "\", url=\"" "github.com/Nakakiyo092/usb2canfdv1" "\"\r";
 static char *can_info = "I3050\r";
 static char *can_info_detail = "i: protocol=\"ISO-CANFD\", clock_mhz=80, controller=\"STM32G0B1CB\"\r";
 
