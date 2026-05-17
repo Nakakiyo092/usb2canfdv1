@@ -622,6 +622,7 @@ HAL_StatusTypeDef can_set_mode(uint32_t mode)
         // cannot set mode while on bus
         return HAL_ERROR;
     }
+    if (!IS_FDCAN_MODE(mode)) return HAL_ERROR;
     can_mode = mode;
 
     return HAL_OK;
