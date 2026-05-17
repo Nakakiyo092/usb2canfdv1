@@ -117,7 +117,7 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
     {
         // Use current time instead of frame timestamp
         // By this way the complex compensation for TIM3 overflow is not needed
-        // and the main loop delya at most ~300us will not greatly affect the timestamp correctness.
+        // and the main loop delay at most ~300us will not greatly affect the timestamp correctness.
         uint16_t timestamp_ms = slcan_get_timestamp_ms();
 
         buf[msg_idx++] = slcan_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
@@ -216,7 +216,7 @@ uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_even
 
 
 // Gets milli second timestamp for the current time (2bytes, Resets at 60,000ms)
-// This implementation will breake if the timesatamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
+// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
 uint16_t slcan_get_timestamp_ms(void)
 {
     static uint16_t slcan_last_timestamp_ms = 0;
@@ -234,7 +234,7 @@ uint16_t slcan_get_timestamp_ms(void)
 }
 
 // Gets micro second timestamp for the time tim3_us was taken (4bytes, Resets at 3600,000,000us)
-// This implementation will breake if the timesatamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
+// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
 // The calculation is based on the tim3 clock and the ms tick.
 // The tim3_us does not have to be the current value but supposed to be close to it (like ~1ms).
 // The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX / 2 ~ 30ms.
