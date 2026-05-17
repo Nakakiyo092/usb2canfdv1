@@ -23,6 +23,8 @@
 #ifndef _CAN_H
 #define _CAN_H
 
+#include "stm32g0xx_hal.h"
+
 // Classic CAN / CANFD nominal bitrates
 enum CanBitrateNominal
 {
