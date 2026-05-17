@@ -520,14 +520,14 @@ struct CanBitrateCfg can_get_bitrate_cfg(void)
 HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint32_t mask)
 {
     HAL_StatusTypeDef ret = HAL_OK;
-    
+
     if (can_bus_state == BUS_OPENED) return HAL_ERROR;
     if (state == ENABLE)
         can_std_filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
     else if (state == DISABLE)
         can_std_filter.FilterConfig = FDCAN_FILTER_DISABLE;
     else
-        ret = HAL_ERROR;
+        return HAL_ERROR;
 
     if (code > 0x7FF)
         ret = HAL_ERROR;
@@ -538,7 +538,7 @@ HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint3
         ret = HAL_ERROR;
     else
         can_std_filter.FilterID2 = mask;
-    
+
     return ret;
 }
 
@@ -546,14 +546,14 @@ HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint3
 HAL_StatusTypeDef can_set_filter_ext(FunctionalState state, uint32_t code, uint32_t mask)
 {
     HAL_StatusTypeDef ret = HAL_OK;
-    
+
     if (can_bus_state == BUS_OPENED) return HAL_ERROR;
     if (state == ENABLE)
         can_ext_filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
     else if (state == DISABLE)
         can_ext_filter.FilterConfig = FDCAN_FILTER_DISABLE;
     else
-        ret = HAL_ERROR;
+        return HAL_ERROR;
 
     if (code > 0x1FFFFFFF)
         ret = HAL_ERROR;
@@ -564,7 +564,7 @@ HAL_StatusTypeDef can_set_filter_ext(FunctionalState state, uint32_t code, uint3
         ret = HAL_ERROR;
     else
         can_ext_filter.FilterID2 = mask;
-    
+
     return ret;
 }
 
