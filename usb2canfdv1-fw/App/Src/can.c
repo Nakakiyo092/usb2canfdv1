@@ -658,7 +658,7 @@ FunctionalState can_is_tx_enabled(void)
 {
     if (can_bus_state == BUS_CLOSED)
         return DISABLE;
-    else if (hfdcan1.Init.Mode == FDCAN_MODE_BUS_MONITORING)
+    else if (can_mode == FDCAN_MODE_BUS_MONITORING)
         return DISABLE;
     else if (can_error_state.bus_off)
         return DISABLE;
