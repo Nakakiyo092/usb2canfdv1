@@ -73,6 +73,8 @@ void buf_init(void)
     buf_can_tx.send = 0;
     buf_can_tx.tail = 0;
     buf_can_tx.full = 0;
+
+    slcan_str_index = 0;
 }
 
 // Process
