@@ -69,7 +69,7 @@ static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
 // Private methods
 static void can_update_bit_time_ns(void);
 static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader);
-static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pRxHeader);
+static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent);
 
 // Initialize CAN peripheral settings, but don't actually start the peripheral
 void can_init(void)
