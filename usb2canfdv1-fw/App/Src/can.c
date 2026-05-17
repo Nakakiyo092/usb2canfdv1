@@ -42,6 +42,10 @@
 #define CAN_ROOT_CLOCK_MHZ              80
 #define CAN_BUS_LOAD_CYCLE_MS           100
 
+// Threshold for enabling Tx delay compensation
+// The offset value 0x28 corresponds to bitrate ~ 1Mbps @ 50% sampling point or ~ 2Mbps @ 100%.
+#define CAN_TDC_ENABLE_THRESHOLD        0x28
+
 // Public variable
 uint8_t can_dlc_to_bytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
 
@@ -141,10 +145,9 @@ HAL_StatusTypeDef can_enable(void)
         if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) return HAL_ERROR;
 
         // Setup Tx delay compensation
-        // The offset value 0x28 corresponds to bitrate ~ 1Mbps @ 50% sampling point or ~ 2Mbps @ 100%.
         // Turn off for <= 1Mbps and Turn on for >= 2Mbps
         uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
-        if (offset <= 0x28)
+        if (offset <= CAN_TDC_ENABLE_THRESHOLD)
         {
             // Follow the recommended values in the link.
             // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
