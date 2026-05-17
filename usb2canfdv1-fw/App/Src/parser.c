@@ -414,13 +414,15 @@ void slcan_parse_str_close(uint8_t *buf, uint8_t len)
     
     // Close CAN port
     if (can_disable() == HAL_OK)
+    {
         buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+
+        // Reset variables
+        slcan_clear_error();
+        can_clear_cycle_time();
+    }
     else
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-
-    // Reset variables
-    slcan_clear_error();
-    can_clear_cycle_time();
 
     return;
 }
