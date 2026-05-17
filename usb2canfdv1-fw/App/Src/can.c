@@ -511,7 +511,7 @@ struct CanBitrateCfg can_get_data_bitrate_cfg(void)
 }
 
 // Get the nominal bitrate configuration of the CAN peripheral
-struct CanBitrateCfg can_get_bitrate_cfg(void)
+struct CanBitrateCfg can_get_nominal_bitrate_cfg(void)
 {
     return can_bit_cfg_nominal;
 }

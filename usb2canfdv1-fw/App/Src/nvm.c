@@ -208,11 +208,11 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
     // Make raw data for nominal bitrate
     uint64_t nom_bitrate = 0;
 
-    if (0xFF < can_get_bitrate_cfg().prescaler) return HAL_ERROR;
-    nom_bitrate = (nom_bitrate | (uint64_t)can_get_bitrate_cfg().prescaler);
-    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_bitrate_cfg().time_seg1 << 8));
-    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_bitrate_cfg().time_seg2 << 16));
-    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_bitrate_cfg().sjw << 24));
+    if (0xFF < can_get_nominal_bitrate_cfg().prescaler) return HAL_ERROR;
+    nom_bitrate = (nom_bitrate | (uint64_t)can_get_nominal_bitrate_cfg().prescaler);
+    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_nominal_bitrate_cfg().time_seg1 << 8));
+    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_nominal_bitrate_cfg().time_seg2 << 16));
+    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_nominal_bitrate_cfg().sjw << 24));
     nom_bitrate = NVM_WRITE_MEM_STS(nom_bitrate);
 
     // Make raw data for data bitrate

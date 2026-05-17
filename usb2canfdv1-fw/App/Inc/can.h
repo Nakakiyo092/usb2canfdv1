@@ -99,7 +99,7 @@ HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate);
 HAL_StatusTypeDef can_set_data_bitrate(enum CanBitrateData bitrate);
 HAL_StatusTypeDef can_set_nominal_bitrate_cfg(struct CanBitrateCfg bitrate_cfg);
 HAL_StatusTypeDef can_set_data_bitrate_cfg(struct CanBitrateCfg bitrate_cfg);
-struct CanBitrateCfg can_get_bitrate_cfg(void);
+struct CanBitrateCfg can_get_nominal_bitrate_cfg(void);
 struct CanBitrateCfg can_get_data_bitrate_cfg(void);
 
 // Filter functions
