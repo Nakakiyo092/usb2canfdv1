@@ -162,7 +162,7 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
     return msg_idx;
 }
 
-// Parse an incoming CAN frame into an outgoing slcan message
+// Generate an outgoing slcan message from an incoming CAN frame
 // Returns number of bytes written into buf
 //  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
 //  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
@@ -181,7 +181,7 @@ uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_head
     return len;
 }
 
-// Parse an incoming Tx event into an outgoing slcan message
+// Generate an outgoing slcan message from an incoming Tx event
 // Returns number of bytes written into buf
 //  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
 //  MAX: SLCAN_MTU - 16 (padding)
