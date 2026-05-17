@@ -100,7 +100,7 @@ enum SlcanFilterMode slcan_get_filter_mode(void);
 uint32_t slcan_get_filter_code(void);
 uint32_t slcan_get_filter_mask(void);
 
-void slcan_set_timestamp_mode(enum SlcanTimestampMode mode);
+HAL_StatusTypeDef slcan_set_timestamp_mode(enum SlcanTimestampMode mode);
 void slcan_set_report_mode(uint16_t reg);
 enum SlcanTimestampMode slcan_get_timestamp_mode(void);
 uint16_t slcan_get_report_mode(void);

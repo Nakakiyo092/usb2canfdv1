@@ -382,11 +382,14 @@ void slcan_set_report_mode(uint16_t reg)
     slcan_report_reg = reg;
     return;
 }
-void slcan_set_timestamp_mode(enum SlcanTimestampMode mode)
+HAL_StatusTypeDef slcan_set_timestamp_mode(enum SlcanTimestampMode mode)
 {
     if (mode < SLCAN_TIMESTAMP_INVALID)
         slcan_timestamp_mode = mode;
-    return;
+    else
+        return HAL_ERROR;
+
+    return HAL_OK;
 }
 enum SlcanTimestampMode slcan_get_timestamp_mode(void)
 {

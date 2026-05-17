@@ -135,7 +135,8 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     if (SLCAN_TIMESTAMP_INVALID <= timestamp_mode)
         return HAL_ERROR;
 
-    slcan_set_timestamp_mode(timestamp_mode);
+    if (slcan_set_timestamp_mode(timestamp_mode) != HAL_OK)
+        return HAL_ERROR;
 
     uint16_t report_reg = (uint16_t)((nvm_stp_config_raw >> 24) & 0xFFFF);
     slcan_set_report_mode(report_reg);
