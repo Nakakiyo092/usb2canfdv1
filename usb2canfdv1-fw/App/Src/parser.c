@@ -73,6 +73,8 @@ static void slcan_parse_str_debug(uint8_t *buf, uint8_t len);
 // Parse an incoming slcan command from the USB CDC port
 void slcan_parse_str(uint8_t *buf, uint8_t len)
 {
+    // msg_marker is intentionally not reset on Close/Open cycles: buf_release_can_until()
+    // matches by value, so any non-overlapping starting point is valid.
     static uint8_t msg_marker = 0;
 
     // Reply OK to a blank command
