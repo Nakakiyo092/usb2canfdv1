@@ -38,14 +38,14 @@ static uint16_t slcan_report_reg = 1;   // Default: no timestamp, no ESI, no Tx,
 static uint8_t slcan_status_flags = 0;
 
 // Private methods
-static uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data);
+static uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
 static HAL_StatusTypeDef slcan_configure_filter(void);
 
 // Generate a slcan message from a CAN frame
 // Returns number of bytes written into buf
 //  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
 //  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
-uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data)
+uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data)
 {
     // Start building the slcan message string at idx 0 in buf
     uint16_t msg_idx = 0;
@@ -166,7 +166,7 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
 // Returns number of bytes written into buf
 //  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
 //  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
-uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data)
+uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data)
 {
     // Check if Rx reporting is required
     if (((slcan_report_reg >> SLCAN_REPORT_RX) & 1) == 0)
@@ -185,7 +185,7 @@ uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_head
 // Returns number of bytes written into buf
 //  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
 //  MAX: SLCAN_MTU - 16 (padding)
-uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, uint8_t *frame_data)
+uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, const uint8_t *frame_data)
 {
     // Check if Tx reporting is required
     if (((slcan_report_reg >> SLCAN_REPORT_TX) & 1) == 0)

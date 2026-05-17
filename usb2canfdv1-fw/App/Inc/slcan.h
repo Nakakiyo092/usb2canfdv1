@@ -86,8 +86,8 @@ enum SlcanReportFlag
 extern const uint8_t slcan_nibble_to_ascii[];
 
 // Prototypes
-uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data);
-uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, uint8_t *frame_data);
+uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
+uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, const uint8_t *frame_data);
 uint16_t slcan_get_timestamp_ms(void);
 uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us);
 
