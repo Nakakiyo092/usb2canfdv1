@@ -698,7 +698,7 @@ void slcan_parse_str_filter_code(uint8_t *buf, uint8_t len)
 // Set filter mask
 void slcan_parse_str_filter_mask(uint8_t *buf, uint8_t len)
 {
-    // Set filter code
+    // Set filter mask
     if (can_get_bus_state() == BUS_CLOSED)
     {
         // Check for valid command
