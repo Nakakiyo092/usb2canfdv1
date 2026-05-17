@@ -203,6 +203,8 @@ HAL_StatusTypeDef can_disable(void)
 
         buf_clear_can_buffer();
 
+        can_error_state = (struct CanErrorState){0};
+
         led_turn_txd(LED_ON);
 
         can_bus_state = BUS_CLOSED;
