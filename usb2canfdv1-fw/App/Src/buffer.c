@@ -347,7 +347,7 @@ HAL_StatusTypeDef buf_commit_can_head(void)
 // Delete one frame from the can tx buffer
 HAL_StatusTypeDef buf_release_can_tail(void)
 {
-    while ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
+    if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
         return HAL_ERROR;
     }
