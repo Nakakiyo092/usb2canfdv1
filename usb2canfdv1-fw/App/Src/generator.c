@@ -27,7 +27,7 @@
 #include "slcan.h"
 
 // Public variables
-uint8_t slcan_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+const uint8_t slcan_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
 // Private variables
 static enum SlcanFilterMode slcan_filter_mode = SLCAN_FILTER_DUAL_MODE;

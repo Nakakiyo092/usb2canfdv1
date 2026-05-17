@@ -83,7 +83,7 @@ enum SlcanReportFlag
 #define SLCAN_EXT_ID_LEN    (8)
 
 // Public variables
-extern uint8_t slcan_nibble_to_ascii[];
+extern const uint8_t slcan_nibble_to_ascii[];
 
 // Prototypes
 uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data);
