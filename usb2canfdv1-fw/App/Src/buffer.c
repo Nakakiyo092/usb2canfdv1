@@ -55,8 +55,8 @@ static uint8_t slcan_str_index = 0;
 
 // Private prototypes
 static HAL_StatusTypeDef buf_release_can_tail(void);
-static void buf_disable_irq();
-static void buf_enable_irq();
+static void buf_disable_irq(void);
+static void buf_enable_irq(void);
 
 // Initializes
 void buf_init(void)
@@ -395,13 +395,13 @@ void buf_clear_can_buffer(void)
 }
 
 // Disable/Enable IRQ with memory barrier
-void buf_disable_irq()
+static void buf_disable_irq(void)
 {
     __disable_irq();
     __DSB(); // Data Synchronization Barrier
     __ISB(); // Instruction Synchronization Barrier
 }
-void buf_enable_irq()
+static void buf_enable_irq(void)
 {
     __enable_irq();
     __DSB();
