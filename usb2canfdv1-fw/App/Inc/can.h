@@ -87,6 +87,7 @@ struct CanBitrateCfg
 #define CAN_MAX_DATALEN                 64  // CAN maximum data length. Must be 64 for canfd.
 
 // Public variable
+#define CAN_DLC_TO_BYTES_SIZE           16  // Number of entries in can_dlc_to_bytes (DLC 0x0..0xF)
 extern uint8_t can_dlc_to_bytes[];
 
 // Prototypes
