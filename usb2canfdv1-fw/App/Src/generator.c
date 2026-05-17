@@ -90,7 +90,7 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
 
     // Add identifier to the buffer
     uint32_t tmp = frame_header->Identifier;
-    for (uint8_t j = msg_idx - 1; j >= 1; j--)
+    for (int8_t j = (int8_t)msg_idx - 1; j >= 1; j--)
     {
         // Add nibble to the buffer
         buf[j] = slcan_nibble_to_ascii[tmp & 0xF];
