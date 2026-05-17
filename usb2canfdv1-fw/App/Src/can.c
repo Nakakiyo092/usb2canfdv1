@@ -702,7 +702,7 @@ FDCAN_HandleTypeDef *can_get_handle(void)
 }
 
 // Get the nominal one bit time in nanoseconds
-void can_update_bit_time_ns(void)
+static void can_update_bit_time_ns(void)
 {
     // Number of time quanta (Tq) in one bit
     can_bit_time_ns = ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
@@ -715,7 +715,7 @@ void can_update_bit_time_ns(void)
 }
 
 // Return the duration of the rx frame in the nominal bit number
-uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
+static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
 {
     uint16_t time_msg, time_data;
     uint8_t data_bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(pRxHeader->DataLength)];
@@ -774,7 +774,7 @@ uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
 }
 
 // Return the duration of the tx event in the nominal bit number
-uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent)
+static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent)
 {
     FDCAN_RxHeaderTypeDef frame_header;
     //frame_header.Identifier = pTxEvent->Identifier;
