@@ -276,6 +276,7 @@ FDCAN_TxHeaderTypeDef *buf_get_can_sent_header(uint8_t marker)
         return NULL;
     }
 
+    // TODO Deduplicate marker-search logic shared with buf_get_can_sent_data (e.g., static buf_find_can_marker helper)
     uint8_t idx = buf_can_tx.tail;
     while (idx != buf_can_tx.send)
     {
@@ -312,6 +313,7 @@ uint8_t *buf_get_can_sent_data(uint8_t marker)
         return NULL;
     }
 
+    // TODO Deduplicate marker-search logic shared with buf_get_can_sent_header (e.g., static buf_find_can_marker helper)
     uint8_t idx = buf_can_tx.tail;
     while (idx != buf_can_tx.send)
     {
