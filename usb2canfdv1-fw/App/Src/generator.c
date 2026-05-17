@@ -255,11 +255,19 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     time_diff_ms = (uint32_t)(current_time_ms - slcan_last_time_ms);
     time_diff_us = (uint64_t)((uint16_t)(current_time_us - slcan_last_time_us));
 
-    if (time_diff_ms <= 1 && time_diff_us > UINT16_MAX / 2)    // TODO: Give some margin to 1ms
+    if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)
     {
-        // Assume tim3 was sampled before the last timestamp
-        // This can happen when a CAN frame is retrieved after answering a 'Z[CR]'
-        // The amount of reversal should be close to the main loop (MAX ~300us)
+        // tim3_us was sampled before slcan_last_time_us (i.e. the frame arrived
+        // slightly before the previous call).  This can happen when a CAN frame
+        // is retrieved after processing a command such as 'Z[CR]'.
+        // The reversal is small (bounded by the main-loop cycle, MAX ~300us).
+        //
+        // Let d = slcan_last_time_us - current_time_us  (positive, small).
+        // Actual elapsed time = period - d  where period = 3 600 000 000 us.
+        // So: new_timestamp = last_timestamp + (period - d)
+        //                   = last_timestamp - d  (mod period)
+        // which is computed as: 3600000000 - d
+        // and then added to slcan_last_timestamp_us modulo 3600000000 below.
         time_diff_us = (uint64_t)3600000000 - (uint16_t)(slcan_last_time_us - current_time_us);
     }
     else
