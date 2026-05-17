@@ -979,9 +979,10 @@ void slcan_parse_str_debug(uint8_t *buf, uint8_t len)
     }
 
     // Debug output - no info
-    uint8_t dbgstr[2];
+    uint8_t dbgstr[3];
     dbgstr[0] = '?';
     dbgstr[1] = '\r';
+    dbgstr[2] = '\0';
     buf_enqueue_cdc(dbgstr, strlen((char *)dbgstr));
 
     return;
