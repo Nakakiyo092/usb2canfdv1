@@ -84,7 +84,7 @@ class DeviceUnderTest:
         self.ser.close()
 
 
-    def print_data(self, direction: chr, data: bytes):
+    def print_data(self, direction: str, data: bytes):
         """Print the data in a human-readable format.
         param direction: 'T' for transmit, 'R' for receive
         """
