@@ -153,7 +153,6 @@ class BufferTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"F03\r")
 
 
-    # Check stored frames in CDC Tx buffer are not altered in order or content
     def test_rx_frame_in_cdc_tx_buffer(self):
         """Check stored frames in CDC Tx buffer are not altered in order or content"""
         #self.dut.print_on = True
