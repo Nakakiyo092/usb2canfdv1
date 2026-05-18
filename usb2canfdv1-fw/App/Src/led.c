@@ -122,7 +122,6 @@ void led_process(void)
         // If LED has been on for long enough, turn it off
         if (led_txd_last_state == LED_ON && (uint32_t)(HAL_GetTick() - led_txd_last_time) > LED_BLINK_DURATION)
         {
-            // Invert LED
             HAL_GPIO_WritePin(LED_TXD, LED_OFF);
             led_txd_last_time = HAL_GetTick();
             led_txd_last_state = LED_OFF;
