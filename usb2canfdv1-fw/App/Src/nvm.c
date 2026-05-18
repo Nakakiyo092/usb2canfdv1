@@ -92,9 +92,11 @@ HAL_StatusTypeDef nvm_update_serial_number(uint16_t num)
     }
 
     // Write to the flash
+    uint64_t prev_serial_number_raw = nvm_serial_number_raw;
     nvm_serial_number_raw = NVM_WRITE_MEM_STS(num);
     if (nvm_write_to_flash() != HAL_OK)
     {
+        nvm_serial_number_raw = prev_serial_number_raw;
         return HAL_ERROR;
     }
 
@@ -237,7 +239,12 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
                 return HAL_OK;
 
     // Update the RAM data
-    nvm_stp_config_raw = startup_cfg;
+    uint64_t prev_stp_config_raw =      nvm_stp_config_raw;
+    uint64_t prev_stp_nom_bitrate_raw = nvm_stp_nom_bitrate_raw;
+    uint64_t prev_stp_data_bitrate_raw = nvm_stp_data_bitrate_raw;
+    uint64_t prev_stp_filter_code_raw = nvm_stp_filter_code_raw;
+    uint64_t prev_stp_filter_mask_raw = nvm_stp_filter_mask_raw;
+    nvm_stp_config_raw =      startup_cfg;
     nvm_stp_nom_bitrate_raw = nom_bitrate;
     nvm_stp_data_bitrate_raw = data_bitrate;
     nvm_stp_filter_code_raw = filter_code;
@@ -246,6 +253,11 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
     // Write to the flash
     if (nvm_write_to_flash() != HAL_OK)
     {
+        nvm_stp_config_raw =      prev_stp_config_raw;
+        nvm_stp_nom_bitrate_raw = prev_stp_nom_bitrate_raw;
+        nvm_stp_data_bitrate_raw = prev_stp_data_bitrate_raw;
+        nvm_stp_filter_code_raw = prev_stp_filter_code_raw;
+        nvm_stp_filter_mask_raw = prev_stp_filter_mask_raw;
         return HAL_ERROR;
     }
     
