@@ -13,7 +13,7 @@ import serial
 class DeviceUnderTest:
     """A helper class for testing the SLCAN device under test."""
     print_on: bool
-    ser: serial
+    ser: serial.Serial
     slcan_ver: bytes
     debug_build: bool
     fd_support: bool
