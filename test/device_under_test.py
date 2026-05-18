@@ -6,6 +6,7 @@ License:
     See the accompanying LICENSE file for full terms.
 """
 
+import sys
 import time
 import serial
 
@@ -27,11 +28,13 @@ class DeviceUnderTest:
     def open(self):
         """Open the connection to the device."""
         # connect to serial
-        # device name should be changed
-        #self.ser = serial.Serial('/dev/ttyACM0', timeout=1, write_timeout=1)
-        self.ser = serial.Serial('COM9', timeout=1, write_timeout=1)
-        # TODO nicer to have warning if not connected
-        # TODO make COM9 a parameter
+        if sys.platform == "win32":
+            port = "COM9"
+        elif sys.platform.startswith("linux"):
+            port = "/dev/ttyACM0"
+        else:
+            port = "XXX"
+        self.ser = serial.Serial(port, timeout=1, write_timeout=1)
 
 
     def setup(self):
