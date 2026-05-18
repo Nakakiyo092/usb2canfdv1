@@ -71,7 +71,7 @@ class BufferTestCase(unittest.TestCase):
         self.dut.send(b"\r")    # Flush the buffer
         self.dut.receive()
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F03\r")  # Or F01
+        self.assertIn(self.dut.receive(), [b"F03\r", b"F01\r"])
 
 
     @unittest.skip("This test does not create rx buffer overflow")
