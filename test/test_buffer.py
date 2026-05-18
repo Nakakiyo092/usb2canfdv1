@@ -59,8 +59,7 @@ class BufferTestCase(unittest.TestCase):
         for _ in range(2500):
             tx_data += b"V\r\r" # 2 char loss will create VV\r. V\r version is in the tx test.
         for _ in range(10):
-            if self.dut.ser.write(tx_data) != len(tx_data):
-                print("Failed to write all data to the device")
+            self.dut.send(tx_data)
             rx_data += self.dut.receive()
         rx_data += self.dut.receive()
         rx_data += self.dut.receive()
@@ -236,8 +235,7 @@ class BufferTestCase(unittest.TestCase):
         for _ in range(2500):   # * 6 bytes of reply
             tx_data += b"V\r"
         for _ in range(10):
-            if self.dut.ser.write(tx_data) != len(tx_data):
-                print("Failed to write all data to the device")
+            self.dut.send(tx_data)
             rx_data += self.dut.receive()
         rx_data += self.dut.receive()
         rx_data += self.dut.receive()
