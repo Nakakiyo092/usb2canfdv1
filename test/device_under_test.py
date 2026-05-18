@@ -65,17 +65,17 @@ class DeviceUnderTest:
 
         # Reset to default settings
         self.send(b"S4\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: S4 command failed"
         self.send(b"Y2\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: Y2 command failed"
         self.send(b"Z0\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: Z0 command failed"
         self.send(b"W0\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: W0 command failed"
         self.send(b"M00000000\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: M command failed"
         self.send(b"mFFFFFFFF\r")       # mFFFFFFFF -> Pass all
-        self.receive()
+        assert self.receive() == b"\r", "Setup: m command failed"
 
 
     def close(self):
