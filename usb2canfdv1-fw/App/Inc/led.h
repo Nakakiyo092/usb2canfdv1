@@ -25,11 +25,11 @@
 
 #include "main.h"
 
-// LED state
+// LED state (active-low: LED_ON = GPIO_PIN_RESET drives pin LOW to light the LED)
 enum LedState
 {
-    LED_ON,
-    LED_OFF
+    LED_ON  = GPIO_PIN_RESET,
+    LED_OFF = GPIO_PIN_SET
 };
 
 // GPIO definitions
