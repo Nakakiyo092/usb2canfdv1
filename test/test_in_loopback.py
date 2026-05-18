@@ -272,6 +272,10 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
+        # Both commands are sent together to minimize the interval between them
+        # so their timestamps are captured in a short time range on the device.
+        # Both responses typically arrive in the first receive(); the second
+        # receive() collects any remaining data. rx_data is their concatenation.
         self.dut.send(b"Z\rt03F0\r")
         rx_data = self.dut.receive() + self.dut.receive()
         last_timestamp = rx_data[len(b"Z2"):len(b"Z2") + 8]
