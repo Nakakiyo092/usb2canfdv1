@@ -266,8 +266,7 @@ HAL_StatusTypeDef nvm_write_to_flash(void)
     erase.NbPages = 1;
 
     uint32_t error = 0;
-    HAL_FLASHEx_Erase(&erase, &error);
-    if (error != NVM_ERASE_OK)
+    if (HAL_FLASHEx_Erase(&erase, &error) != HAL_OK || error != NVM_ERASE_OK)
     {
         HAL_FLASH_Lock();
         return HAL_ERROR;
