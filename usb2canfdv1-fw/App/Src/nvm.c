@@ -106,6 +106,9 @@ HAL_StatusTypeDef nvm_update_serial_number(uint16_t num)
 }
 
 // Apply auto startup configuration
+// Note: No rollback on partial failure — if a later step returns HAL_ERROR,
+// earlier settings may already be applied to live modules. Callers should treat
+// HAL_ERROR as an indication that the system state is partially configured.
 HAL_StatusTypeDef nvm_apply_startup_cfg(void)
 {
     // Check if the memory is written
