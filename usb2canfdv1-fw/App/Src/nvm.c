@@ -270,6 +270,9 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
 }
 
 // Write the RAM data to the data area in the flash memory
+// Note: No wear leveling — every write erases and rewrites the entire page,
+// consuming one flash erase cycle (~10,000–100,000 cycles rated). Acceptable
+// because config writes are infrequent in normal operation.
 HAL_StatusTypeDef nvm_write_to_flash(void)
 {
     // Unlock the flash
