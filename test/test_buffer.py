@@ -248,7 +248,7 @@ class BufferTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"F03\r")  # Or F02
 
 
-    # Check stored frames in CAN Rx buffer are not alterd in order or content
+    # Check stored frames in CAN Rx buffer are not altered in order or content
     def test_can_rx_buffer(self):
         """Check stored frames in CAN Rx buffer are not altered in order or content"""
         #self.dut.print_on = True
@@ -382,7 +382,7 @@ class BufferTestCase(unittest.TestCase):
         #self.dut.print_on = True
         rx_data_exp = b""
 
-        # Check stored frames in buffer are not alterd in order or content in high rx frame rate
+        # Check stored frames in buffer are not altered in order or content in high rx frame rate
         self.dut.send(b"S8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Y5\r")
@@ -413,7 +413,7 @@ class BufferTestCase(unittest.TestCase):
         #self.dut.print_on = True
         rx_data_exp = b""
 
-        # Check stored frames in buffer are not alterd in order or content in high tx frame rate
+        # Check stored frames in buffer are not altered in order or content in high tx frame rate
         self.dut.send(b"S8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Y5\r")
