@@ -70,8 +70,6 @@ void nvm_init(void)
     nvm_stp_data_bitrate_raw =  *(uint64_t *)NVM_ADDR_STP_DATA_BITRATE;
     nvm_stp_filter_code_raw =   *(uint64_t *)NVM_ADDR_STP_FILTER_CODE;
     nvm_stp_filter_mask_raw =   *(uint64_t *)NVM_ADDR_STP_FILTER_MASK;
-
-    return;
 }
 
 // Get serial number
