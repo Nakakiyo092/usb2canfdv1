@@ -37,7 +37,7 @@ static enum LedState led_txd_last_state = LED_OFF;
 static uint8_t led_error_was_indicating = 0;
 
 // Initialize LED GPIOs
-void led_init()
+void led_init(void)
 {
     HAL_GPIO_WritePin(LED_RXD, LED_ON);
     HAL_GPIO_WritePin(LED_TXD, LED_ON);
