@@ -140,6 +140,7 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     slcan_set_report_mode(report_reg);
 
     // Read and apply bitrate
+    // Prescaler is stored in 8 bits; project decision limits it to 255 or less
     struct CanBitrateCfg bitrate;
     bitrate.prescaler = (uint16_t)((nvm_stp_nom_bitrate_raw) & 0xFF);
     bitrate.time_seg1 = (uint8_t)((nvm_stp_nom_bitrate_raw >> 8) & 0xFF);
@@ -205,6 +206,7 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
     startup_cfg = NVM_WRITE_MEM_STS(startup_cfg);
 
     // Make raw data for nominal bitrate
+    // Prescaler is stored in 8 bits; project decision limits it to 255 or less
     uint64_t nom_bitrate = 0;
 
     if (0xFF < can_get_bitrate_cfg().prescaler) return HAL_ERROR;
@@ -215,6 +217,7 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
     nom_bitrate = NVM_WRITE_MEM_STS(nom_bitrate);
 
     // Make raw data for data bitrate
+    // Prescaler is stored in 8 bits; project decision limits it to 255 or less
     uint64_t data_bitrate = 0;
 
     if (0xFF < can_get_data_bitrate_cfg().prescaler) return HAL_ERROR;
