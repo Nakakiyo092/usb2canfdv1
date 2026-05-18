@@ -98,6 +98,8 @@ void led_process(void)
     {
         HAL_GPIO_WritePin(LED_RXD, LED_ON);
         HAL_GPIO_WritePin(LED_TXD, LED_ON);
+        led_rxd_last_state = LED_OFF;
+        led_txd_last_state = LED_OFF;
         led_error_was_indicating = 1;
     }
     // Otherwise, normal LED operation
