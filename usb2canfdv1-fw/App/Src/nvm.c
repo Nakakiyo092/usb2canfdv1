@@ -44,6 +44,8 @@ enum NvmMemoryStatus
 #define NVM_ADDR_STP_FILTER_CODE  (NVM_ADDR_ORIGIN + 0x020UL)
 #define NVM_ADDR_STP_FILTER_MASK  (NVM_ADDR_ORIGIN + 0x028UL)
 
+// Note: Integrity check relies solely on a 4-bit status nibble. A single bit-flip
+// in the payload will silently pass NVM_IS_WRITTEN. No CRC or checksum is implemented.
 #define NVM_EXTRACT_MEM_STS(val)  ((uint8_t)(((val) >> 60) & 0x0F))
 #define NVM_IS_WRITTEN(val)       (NVM_EXTRACT_MEM_STS(val) == NVM_MEMORY_WRITTEN)
 #define NVM_WRITE_MEM_STS(val)    ((((uint64_t)val) & 0x0FFFFFFFFFFFFFFF) | (((uint64_t)NVM_MEMORY_WRITTEN) << 60))
