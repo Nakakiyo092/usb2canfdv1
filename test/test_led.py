@@ -6,7 +6,7 @@ import time
 from device_under_test import DeviceUnderTest
 
 
-# NOTE: YOU must check LED in this test.
+# NOTE: YOU must check LED in this test. The LED should light up 16 times total.
 class LedTestCase(unittest.TestCase):
 
     print_on: bool
