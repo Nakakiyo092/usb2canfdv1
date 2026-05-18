@@ -33,6 +33,8 @@ class ToolPreReleaseChecklistTestCase(unittest.TestCase):
         self.dut.receive()
         self.dut.send(b"N\r")
         self.dut.receive()
+        response = input("\nDoes the output look correct? (y/n): ")
+        self.assertEqual(response.strip().lower(), "y", "Pre-release checklist not confirmed")
 
 
 if __name__ == "__main__":
