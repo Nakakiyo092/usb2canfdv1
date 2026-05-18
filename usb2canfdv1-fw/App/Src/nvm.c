@@ -24,7 +24,6 @@
 
 #include "stm32g0xx_hal.h"
 #include "can.h"
-#include "led.h"
 #include "nvm.h"
 #include "slcan.h"
 
