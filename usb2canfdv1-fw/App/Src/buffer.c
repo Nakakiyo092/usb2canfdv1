@@ -191,7 +191,7 @@ void buf_process(void)
 
         // send is advanced unconditionally (drop-on-fail): advancing only on success risks
         // an infinite loop if the frame is permanently invalid (e.g., bad DLC). Frame loss
-        // is surfaced to the host via marker mismatch detected by the F command.
+        // is detected as a marker mismatch and surfaced to the host via the F command.
         buf_can_tx.send = (buf_can_tx.send + 1) % BUF_CAN_TXQUEUE_LEN;
 
         uint16_t nbr_sent_frames;   // Number of frames in HAL waiting for being sent
