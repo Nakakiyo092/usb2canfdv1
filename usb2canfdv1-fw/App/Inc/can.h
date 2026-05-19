@@ -47,7 +47,7 @@ enum CanBitrateData
     CAN_DATA_BITRATE_500K = 0,
     CAN_DATA_BITRATE_1M = 1,
     CAN_DATA_BITRATE_2M = 2,
-    // value 3 (3 Mbps) is intentionally absent: not supported by the STM32G0 FDCAN peripheral
+    // value 3 (3 Mbps) is not supported: exactly 3 Mbps cannot be achieved with this clock setup
     CAN_DATA_BITRATE_4M = 4,
     CAN_DATA_BITRATE_5M = 5,
 
