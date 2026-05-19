@@ -76,7 +76,7 @@ enum SlcanReportFlag
     SLCAN_REPORT_ESI = 4
 };
 
-// Maximum slcan message buffer size
+// Maximum slcan message length
 #define SLCAN_MTU           (1 + 138 + 8 + 1 + 1 + 16)
                             /* z/Z for tx event 1 plus frame 138 plus timestamp 8 plus ESI 1 plus \r 1 plus some padding */
 #define SLCAN_STD_ID_LEN    (3)

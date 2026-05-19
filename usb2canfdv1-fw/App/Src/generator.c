@@ -239,12 +239,13 @@ uint16_t slcan_get_timestamp_ms(void)
 }
 
 // Gets micro second timestamp for the time tim3_us was taken (4bytes, Resets at 3600,000,000us)
-// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
-// The calculation is based on the tim3 clock and the ms tick.
+// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice of it?).
+// The calculation is based on the combination of tim3 clock and the ms tick.
 // The tim3_us does not have to be the current value but supposed to be close to it (like ~1ms).
-// The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX / 2 ~ 30ms.
+// The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX us / 2 ~ 30ms.
 // This is supported by the fact the observed maximum loop cycle time is about 300us.
 // TODO: Implement check for the main loop and raise error if it is too large?
+// TODO: The logic in the function uses expensive 64bits calculation. Rewrite this using 32bits tim2.
 uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
 {
     static uint32_t slcan_last_timestamp_us = 0;
@@ -260,19 +261,19 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     time_diff_ms = (uint32_t)(current_time_ms - slcan_last_time_ms);
     time_diff_us = (uint64_t)((uint16_t)(current_time_us - slcan_last_time_us));
 
-    if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)
+    // Counter mismatch (time_diff_ms <= 3 ms and time_diff_us > ~30ms, this can happen)
+    if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)     // 3ms >> main-loop cycle
     {
-        // tim3_us was sampled before slcan_last_time_us (i.e. the frame arrived
+        // current_time_us was sampled before slcan_last_time_us (i.e. the frame arrived
         // slightly before the previous call).  This can happen when a CAN frame
         // is retrieved after processing a command such as 'Z[CR]'.
         // The reversal is small (bounded by the main-loop cycle, MAX ~300us).
         //
-        // Let d = slcan_last_time_us - current_time_us  (positive, small).
-        // Actual elapsed time = period - d  where period = 3 600 000 000 us.
-        // So: new_timestamp = last_timestamp + (period - d)
-        //                   = last_timestamp - d  (mod period)
-        // which is computed as: 3600000000 - d
-        // and then added to slcan_last_timestamp_us modulo 3600000000 below.
+        // Apparent elapsed time is negative (-d), where
+        //   d = slcan_last_time_us - current_time_us  (small positive).
+        // Since the running timestamp wraps at period (3600,000,000 us),
+        // adding (period - d) is equivalent to subtracting d modulo period.
+        // We use that equivalence to keep all arithmetic in unsigned space.
         time_diff_us = (uint64_t)3600000000 - (uint16_t)(slcan_last_time_us - current_time_us);
     }
     else
