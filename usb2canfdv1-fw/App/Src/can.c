@@ -118,6 +118,8 @@ HAL_StatusTypeDef can_enable(void)
         // Reset error counter etc.
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
+        can_error_state = (struct CanErrorState){0};
+        can_error_state.last_err_code = FDCAN_PROTOCOL_ERROR_NONE;
 
         hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
         hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
@@ -178,7 +180,6 @@ HAL_StatusTypeDef can_enable(void)
         can_update_bit_time_ns();
         can_clear_cycle_time();
         can_bus_load_ppm = 0;
-        can_error_state.last_err_code = FDCAN_PROTOCOL_ERROR_NONE;
 
         led_turn_txd(LED_OFF);
 
@@ -200,10 +201,10 @@ HAL_StatusTypeDef can_disable(void)
         // Reset error counter etc.
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
+        can_error_state = (struct CanErrorState){0};
+        can_error_state.last_err_code = FDCAN_PROTOCOL_ERROR_NONE;
 
         buf_clear_can_buffer();
-
-        can_error_state = (struct CanErrorState){0};
 
         led_turn_txd(LED_ON);
 
