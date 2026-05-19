@@ -341,7 +341,7 @@ HAL_StatusTypeDef slcan_configure_filter(void)
     FunctionalState state_std = ENABLE;
     FunctionalState state_ext = ENABLE;
 
-    if (slcan_filter_mode != SLCAN_FILTER_SIMPLE_MODE)
+    if (slcan_filter_mode == SLCAN_FILTER_DUAL_MODE)
     {
         // TODO: Dual filter mode is not implemented yet. Pass all messages.
 
@@ -355,7 +355,7 @@ HAL_StatusTypeDef slcan_configure_filter(void)
             return HAL_ERROR;
         }
     }
-    else
+    else if (slcan_filter_mode == SLCAN_FILTER_SIMPLE_MODE)
     {
         // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
         // https://github.com/Nakakiyo092/canable2-fw/issues/66
@@ -377,6 +377,11 @@ HAL_StatusTypeDef slcan_configure_filter(void)
         {
             return HAL_ERROR;
         }
+    }
+    else
+    {
+        // Single mode and any other unsupported filter modes
+        return HAL_ERROR;
     }
 
     return HAL_OK;
