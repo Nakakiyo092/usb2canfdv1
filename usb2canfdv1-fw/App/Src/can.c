@@ -158,20 +158,20 @@ HAL_StatusTypeDef can_enable(void)
         }
         else
         {
-            // The offset value would exceed the max value 0x7F at low bitrates, 
+            // The offset value would exceed the max value 0x7F at low bitrates,
             // but it should be fine since the compensation is not effective at such bitrates.
-            HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1);
+            if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
         }
 
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_std_filter) != HAL_OK) return HAL_ERROR;
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_ext_filter) != HAL_OK) return HAL_ERROR;
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_std_pass_all) != HAL_OK) return HAL_ERROR;
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_ext_pass_all) != HAL_OK) return HAL_ERROR;
-        HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+        if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE) != HAL_OK) return HAL_ERROR;
 
-        HAL_FDCAN_ConfigTimestampCounter(&hfdcan1, FDCAN_TIMESTAMP_PRESC_1);
+        if (HAL_FDCAN_ConfigTimestampCounter(&hfdcan1, FDCAN_TIMESTAMP_PRESC_1) != HAL_OK) return HAL_ERROR;
         // Internal does not work to get time (counts arb. bits + data bits). External use TIM3 as source. See RM0444.
-        HAL_FDCAN_EnableTimestampCounter(&hfdcan1, FDCAN_TIMESTAMP_EXTERNAL);
+        if (HAL_FDCAN_EnableTimestampCounter(&hfdcan1, FDCAN_TIMESTAMP_EXTERNAL) != HAL_OK) return HAL_ERROR;
 
         if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) return HAL_ERROR;
 
@@ -195,8 +195,9 @@ HAL_StatusTypeDef can_disable(void)
 {
     if (can_bus_state == BUS_OPENED)
     {
-        HAL_FDCAN_Stop(&hfdcan1);
-        HAL_FDCAN_DeInit(&hfdcan1);
+        HAL_StatusTypeDef ret = HAL_OK;
+        if (HAL_FDCAN_Stop(&hfdcan1) != HAL_OK) ret = HAL_ERROR;
+        if (HAL_FDCAN_DeInit(&hfdcan1) != HAL_OK) ret = HAL_ERROR;
 
         // Reset error counter etc.
         __HAL_RCC_FDCAN_FORCE_RESET();
@@ -210,7 +211,7 @@ HAL_StatusTypeDef can_disable(void)
 
         can_bus_state = BUS_CLOSED;
 
-        return HAL_OK;
+        return ret;
     }
     return HAL_ERROR;
 }
@@ -306,27 +307,28 @@ void can_process(void)
     FDCAN_ProtocolStatusTypeDef sts;
     FDCAN_ErrorCountersTypeDef cnt;
 
-    HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts);
-    HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt);
+    if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts) == HAL_OK &&
+        HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
+    {
+        uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
+        if (rec > can_error_state.rx_err_cnt || cnt.TxErrorCnt > can_error_state.tx_err_cnt)
+            slcan_raise_error(SLCAN_STS_BUS_ERROR);
+        if (sts.BusOff && !can_error_state.bus_off)     // If it gets bus off right now
+            // ... capture counter increase that caused bus off since it does not increase TxErrorCnt
+            slcan_raise_error(SLCAN_STS_BUS_ERROR);
 
-    uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
-    if (rec > can_error_state.rx_err_cnt || cnt.TxErrorCnt > can_error_state.tx_err_cnt)
-        slcan_raise_error(SLCAN_STS_BUS_ERROR);
-    if (sts.BusOff && !can_error_state.bus_off)     // If it gets bus off right now
-        // ... capture counter increase that caused bus off since it does not increase TxErrorCnt
-        slcan_raise_error(SLCAN_STS_BUS_ERROR);
+        can_error_state.bus_off = (uint8_t)sts.BusOff;
+        can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
+        can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
+        can_error_state.rx_err_cnt = (uint8_t)rec;
 
-    can_error_state.bus_off = (uint8_t)sts.BusOff;
-    can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
-    can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
-    can_error_state.rx_err_cnt = (uint8_t)rec;
-
-    // Check for error code (See the link for the intended behavior)
-    // https://github.com/Nakakiyo092/canable2-fw/issues/68
-    if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
-        can_error_state.last_err_code = sts.DataLastErrorCode;
-    if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
-        can_error_state.last_err_code = sts.LastErrorCode;
+        // Check for error code (See the link for the intended behavior)
+        // https://github.com/Nakakiyo092/canable2-fw/issues/68
+        if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
+            can_error_state.last_err_code = sts.DataLastErrorCode;
+        if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
+            can_error_state.last_err_code = sts.LastErrorCode;
+    }
 
     // Check for bus error flags
     // See the link for the difference from the bus status
