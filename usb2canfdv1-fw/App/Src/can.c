@@ -355,10 +355,7 @@ void can_process(void)
     // boot-to-mainloop latency. We intentionally treat this as "iteration 0"
     // and include it in the max/average: cycle_max is the longest interval the
     // system has ever experienced, and boot latency qualifies. Valid as long
-    // as boot stays below the TIM3 wrap period (65.5 ms); the boot-path refactor
-    // that removed the blocking led_blink_sequence(5) keeps this invariant.
-    // These metrics are debug-only and not subject to the reliability principle
-    // in doc/1.-Introduction.md.
+    // as boot stays below the TIM3 wrap period (65.5 ms).
     static uint32_t last_time_stamp_cnt = 0;
     uint16_t curr_time_stamp_cnt = (TIM3->CNT);
     uint32_t cycle_time_ns;
