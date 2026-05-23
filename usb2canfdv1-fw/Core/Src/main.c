@@ -103,7 +103,6 @@ int main(void)
   buf_init();
   can_init();
   nvm_init();
-  led_blink_sequence(5);
   nvm_apply_startup_cfg();
   /* USER CODE END 2 */
 
