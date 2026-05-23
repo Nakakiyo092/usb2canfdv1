@@ -27,7 +27,7 @@
 #include "slcan.h"
 
 // Public variables
-uint8_t slcan_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+const uint8_t slcan_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
 // Private variables
 static enum SlcanFilterMode slcan_filter_mode = SLCAN_FILTER_DUAL_MODE;
@@ -38,14 +38,14 @@ static uint16_t slcan_report_reg = 1;   // Default: no timestamp, no ESI, no Tx,
 static uint8_t slcan_status_flags = 0;
 
 // Private methods
-static uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data);
+static uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
 static HAL_StatusTypeDef slcan_configure_filter(void);
 
 // Generate a slcan message from a CAN frame
 // Returns number of bytes written into buf
 //  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
 //  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
-uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data)
+uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data)
 {
     // Start building the slcan message string at idx 0 in buf
     uint16_t msg_idx = 0;
@@ -90,7 +90,7 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
 
     // Add identifier to the buffer
     uint32_t tmp = frame_header->Identifier;
-    for (uint8_t j = msg_idx - 1; j >= 1; j--)
+    for (int8_t j = (int8_t)msg_idx - 1; j >= 1; j--)
     {
         // Add nibble to the buffer
         buf[j] = slcan_nibble_to_ascii[tmp & 0xF];
@@ -99,7 +99,7 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
 
     // Add DLC to the buffer
     buf[msg_idx++] = slcan_nibble_to_ascii[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
-    int8_t bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
+    uint8_t bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
     
     // Add data bytes
     // Data frame only. No data bytes for a remote frame.
@@ -117,7 +117,7 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
     {
         // Use current time instead of frame timestamp
         // By this way the complex compensation for TIM3 overflow is not needed
-        // and the main loop delya at most ~300us will not greatly affect the timestamp correctness.
+        // and the main loop delay at most ~300us will not greatly affect the timestamp correctness.
         uint16_t timestamp_ms = slcan_get_timestamp_ms();
 
         buf[msg_idx++] = slcan_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
@@ -162,11 +162,11 @@ uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header,
     return msg_idx;
 }
 
-// Parse an incoming CAN frame into an outgoing slcan message
+// Generate an outgoing slcan message from an incoming CAN frame
 // Returns number of bytes written into buf
 //  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
 //  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
-uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data)
+uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data)
 {
     // Check if Rx reporting is required
     if (((slcan_report_reg >> SLCAN_REPORT_RX) & 1) == 0)
@@ -181,11 +181,11 @@ uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_head
     return len;
 }
 
-// Parse an incoming Tx event into an outgoing slcan message
+// Generate an outgoing slcan message from an incoming Tx event
 // Returns number of bytes written into buf
 //  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
 //  MAX: SLCAN_MTU - 16 (padding)
-uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, uint8_t *frame_data)
+uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, const uint8_t *frame_data)
 {
     // Check if Tx reporting is required
     if (((slcan_report_reg >> SLCAN_REPORT_TX) & 1) == 0)
@@ -199,6 +199,11 @@ uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_even
     else
         buf[0] = 'Z';
 
+    // Deliberately reuse slcan_generate_frame by mapping Tx event fields into
+    // an FDCAN_RxHeaderTypeDef. The two HAL structs share the same field names
+    // for the data we need (Identifier, IdType, DataLength, etc.), so the
+    // mapping is 1-to-1.  If a future HAL update renames or reorders these
+    // fields the compiler will catch the mismatch.
     FDCAN_RxHeaderTypeDef frame_header;
     frame_header.Identifier = tx_event->Identifier;
     frame_header.IdType = tx_event->IdType;
@@ -216,7 +221,7 @@ uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_even
 
 
 // Gets milli second timestamp for the current time (2bytes, Resets at 60,000ms)
-// This implementation will breake if the timesatamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
+// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
 uint16_t slcan_get_timestamp_ms(void)
 {
     static uint16_t slcan_last_timestamp_ms = 0;
@@ -234,12 +239,13 @@ uint16_t slcan_get_timestamp_ms(void)
 }
 
 // Gets micro second timestamp for the time tim3_us was taken (4bytes, Resets at 3600,000,000us)
-// This implementation will breake if the timesatamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
-// The calculation is based on the tim3 clock and the ms tick.
+// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice of it?).
+// The calculation is based on the combination of tim3 clock and the ms tick.
 // The tim3_us does not have to be the current value but supposed to be close to it (like ~1ms).
-// The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX / 2 ~ 30ms.
+// The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX us / 2 ~ 30ms.
 // This is supported by the fact the observed maximum loop cycle time is about 300us.
 // TODO: Implement check for the main loop and raise error if it is too large?
+// TODO: The logic in the function uses expensive 64bits calculation. Rewrite this using 32bits tim2.
 uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
 {
     static uint32_t slcan_last_timestamp_us = 0;
@@ -255,11 +261,19 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     time_diff_ms = (uint32_t)(current_time_ms - slcan_last_time_ms);
     time_diff_us = (uint64_t)((uint16_t)(current_time_us - slcan_last_time_us));
 
-    if (time_diff_ms <= 1 && time_diff_us > UINT16_MAX / 2)    // TODO: Give some margin to 1ms
+    // Counter mismatch (time_diff_ms <= 3 ms and time_diff_us > ~30ms, this can happen)
+    if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)     // 3ms >> main-loop cycle
     {
-        // Assume tim3 was sampled before the last timestamp
-        // This can happen when a CAN frame is retrieved after answering a 'Z[CR]'
-        // The amount of reversal should be close to the main loop (MAX ~300us)
+        // current_time_us was sampled before slcan_last_time_us (i.e. the frame arrived
+        // slightly before the previous call).  This can happen when a CAN frame
+        // is retrieved after processing a command such as 'Z[CR]'.
+        // The reversal is small (bounded by the main-loop cycle, MAX ~300us).
+        //
+        // Apparent elapsed time is negative (-d), where
+        //   d = slcan_last_time_us - current_time_us  (small positive).
+        // Since the running timestamp wraps at period (3600,000,000 us),
+        // adding (period - d) is equivalent to subtracting d modulo period.
+        // We use that equivalence to keep all arithmetic in unsigned space.
         time_diff_us = (uint64_t)3600000000 - (uint16_t)(slcan_last_time_us - current_time_us);
     }
     else
@@ -327,7 +341,7 @@ HAL_StatusTypeDef slcan_configure_filter(void)
     FunctionalState state_std = ENABLE;
     FunctionalState state_ext = ENABLE;
 
-    if (slcan_filter_mode != SLCAN_FILTER_SIMPLE_MODE)
+    if (slcan_filter_mode == SLCAN_FILTER_DUAL_MODE)
     {
         // TODO: Dual filter mode is not implemented yet. Pass all messages.
 
@@ -341,7 +355,7 @@ HAL_StatusTypeDef slcan_configure_filter(void)
             return HAL_ERROR;
         }
     }
-    else
+    else if (slcan_filter_mode == SLCAN_FILTER_SIMPLE_MODE)
     {
         // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
         // https://github.com/Nakakiyo092/canable2-fw/issues/66
@@ -364,6 +378,11 @@ HAL_StatusTypeDef slcan_configure_filter(void)
             return HAL_ERROR;
         }
     }
+    else
+    {
+        // Single mode and any other unsupported filter modes
+        return HAL_ERROR;
+    }
 
     return HAL_OK;
 }
@@ -374,11 +393,14 @@ void slcan_set_report_mode(uint16_t reg)
     slcan_report_reg = reg;
     return;
 }
-void slcan_set_timestamp_mode(enum SlcanTimestampMode mode)
+HAL_StatusTypeDef slcan_set_timestamp_mode(enum SlcanTimestampMode mode)
 {
     if (mode < SLCAN_TIMESTAMP_INVALID)
         slcan_timestamp_mode = mode;
-    return;
+    else
+        return HAL_ERROR;
+
+    return HAL_OK;
 }
 enum SlcanTimestampMode slcan_get_timestamp_mode(void)
 {

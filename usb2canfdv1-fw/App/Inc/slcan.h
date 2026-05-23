@@ -27,8 +27,8 @@
 enum SlcanFilterMode
 {
     SLCAN_FILTER_DUAL_MODE = 0,
-    SLCAN_FILTER_SINGLE_MODE,        // Not supported
-    SLCAN_FILTER_SIMPLE_MODE,
+    // SLCAN_FILTER_SINGLE_MODE = 1, // Not supported
+    SLCAN_FILTER_SIMPLE_MODE = 2,
 
     SLCAN_FILTER_INVALID
 };
@@ -76,18 +76,18 @@ enum SlcanReportFlag
     SLCAN_REPORT_ESI = 4
 };
 
-// Maximum rx buffer len
-#define SLCAN_MTU           (1 + 138 + 8 + 1 + 1 + 16) 
+// Maximum slcan message length
+#define SLCAN_MTU           (1 + 138 + 8 + 1 + 1 + 16)
                             /* z/Z for tx event 1 plus frame 138 plus timestamp 8 plus ESI 1 plus \r 1 plus some padding */
 #define SLCAN_STD_ID_LEN    (3)
 #define SLCAN_EXT_ID_LEN    (8)
 
 // Public variables
-extern uint8_t slcan_nibble_to_ascii[];
+extern const uint8_t slcan_nibble_to_ascii[];
 
 // Prototypes
-uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, uint8_t *frame_data);
-uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, uint8_t *frame_data);
+uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
+uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, const uint8_t *frame_data);
 uint16_t slcan_get_timestamp_ms(void);
 uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us);
 
@@ -100,7 +100,7 @@ enum SlcanFilterMode slcan_get_filter_mode(void);
 uint32_t slcan_get_filter_code(void);
 uint32_t slcan_get_filter_mask(void);
 
-void slcan_set_timestamp_mode(enum SlcanTimestampMode mode);
+HAL_StatusTypeDef slcan_set_timestamp_mode(enum SlcanTimestampMode mode);
 void slcan_set_report_mode(uint16_t reg);
 enum SlcanTimestampMode slcan_get_timestamp_mode(void);
 uint16_t slcan_get_report_mode(void);

@@ -598,7 +598,12 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
                 return;
             }
 
-            slcan_set_timestamp_mode(buf[1]);
+            if (slcan_set_timestamp_mode(buf[1]) != HAL_OK)
+            {
+                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+                return;
+            }
+
             // 'Z' intentionally resets the full report register to the default value (Rx only,
             // no timestamp, no ESI, no Tx). Use 'z' to set individual report options.
             slcan_set_report_mode(1);   // Default: no timestamp, no ESI, no Tx, but with Rx
@@ -614,7 +619,11 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
                 return;
             }
 
-            slcan_set_timestamp_mode(buf[1]);
+            if (slcan_set_timestamp_mode(buf[1]) != HAL_OK)
+            {
+                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+                return;
+            }
             slcan_set_report_mode((buf[3] << 4) + buf[4]);
             buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
             return;
