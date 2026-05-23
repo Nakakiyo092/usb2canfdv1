@@ -20,8 +20,8 @@
 // THE SOFTWARE.
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifndef _SLCAN_H
-#define _SLCAN_H
+#ifndef USB2CANFDV1_SLCAN_H
+#define USB2CANFDV1_SLCAN_H
 
 // Filter mode
 enum SlcanFilterMode
@@ -109,4 +109,4 @@ void slcan_raise_error(enum SlcanStatusFlag err);
 void slcan_clear_error(void);
 uint8_t slcan_get_status_flags(void);
 
-#endif // _SLCAN_H
+#endif // USB2CANFDV1_SLCAN_H

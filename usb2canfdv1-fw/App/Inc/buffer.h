@@ -20,8 +20,8 @@
 // THE SOFTWARE.
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifndef __BUFFER_H__
-#define __BUFFER_H__
+#ifndef USB2CANFDV1_BUFFER_H
+#define USB2CANFDV1_BUFFER_H
 
 #include <stdint.h>
 #include "can.h"
@@ -77,4 +77,4 @@ HAL_StatusTypeDef buf_commit_can_head(void);
 HAL_StatusTypeDef buf_release_can_until(uint8_t marker);
 void buf_clear_can_buffer(void);
 
-#endif // _BUFFER_H
+#endif // USB2CANFDV1_BUFFER_H

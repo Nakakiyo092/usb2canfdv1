@@ -20,8 +20,8 @@
 
 /* Define to prevent recursive inclusion -------------------------------------*/
 
-#ifndef __USBD_CDC_IF_H__
-#define __USBD_CDC_IF_H__
+#ifndef USB2CANFDV1_USBD_CDC_IF_H
+#define USB2CANFDV1_USBD_CDC_IF_H
 
 #ifdef __cplusplus
  extern "C" {
@@ -128,5 +128,5 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 }
 #endif
 
-#endif /* __USBD_CDC_IF_H__ */
+#endif /* USB2CANFDV1_USBD_CDC_IF_H */
 
