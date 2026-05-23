@@ -73,6 +73,8 @@ static void slcan_parse_str_debug(uint8_t *buf, uint8_t len);
 // Parse an incoming slcan command from the USB CDC port
 void slcan_parse_str(uint8_t *buf, uint8_t len)
 {
+    // msg_marker is intentionally not reset on Close/Open cycles: buf_release_can_until()
+    // matches by value, so any non-overlapping starting point is valid.
     static uint8_t msg_marker = 0;
 
     // Reply OK to a blank command
@@ -414,13 +416,15 @@ void slcan_parse_str_close(uint8_t *buf, uint8_t len)
     
     // Close CAN port
     if (can_disable() == HAL_OK)
+    {
         buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+
+        // Reset variables
+        slcan_clear_error();
+        can_clear_cycle_time();     # TODO: do we need this?
+    }
     else
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-
-    // Reset variables
-    slcan_clear_error();
-    can_clear_cycle_time();
 
     return;
 }
@@ -595,6 +599,8 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
             }
 
             slcan_set_timestamp_mode(buf[1]);
+            // 'Z' intentionally resets the full report register to the default value (Rx only,
+            // no timestamp, no ESI, no Tx). Use 'z' to set individual report options.
             slcan_set_report_mode(1);   // Default: no timestamp, no ESI, no Tx, but with Rx
             buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
             return;
@@ -698,7 +704,7 @@ void slcan_parse_str_filter_code(uint8_t *buf, uint8_t len)
 // Set filter mask
 void slcan_parse_str_filter_mask(uint8_t *buf, uint8_t len)
 {
-    // Set filter code
+    // Set filter mask
     if (can_get_bus_state() == BUS_CLOSED)
     {
         // Check for valid command
@@ -839,20 +845,20 @@ void slcan_parse_str_status(uint8_t *buf, uint8_t len)
 
             struct CanErrorState err = can_get_error_state();
 
-            snprintf((char*)stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
+            uint16_t written = (uint16_t)snprintf((char*)stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
                                         (err.bus_off ? "BUS_OFF" : (err.err_pssv ? "ER_PSSV" : "ER_ACTV")),
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_NONE ? "NONE" : 
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_STUFF ? "STUF" : 
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_FORM ? "FORM" : 
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_ACK ? "_ACK" : 
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_BIT1 ? "BIT1" : 
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_BIT0 ? "BIT0" : 
+                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_NONE ? "NONE" :
+                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_STUFF ? "STUF" :
+                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_FORM ? "FORM" :
+                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_ACK ? "_ACK" :
+                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_BIT1 ? "BIT1" :
+                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_BIT0 ? "BIT0" :
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_CRC ? "_CRC" : "SAME"))))))),
                                         (uint8_t)(err.tx_err_cnt),
                                         (uint8_t)(err.rx_err_cnt),
                                         (uint8_t)(can_get_bus_load_ppm() >= 990000 ? 99 : can_get_bus_load_ppm() / 10000));
 
-            buf_commit_cdc_dest(92);
+            buf_commit_cdc_dest(written);
         }
     }
     // This command is only active if the CAN channel is open.
@@ -979,9 +985,10 @@ void slcan_parse_str_debug(uint8_t *buf, uint8_t len)
     }
 
     // Debug output - no info
-    uint8_t dbgstr[2];
+    uint8_t dbgstr[3];
     dbgstr[0] = '?';
     dbgstr[1] = '\r';
+    dbgstr[2] = '\0';
     buf_enqueue_cdc(dbgstr, strlen((char *)dbgstr));
 
     return;
