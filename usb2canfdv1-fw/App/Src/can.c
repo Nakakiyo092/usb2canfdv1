@@ -352,7 +352,13 @@ void can_process(void)
     }
 
     // Update cycle time
-    static uint32_t last_time_stamp_cnt = 0;    // NOTE: This initial value creates too much cycle time at first measurement
+    // On the very first call after boot, last_time_stamp_cnt is 0, so the delta
+    // represents the time from TIM3 init to the first can_process() — i.e. the
+    // boot-to-mainloop latency. We intentionally treat this as "iteration 0"
+    // and include it in the max/average: cycle_max is the longest interval the
+    // system has ever experienced, and boot latency qualifies. Valid as long
+    // as boot stays below the TIM3 wrap period (65.5 ms).
+    static uint32_t last_time_stamp_cnt = 0;
     uint16_t curr_time_stamp_cnt = (TIM3->CNT);
     uint32_t cycle_time_ns;
     if (last_time_stamp_cnt <= curr_time_stamp_cnt)
@@ -691,6 +697,8 @@ uint32_t can_get_bus_load_ppm(void)
 // Clear the maximum and average cycle time
 void can_clear_cycle_time(void)
 {
+    // Reset metrics only. last_time_stamp_cnt is left untouched so the next
+    // sample remains a valid loop interval and not a spurious gap.
     can_cycle_max_time_ns = 0;
     can_cycle_ave_time_ns = 0;
 }

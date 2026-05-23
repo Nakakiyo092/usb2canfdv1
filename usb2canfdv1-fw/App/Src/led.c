@@ -27,7 +27,12 @@
 #include "slcan.h"
 
 // Duration in ms
-#define LED_BLINK_DURATION    (25)
+#define LED_BLINK_DURATION          (25)
+
+// Opening animation: 5 blinks, each half-period 100 ms (matches the old blocking sequence)
+#define LED_ANIM_BLINKS             (5)
+#define LED_ANIM_HALF_PERIOD_MS     (100)
+#define LED_ANIM_TOTAL_MS           (LED_ANIM_BLINKS * 2 * LED_ANIM_HALF_PERIOD_MS)
 
 // Private variables
 static uint32_t led_rxd_last_time = 0;
@@ -35,33 +40,22 @@ static uint32_t led_txd_last_time = 0;
 static enum LedState led_rxd_last_state = LED_OFF;
 static enum LedState led_txd_last_state = LED_OFF;
 static uint8_t led_error_was_indicating = 0;
+static uint32_t led_anim_start_tick = 0;
+static uint8_t led_anim_active = 0;
 
-// Initialize LED GPIOs
+// Initialize LED GPIOs and start the non-blocking opening animation
 void led_init(void)
 {
     HAL_GPIO_WritePin(LED_RXD, LED_ON);
     HAL_GPIO_WritePin(LED_TXD, LED_ON);
+    led_anim_start_tick = HAL_GetTick();
+    led_anim_active = 1;
 }
 
 // Turn TX LED on/off
 void led_turn_txd(enum LedState state)
 {
     HAL_GPIO_WritePin(LED_TXD, state);
-}
-
-// Blink two LEDs (blocking)
-void led_blink_sequence(uint8_t numblinks)
-{
-    uint8_t i;
-    for (i = 0; i < numblinks; i++)
-    {
-        HAL_GPIO_WritePin(LED_RXD, LED_ON);
-        HAL_GPIO_WritePin(LED_TXD, LED_OFF);
-        HAL_Delay(100);
-        HAL_GPIO_WritePin(LED_RXD, LED_OFF);
-        HAL_GPIO_WritePin(LED_TXD, LED_ON);
-        HAL_Delay(100);
-    }
 }
 
 // Turn TX LED on for a short duration
@@ -93,6 +87,36 @@ void led_blink_rxd(void)
 // Process time-based LED events
 void led_process(void)
 {
+    // Drive the non-blocking opening animation started in led_init()
+    if (led_anim_active)
+    {
+        uint32_t elapsed = (uint32_t)(HAL_GetTick() - led_anim_start_tick);
+        if (elapsed < LED_ANIM_TOTAL_MS)
+        {
+            // Alternate every half-period: even -> RXD=ON, TXD=OFF; odd -> RXD=OFF, TXD=ON
+            uint32_t half = elapsed / LED_ANIM_HALF_PERIOD_MS;
+            if ((half % 2) == 0)
+            {
+                HAL_GPIO_WritePin(LED_RXD, LED_ON);
+                HAL_GPIO_WritePin(LED_TXD, LED_OFF);
+            }
+            else
+            {
+                HAL_GPIO_WritePin(LED_RXD, LED_OFF);
+                HAL_GPIO_WritePin(LED_TXD, LED_ON);
+            }
+            return;
+        }
+        // Animation complete: let normal LED logic take over from a clean state
+        led_anim_active = 0;
+        HAL_GPIO_WritePin(LED_RXD, LED_OFF);
+        HAL_GPIO_WritePin(LED_TXD, LED_OFF);
+        led_rxd_last_state = LED_OFF;
+        led_txd_last_state = LED_OFF;
+        led_rxd_last_time = HAL_GetTick();
+        led_txd_last_time = HAL_GetTick();
+    }
+
     // If an error is stored, override LEDs with constant on
     if (slcan_get_status_flags())
     {
