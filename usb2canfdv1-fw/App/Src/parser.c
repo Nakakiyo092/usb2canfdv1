@@ -421,7 +421,7 @@ void slcan_parse_str_close(uint8_t *buf, uint8_t len)
 
         // Reset variables
         slcan_clear_error();
-        can_clear_cycle_time();     # TODO: do we need this?
+        can_clear_cycle_time();     // TODO: do we need this?
     }
     else
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
