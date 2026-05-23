@@ -27,8 +27,8 @@
 enum SlcanFilterMode
 {
     SLCAN_FILTER_DUAL_MODE = 0,
-    // SLCAN_FILTER_SINGLE_MODE,     // Not supported
-    SLCAN_FILTER_SIMPLE_MODE,
+    // SLCAN_FILTER_SINGLE_MODE = 1, // Not supported
+    SLCAN_FILTER_SIMPLE_MODE = 2,
 
     SLCAN_FILTER_INVALID
 };
