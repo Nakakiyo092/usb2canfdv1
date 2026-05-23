@@ -100,7 +100,7 @@ class ErrorTestCase(unittest.TestCase):
                          b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        time.sleep(0.26)    # wait for error passive ( > 1ms * 128)
+        time.sleep(0.2)     # wait for error passive ( > 1ms * 128)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
         self.dut.send(b"F\r")
