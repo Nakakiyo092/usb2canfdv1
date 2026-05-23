@@ -33,7 +33,7 @@ class DeviceUnderTest:
         elif sys.platform.startswith("linux"):
             port = "/dev/ttyACM0"
         else:
-            port = "XXX"
+            port = "XXX"    # TODO: put default device name in the macOS
         self.ser = serial.Serial(port, timeout=1, write_timeout=1)
 
 
