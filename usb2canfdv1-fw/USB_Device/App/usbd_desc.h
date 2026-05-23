@@ -19,8 +19,8 @@
 /* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef USB2CANFDV1_USBD_DESC_H
-#define USB2CANFDV1_USBD_DESC_H
+#ifndef __USBD_DESC__C__
+#define __USBD_DESC__C__
 
 #ifdef __cplusplus
  extern "C" {
@@ -139,5 +139,5 @@ extern USBD_DescriptorsTypeDef     CDC_Desc;
 }
 #endif
 
-#endif /* USB2CANFDV1_USBD_DESC_H */
+#endif /* __USBD_DESC__C__ */
 
