@@ -23,6 +23,8 @@
 #ifndef _CAN_H
 #define _CAN_H
 
+#include "stm32g0xx_hal.h"
+
 // Classic CAN / CANFD nominal bitrates
 enum CanBitrateNominal
 {
@@ -45,6 +47,7 @@ enum CanBitrateData
     CAN_DATA_BITRATE_500K = 0,
     CAN_DATA_BITRATE_1M = 1,
     CAN_DATA_BITRATE_2M = 2,
+    // value 3 (3 Mbps) is not supported: exactly 3 Mbps cannot be achieved with this clock setup
     CAN_DATA_BITRATE_4M = 4,
     CAN_DATA_BITRATE_5M = 5,
 
@@ -84,6 +87,7 @@ struct CanBitrateCfg
 #define CAN_MAX_DATALEN                 64  // CAN maximum data length. Must be 64 for canfd.
 
 // Public variable
+#define CAN_DLC_TO_BYTES_SIZE           16  // Number of entries in can_dlc_to_bytes (DLC 0x0..0xF)
 extern uint8_t can_dlc_to_bytes[];
 
 // Prototypes
@@ -97,7 +101,7 @@ HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate);
 HAL_StatusTypeDef can_set_data_bitrate(enum CanBitrateData bitrate);
 HAL_StatusTypeDef can_set_nominal_bitrate_cfg(struct CanBitrateCfg bitrate_cfg);
 HAL_StatusTypeDef can_set_data_bitrate_cfg(struct CanBitrateCfg bitrate_cfg);
-struct CanBitrateCfg can_get_bitrate_cfg(void);
+struct CanBitrateCfg can_get_nominal_bitrate_cfg(void);
 struct CanBitrateCfg can_get_data_bitrate_cfg(void);
 
 // Filter functions
