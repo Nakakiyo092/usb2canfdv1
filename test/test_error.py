@@ -5,8 +5,6 @@ import unittest
 import time
 from device_under_test import DeviceUnderTest
 
-# TODO: Tighten these 200 ms waits — most are >10x the propagation time noted in the trailing comments.
-
 class ErrorTestCase(unittest.TestCase):
 
     print_on: bool
@@ -35,7 +33,7 @@ class ErrorTestCase(unittest.TestCase):
                          b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\rt0000\r")
-        time.sleep(0.2)     # wait for a while ( > 1ms * 1)
+        time.sleep(0.05)    # wait for a while ( > 1ms * 1)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
         self.dut.send(b"f\r")
@@ -53,7 +51,7 @@ class ErrorTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        time.sleep(0.2)     # wait for a while ( > 1ms * 1)
+        time.sleep(0.05)    # wait for a while ( > 1ms * 1)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F80\r")  # BEI
         self.dut.send(b"F\r")
@@ -75,7 +73,7 @@ class ErrorTestCase(unittest.TestCase):
         for _ in range(0, 12):
             self.dut.send(b"t0000\r")
             self.assertEqual(self.dut.receive(), b"z\r")
-        time.sleep(0.2)     # wait for a while ( > 1ms * 12)
+        time.sleep(0.05)    # wait for a while ( > 1ms * 12)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F84\r")  # BEI + EI
         self.dut.send(b"F\r")
@@ -101,7 +99,7 @@ class ErrorTestCase(unittest.TestCase):
                          b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r")
         self.dut.send(b"t0000\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        time.sleep(0.2)     # wait for error passive ( > 1ms * 128)
+        time.sleep(0.26)    # wait for error passive ( > 1ms * 128)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA4\r")  # BEI & EPI & EI
         self.dut.send(b"F\r")
@@ -124,7 +122,7 @@ class ErrorTestCase(unittest.TestCase):
         for _ in range(0, 12):
             self.dut.send(b"t0000\r")
             self.assertEqual(self.dut.receive(), b"z\r")
-        time.sleep(0.2)     # wait for a while ( > 1ms * 12)
+        time.sleep(0.05)    # wait for a while ( > 1ms * 12)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F84\r")  # BEI + EI
         self.dut.send(b"F\r")
@@ -136,7 +134,7 @@ class ErrorTestCase(unittest.TestCase):
         for _ in range(0, 4):
             self.dut.send(b"t0000\r")
             self.assertEqual(self.dut.receive(), b"z\r")
-        time.sleep(0.2)     # wait for a while ( > 1ms * 4)
+        time.sleep(0.05)    # wait for a while ( > 1ms * 4)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA0\r")  # EPI + EI
         self.dut.send(b"F\r")
