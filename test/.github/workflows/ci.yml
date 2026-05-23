@@ -98,6 +98,10 @@ jobs:
           pip install -r requirements.txt
           pip install pylint
 
+      - name: Syntax check all Python test files
+        run: |
+          python3 -m py_compile $(git ls-files '*.py')
+
       - name: Run pylint error check
         run: |
           pylint -E $(git ls-files '*.py')

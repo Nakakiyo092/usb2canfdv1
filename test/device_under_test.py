@@ -6,6 +6,7 @@ License:
     See the accompanying LICENSE file for full terms.
 """
 
+import sys
 import time
 import serial
 
@@ -13,7 +14,7 @@ import serial
 class DeviceUnderTest:
     """A helper class for testing the SLCAN device under test."""
     print_on: bool
-    ser: serial
+    ser: serial.Serial
     slcan_ver: bytes
     debug_build: bool
     fd_support: bool
@@ -27,11 +28,13 @@ class DeviceUnderTest:
     def open(self):
         """Open the connection to the device."""
         # connect to serial
-        # device name should be changed
-        #self.ser = serial.Serial('/dev/ttyACM0', timeout=1, write_timeout=1)
-        self.ser = serial.Serial('COM9', timeout=1, write_timeout=1)
-        # TODO nicer to have warning if not connected
-        # TODO make COM9 a parameter
+        if sys.platform == "win32":
+            port = "COM9"
+        elif sys.platform.startswith("linux"):
+            port = "/dev/ttyACM0"
+        else:
+            port = "XXX"    # TODO: put default device name in the macOS
+        self.ser = serial.Serial(port, timeout=1, write_timeout=1)
 
 
     def setup(self):
@@ -50,29 +53,29 @@ class DeviceUnderTest:
         slcan_ver = self.receive()
         if slcan_ver[:4] == b"VL2K":
             # CANable2.0 "Nakakiyo092/canable2-fw"
-            fd_support = True
+            self.fd_support = True
         elif slcan_ver[:4] == b"VW1K":
             # WeAct Studio "Nakakiyo092/usb2canfdv1"
-            fd_support = True
+            self.fd_support = True
         else:
-            fd_support = False
+            self.fd_support = False
             print("WARNING: Unsupported SLCAN version ", slcan_ver.decode())
 
-        debug_build = bool(b"DEBUG" in slcan_ver)
+        self.debug_build = bool(b"DEBUG" in slcan_ver)
 
         # Reset to default settings
         self.send(b"S4\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: S4 command failed"
         self.send(b"Y2\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: Y2 command failed"
         self.send(b"Z0\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: Z0 command failed"
         self.send(b"W0\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: W0 command failed"
         self.send(b"M00000000\r")
-        self.receive()
+        assert self.receive() == b"\r", "Setup: M command failed"
         self.send(b"mFFFFFFFF\r")       # mFFFFFFFF -> Pass all
-        self.receive()
+        assert self.receive() == b"\r", "Setup: m command failed"
 
 
     def close(self):
@@ -81,7 +84,7 @@ class DeviceUnderTest:
         self.ser.close()
 
 
-    def print_data(self, direction: chr, data: bytes):
+    def print_data(self, direction: str, data: bytes):
         """Print the data in a human-readable format.
         param direction: 'T' for transmit, 'R' for receive
         """
