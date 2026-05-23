@@ -7,6 +7,7 @@ from device_under_test import DeviceUnderTest
 
 class ErrorTestCase(unittest.TestCase):
 
+
     print_on: bool
     dut: DeviceUnderTest
 
