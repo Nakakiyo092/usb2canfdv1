@@ -20,8 +20,8 @@
 // THE SOFTWARE.
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifndef _CAN_H
-#define _CAN_H
+#ifndef USB2CANFDV1_CAN_H
+#define USB2CANFDV1_CAN_H
 
 #include "stm32g0xx_hal.h"
 
@@ -129,4 +129,4 @@ uint32_t can_get_cycle_max_time_ns(void);
 
 FDCAN_HandleTypeDef *can_get_handle(void);
 
-#endif // _CAN_H
+#endif // USB2CANFDV1_CAN_H

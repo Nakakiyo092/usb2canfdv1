@@ -20,8 +20,8 @@
 // THE SOFTWARE.
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifndef _LED_H
-#define _LED_H
+#ifndef USB2CANFDV1_LED_H
+#define USB2CANFDV1_LED_H
 
 #include "main.h"
 
@@ -44,4 +44,4 @@ void led_blink_txd(void);
 void led_blink_rxd(void);
 void led_process(void);
 
-#endif // _LED_H
+#endif // USB2CANFDV1_LED_H
