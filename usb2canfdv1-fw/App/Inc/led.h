@@ -25,11 +25,11 @@
 
 #include "main.h"
 
-// LED state
+// LED state (active-low: LED_ON = GPIO_PIN_RESET drives pin LOW to light the LED)
 enum LedState
 {
-    LED_ON,
-    LED_OFF
+    LED_ON  = GPIO_PIN_RESET,
+    LED_OFF = GPIO_PIN_SET
 };
 
 // GPIO definitions
@@ -37,8 +37,8 @@ enum LedState
 #define LED_TXD LED_TXD_GPIO_Port , LED_TXD_Pin
 
 // Prototypes
-void led_init();
-void led_turn_txd(enum LedState state);
+void led_init(void);
+void led_turn_txd(enum LedState state); // No led_turn_rxd: RX LED is managed exclusively via led_blink_rxd/led_process
 void led_blink_sequence(uint8_t numblinks);
 void led_blink_txd(void);
 void led_blink_rxd(void);
