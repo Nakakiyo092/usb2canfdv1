@@ -110,7 +110,7 @@ class DeviceUnderTest:
     def receive(self) -> bytes:
         """Receive data from the device."""
         rx_data = b""
-        cycle = 0.02    # sec
+        cycle = 0.02    # sec - should be more than RRT to the device and cdc stream gap including VM USB jitter
         timeout = 1     # sec
         for _ in range(0, int(timeout / cycle)):
             time.sleep(cycle)

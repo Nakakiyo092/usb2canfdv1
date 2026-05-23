@@ -5,6 +5,7 @@ import unittest
 import time
 from device_under_test import DeviceUnderTest
 
+# TODO: Tighten these 200 ms waits — most are >10x the propagation time noted in the trailing comments.
 
 class ErrorTestCase(unittest.TestCase):
 
