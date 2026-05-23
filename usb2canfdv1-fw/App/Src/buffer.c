@@ -99,6 +99,7 @@ void buf_process(void)
         uint32_t idx_start = 0; // Start index of the data which is not corrupted
 
         // Check if the data in this buffer is corrupted due to overflow
+        // If producer overflowed this slot, skip the torn prefix up to the first '\r'.
         uint8_t is_dropped = buf_cdc_rx.data_drop[buf_cdc_rx.tail];
         if (is_dropped)
         {

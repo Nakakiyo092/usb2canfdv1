@@ -274,7 +274,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   uint32_t new_head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
   if (new_head == buf_cdc_rx.tail)
   {
-    // Buffer overflow
+    // Buffer overflow - flag this slot so consumer skips its torn prefix.
     buf_cdc_rx.data_drop[buf_cdc_rx.head] = 1;
 
     // Listen again on the same buffer. Old data will be overwritten.
@@ -287,7 +287,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
     // Save length and move to next buffer
     buf_cdc_rx.msglen[buf_cdc_rx.head] = *Len;
     buf_cdc_rx.head = new_head;
-    buf_cdc_rx.data_drop[buf_cdc_rx.head] = 0;
+    buf_cdc_rx.data_drop[buf_cdc_rx.head] = 0;  // Wipe stale flag for the new producer slot.
 
     // Start listening on next buffer. Previous buffer will be processed in main loop.
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);

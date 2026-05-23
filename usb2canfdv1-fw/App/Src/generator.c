@@ -35,7 +35,7 @@ static uint32_t slcan_filter_code = 0x00000000;
 static uint32_t slcan_filter_mask = 0xFFFFFFFF;
 static enum SlcanTimestampMode slcan_timestamp_mode = 0;
 static uint16_t slcan_report_reg = 1;   // Default: no timestamp, no ESI, no Tx, but with Rx
-static uint8_t slcan_status_flags = 0;
+static uint8_t slcan_status_flags = 0;  // Owned by main loop only; MUST NOT be modified from ISR context.
 
 // Private methods
 static uint16_t slcan_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
