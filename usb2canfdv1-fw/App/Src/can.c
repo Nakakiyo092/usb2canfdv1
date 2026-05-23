@@ -69,7 +69,7 @@ static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
 // Private methods
 static void can_update_bit_time_ns(void);
 static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader);
-static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pRxHeader);
+static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent);
 
 // Initialize CAN peripheral settings, but don't actually start the peripheral
 void can_init(void)
@@ -118,6 +118,8 @@ HAL_StatusTypeDef can_enable(void)
         // Reset error counter etc.
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
+        can_error_state = (struct CanErrorState){0};
+        can_error_state.last_err_code = FDCAN_PROTOCOL_ERROR_NONE;
 
         hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
         hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
@@ -178,7 +180,6 @@ HAL_StatusTypeDef can_enable(void)
         can_update_bit_time_ns();
         can_clear_cycle_time();
         can_bus_load_ppm = 0;
-        can_error_state.last_err_code = FDCAN_PROTOCOL_ERROR_NONE;
 
         led_turn_txd(LED_OFF);
 
@@ -200,6 +201,8 @@ HAL_StatusTypeDef can_disable(void)
         // Reset error counter etc.
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
+        can_error_state = (struct CanErrorState){0};
+        can_error_state.last_err_code = FDCAN_PROTOCOL_ERROR_NONE;
 
         buf_clear_can_buffer();
 
@@ -511,23 +514,24 @@ struct CanBitrateCfg can_get_data_bitrate_cfg(void)
 }
 
 // Get the nominal bitrate configuration of the CAN peripheral
-struct CanBitrateCfg can_get_bitrate_cfg(void)
+struct CanBitrateCfg can_get_nominal_bitrate_cfg(void)
 {
     return can_bit_cfg_nominal;
 }
 
 // Set filter for standard CAN ID
+// Code and mask entries outside the valid range are left unchanged.
 HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint32_t mask)
 {
     HAL_StatusTypeDef ret = HAL_OK;
-    
+
     if (can_bus_state == BUS_OPENED) return HAL_ERROR;
     if (state == ENABLE)
         can_std_filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
     else if (state == DISABLE)
         can_std_filter.FilterConfig = FDCAN_FILTER_DISABLE;
     else
-        ret = HAL_ERROR;
+        return HAL_ERROR;
 
     if (code > 0x7FF)
         ret = HAL_ERROR;
@@ -538,22 +542,23 @@ HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint3
         ret = HAL_ERROR;
     else
         can_std_filter.FilterID2 = mask;
-    
+
     return ret;
 }
 
 // Set filter for extended CAN ID
+// Code and mask entries outside the valid range are left unchanged.
 HAL_StatusTypeDef can_set_filter_ext(FunctionalState state, uint32_t code, uint32_t mask)
 {
     HAL_StatusTypeDef ret = HAL_OK;
-    
+
     if (can_bus_state == BUS_OPENED) return HAL_ERROR;
     if (state == ENABLE)
         can_ext_filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
     else if (state == DISABLE)
         can_ext_filter.FilterConfig = FDCAN_FILTER_DISABLE;
     else
-        ret = HAL_ERROR;
+        return HAL_ERROR;
 
     if (code > 0x1FFFFFFF)
         ret = HAL_ERROR;
@@ -564,7 +569,7 @@ HAL_StatusTypeDef can_set_filter_ext(FunctionalState state, uint32_t code, uint3
         ret = HAL_ERROR;
     else
         can_ext_filter.FilterID2 = mask;
-    
+
     return ret;
 }
 
@@ -622,6 +627,11 @@ HAL_StatusTypeDef can_set_mode(uint32_t mode)
         // cannot set mode while on bus
         return HAL_ERROR;
     }
+    if (!IS_FDCAN_MODE(mode))
+    {
+        // out of range (RESTRICTED can be accepted)
+        return HAL_ERROR;
+    }
     can_mode = mode;
 
     return HAL_OK;
@@ -657,7 +667,7 @@ FunctionalState can_is_tx_enabled(void)
 {
     if (can_bus_state == BUS_CLOSED)
         return DISABLE;
-    else if (hfdcan1.Init.Mode == FDCAN_MODE_BUS_MONITORING)
+    else if (can_mode == FDCAN_MODE_BUS_MONITORING)
         return DISABLE;
     else if (can_error_state.bus_off)
         return DISABLE;
@@ -702,7 +712,7 @@ FDCAN_HandleTypeDef *can_get_handle(void)
 }
 
 // Get the nominal one bit time in nanoseconds
-void can_update_bit_time_ns(void)
+static void can_update_bit_time_ns(void)
 {
     // Number of time quanta (Tq) in one bit
     can_bit_time_ns = ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
@@ -715,7 +725,7 @@ void can_update_bit_time_ns(void)
 }
 
 // Return the duration of the rx frame in the nominal bit number
-uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
+static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
 {
     uint16_t time_msg, time_data;
     uint8_t data_bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(pRxHeader->DataLength)];
@@ -774,7 +784,7 @@ uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
 }
 
 // Return the duration of the tx event in the nominal bit number
-uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent)
+static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent)
 {
     FDCAN_RxHeaderTypeDef frame_header;
     //frame_header.Identifier = pTxEvent->Identifier;

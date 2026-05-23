@@ -23,6 +23,7 @@
 #ifndef __BUFFER_H__
 #define __BUFFER_H__
 
+#include <stdint.h>
 #include "can.h"
 #include "usbd_cdc.h"
 

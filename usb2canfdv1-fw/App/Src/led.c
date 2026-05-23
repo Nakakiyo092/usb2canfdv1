@@ -37,7 +37,7 @@ static enum LedState led_txd_last_state = LED_OFF;
 static uint8_t led_error_was_indicating = 0;
 
 // Initialize LED GPIOs
-void led_init()
+void led_init(void)
 {
     HAL_GPIO_WritePin(LED_RXD, LED_ON);
     HAL_GPIO_WritePin(LED_TXD, LED_ON);
@@ -98,6 +98,8 @@ void led_process(void)
     {
         HAL_GPIO_WritePin(LED_RXD, LED_ON);
         HAL_GPIO_WritePin(LED_TXD, LED_ON);
+        led_rxd_last_state = LED_OFF;
+        led_txd_last_state = LED_OFF;
         led_error_was_indicating = 1;
     }
     // Otherwise, normal LED operation
@@ -122,7 +124,6 @@ void led_process(void)
         // If LED has been on for long enough, turn it off
         if (led_txd_last_state == LED_ON && (uint32_t)(HAL_GetTick() - led_txd_last_time) > LED_BLINK_DURATION)
         {
-            // Invert LED
             HAL_GPIO_WritePin(LED_TXD, LED_OFF);
             led_txd_last_time = HAL_GetTick();
             led_txd_last_state = LED_OFF;

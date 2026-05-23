@@ -147,7 +147,7 @@ class InLoopbackTestCase(unittest.TestCase):
         else:
             diff_time_ms = (60000 + crnt_time_ms) - last_time_ms
 
-        # Proving 2% accuracy. 600ms should be enough for USB latency.
+        # Tolerance is 600 ms (2% of 30 s), which accounts for USB latency and OS scheduling jitter.
         self.assertLess(abs(sleep_time_ms - diff_time_ms), 600)
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -232,7 +232,7 @@ class InLoopbackTestCase(unittest.TestCase):
         else:
             diff_time_us = (3600000000 + crnt_time_us) - last_time_us
 
-        # Proving 2% accuracy. 600ms should be enough for USB latency.
+        # Tolerance is 600 ms (2% of 30 s), which accounts for USB latency and OS scheduling jitter.
         self.assertLess(abs(sleep_time_us - diff_time_us), 600 * 1000)
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -272,6 +272,10 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
+        # Both commands are sent together to minimize the interval between them
+        # so their timestamps are captured in a short time range on the device.
+        # Both responses typically arrive in the first receive(); the second
+        # receive() collects any remaining data. rx_data is their concatenation.
         self.dut.send(b"Z\rt03F0\r")
         rx_data = self.dut.receive() + self.dut.receive()
         last_timestamp = rx_data[len(b"Z2"):len(b"Z2") + 8]

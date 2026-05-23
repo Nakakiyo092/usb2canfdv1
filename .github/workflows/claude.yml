@@ -25,3 +25,11 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_tools: "Bash(gh run list*),Bash(gh run view*)"
+          claude_args: |
+            --system-prompt "
+            When posting GitHub comments, drafting Issues and making PRs:
+            - Use '#NN' ONLY for intentional references to real issues/PRs.
+            - For item numbering, step numbering, or placeholders, do NOT use
+              '#NN'. Use 'item N' without the #, or wrap in backticks: \`#N\`.
+            - When uncertain, wrap in backticks to be safe.
+            "

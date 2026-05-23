@@ -297,15 +297,6 @@ class ErrorTestCase(unittest.TestCase):
         #  will be discarded by no ack
         for _ in range(0, 64):
             self.dut.send(b"t03F0\r")
-            self.dut.receive()
-
-        # Confirm no overflow error
-        self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r")  # TEC saturates by 16 frames
-
-        #  will be discarded by no ack
-        for _ in range(0, 64):
-            self.dut.send(b"t03F0\r")
             self.assertEqual(self.dut.receive(), b"z\r")
 
         # Confirm no overflow error

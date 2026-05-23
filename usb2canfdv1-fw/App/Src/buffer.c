@@ -31,7 +31,7 @@
 // Maximum number of frames between tail and send index
 // In one main loop, max. 3 frames can be sent, 1 tx event can be processed.
 // The value below is set considering the case with 3 successful transmissions followed by 9 failed ones.
-#define BUF_MAX_NBR_SENT_FRAMES         (3 * 3 * 2)         // SRAMCAN_TFQ_NBR 3 * SRAMCAN_TEF_NBR 3 * Margin
+#define BUF_MAX_NBR_SENT_FRAMES         (3 * 3 * 2)         // SRAMCAN_TFQ_NBR 3 * SRAMCAN_TEF_NBR 3 * Margin (must be < BUF_CAN_TXQUEUE_LEN)
 
 // Cirbuf structure for CAN TX frames
 struct BufCanTx
@@ -55,8 +55,8 @@ static uint8_t slcan_str_index = 0;
 
 // Private prototypes
 static HAL_StatusTypeDef buf_release_can_tail(void);
-static void buf_disable_irq();
-static void buf_enable_irq();
+static void buf_disable_irq(void);
+static void buf_enable_irq(void);
 
 // Initializes
 void buf_init(void)
@@ -73,6 +73,8 @@ void buf_init(void)
     buf_can_tx.send = 0;
     buf_can_tx.tail = 0;
     buf_can_tx.full = 0;
+
+    slcan_str_index = 0;
 }
 
 // Process
@@ -187,6 +189,9 @@ void buf_process(void)
                                                &buf_can_tx.header[buf_can_tx.send], 
                                                buf_can_tx.data[buf_can_tx.send]);
 
+        // send is advanced unconditionally (drop-on-fail): advancing only on success risks
+        // an infinite loop if the frame is permanently invalid (e.g., bad DLC). Frame loss
+        // is detected as a marker mismatch and surfaced to the host via the F command.
         buf_can_tx.send = (buf_can_tx.send + 1) % BUF_CAN_TXQUEUE_LEN;
 
         uint16_t nbr_sent_frames;   // Number of frames in HAL waiting for being sent
@@ -254,7 +259,7 @@ FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
 {
     if (buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);;
+        slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
         return NULL;
     }
 
@@ -271,6 +276,7 @@ FDCAN_TxHeaderTypeDef *buf_get_can_sent_header(uint8_t marker)
         return NULL;
     }
 
+    // TODO Deduplicate marker-search logic shared with buf_get_can_sent_data (e.g., static buf_find_can_marker helper)
     uint8_t idx = buf_can_tx.tail;
     while (idx != buf_can_tx.send)
     {
@@ -290,7 +296,7 @@ uint8_t *buf_get_can_head_data(void)
 {
     if (buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);;
+        slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
         return NULL;
     }
 
@@ -307,6 +313,7 @@ uint8_t *buf_get_can_sent_data(uint8_t marker)
         return NULL;
     }
 
+    // TODO Deduplicate marker-search logic shared with buf_get_can_sent_header (e.g., static buf_find_can_marker helper)
     uint8_t idx = buf_can_tx.tail;
     while (idx != buf_can_tx.send)
     {
@@ -347,7 +354,7 @@ HAL_StatusTypeDef buf_commit_can_head(void)
 // Delete one frame from the can tx buffer
 HAL_StatusTypeDef buf_release_can_tail(void)
 {
-    while ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
+    if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
         return HAL_ERROR;
     }
@@ -390,13 +397,13 @@ void buf_clear_can_buffer(void)
 }
 
 // Disable/Enable IRQ with memory barrier
-void buf_disable_irq()
+static void buf_disable_irq(void)
 {
     __disable_irq();
     __DSB(); // Data Synchronization Barrier
     __ISB(); // Instruction Synchronization Barrier
 }
-void buf_enable_irq()
+static void buf_enable_irq(void)
 {
     __enable_irq();
     __DSB();

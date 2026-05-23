@@ -200,7 +200,7 @@ def main():
 
     try:
         device = serial.Serial(args.devicename, timeout=1, write_timeout=1)
-    except Exception as err:
+    except serial.SerialException as err:
         print("ERROR: Could not open device ", args.devicename)
         print(err)
         return

@@ -24,7 +24,6 @@
 
 #include "stm32g0xx_hal.h"
 #include "can.h"
-#include "led.h"
 #include "nvm.h"
 #include "slcan.h"
 
@@ -45,6 +44,8 @@ enum NvmMemoryStatus
 #define NVM_ADDR_STP_FILTER_CODE  (NVM_ADDR_ORIGIN + 0x020UL)
 #define NVM_ADDR_STP_FILTER_MASK  (NVM_ADDR_ORIGIN + 0x028UL)
 
+// Note: Integrity check relies solely on a 4-bit status nibble. A single bit-flip
+// in the payload will silently pass NVM_IS_WRITTEN. No CRC or checksum is implemented.
 #define NVM_EXTRACT_MEM_STS(val)  ((uint8_t)(((val) >> 60) & 0x0F))
 #define NVM_IS_WRITTEN(val)       (NVM_EXTRACT_MEM_STS(val) == NVM_MEMORY_WRITTEN)
 #define NVM_WRITE_MEM_STS(val)    ((((uint64_t)val) & 0x0FFFFFFFFFFFFFFF) | (((uint64_t)NVM_MEMORY_WRITTEN) << 60))
@@ -70,8 +71,6 @@ void nvm_init(void)
     nvm_stp_data_bitrate_raw =  *(uint64_t *)NVM_ADDR_STP_DATA_BITRATE;
     nvm_stp_filter_code_raw =   *(uint64_t *)NVM_ADDR_STP_FILTER_CODE;
     nvm_stp_filter_mask_raw =   *(uint64_t *)NVM_ADDR_STP_FILTER_MASK;
-
-    return;
 }
 
 // Get serial number
@@ -95,9 +94,11 @@ HAL_StatusTypeDef nvm_update_serial_number(uint16_t num)
     }
 
     // Write to the flash
+    uint64_t prev_serial_number_raw = nvm_serial_number_raw;
     nvm_serial_number_raw = NVM_WRITE_MEM_STS(num);
     if (nvm_write_to_flash() != HAL_OK)
     {
+        nvm_serial_number_raw = prev_serial_number_raw;
         return HAL_ERROR;
     }
 
@@ -105,6 +106,9 @@ HAL_StatusTypeDef nvm_update_serial_number(uint16_t num)
 }
 
 // Apply auto startup configuration
+// Note: No rollback on partial failure — if a later step returns HAL_ERROR,
+// earlier settings may already be applied to live modules. Callers should treat
+// HAL_ERROR as an indication that the system state is partially configured.
 HAL_StatusTypeDef nvm_apply_startup_cfg(void)
 {
     // Check if the memory is written
@@ -142,6 +146,7 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     slcan_set_report_mode(report_reg);
 
     // Read and apply bitrate
+    // Prescaler is stored in 8 bits; project decision limits it to 255 or less
     struct CanBitrateCfg bitrate;
     bitrate.prescaler = (uint16_t)((nvm_stp_nom_bitrate_raw) & 0xFF);
     bitrate.time_seg1 = (uint8_t)((nvm_stp_nom_bitrate_raw >> 8) & 0xFF);
@@ -207,16 +212,18 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
     startup_cfg = NVM_WRITE_MEM_STS(startup_cfg);
 
     // Make raw data for nominal bitrate
+    // Prescaler is stored in 8 bits; project decision limits it to 255 or less
     uint64_t nom_bitrate = 0;
 
-    if (0xFF < can_get_bitrate_cfg().prescaler) return HAL_ERROR;
-    nom_bitrate = (nom_bitrate | (uint64_t)can_get_bitrate_cfg().prescaler);
-    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_bitrate_cfg().time_seg1 << 8));
-    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_bitrate_cfg().time_seg2 << 16));
-    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_bitrate_cfg().sjw << 24));
+    if (0xFF < can_get_nominal_bitrate_cfg().prescaler) return HAL_ERROR;
+    nom_bitrate = (nom_bitrate | (uint64_t)can_get_nominal_bitrate_cfg().prescaler);
+    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_nominal_bitrate_cfg().time_seg1 << 8));
+    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_nominal_bitrate_cfg().time_seg2 << 16));
+    nom_bitrate = (nom_bitrate | ((uint64_t)can_get_nominal_bitrate_cfg().sjw << 24));
     nom_bitrate = NVM_WRITE_MEM_STS(nom_bitrate);
 
     // Make raw data for data bitrate
+    // Prescaler is stored in 8 bits; project decision limits it to 255 or less
     uint64_t data_bitrate = 0;
 
     if (0xFF < can_get_data_bitrate_cfg().prescaler) return HAL_ERROR;
@@ -241,7 +248,12 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
                 return HAL_OK;
 
     // Update the RAM data
-    nvm_stp_config_raw = startup_cfg;
+    uint64_t prev_stp_config_raw =      nvm_stp_config_raw;
+    uint64_t prev_stp_nom_bitrate_raw = nvm_stp_nom_bitrate_raw;
+    uint64_t prev_stp_data_bitrate_raw = nvm_stp_data_bitrate_raw;
+    uint64_t prev_stp_filter_code_raw = nvm_stp_filter_code_raw;
+    uint64_t prev_stp_filter_mask_raw = nvm_stp_filter_mask_raw;
+    nvm_stp_config_raw =      startup_cfg;
     nvm_stp_nom_bitrate_raw = nom_bitrate;
     nvm_stp_data_bitrate_raw = data_bitrate;
     nvm_stp_filter_code_raw = filter_code;
@@ -250,6 +262,11 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
     // Write to the flash
     if (nvm_write_to_flash() != HAL_OK)
     {
+        nvm_stp_config_raw =      prev_stp_config_raw;
+        nvm_stp_nom_bitrate_raw = prev_stp_nom_bitrate_raw;
+        nvm_stp_data_bitrate_raw = prev_stp_data_bitrate_raw;
+        nvm_stp_filter_code_raw = prev_stp_filter_code_raw;
+        nvm_stp_filter_mask_raw = prev_stp_filter_mask_raw;
         return HAL_ERROR;
     }
     
@@ -257,6 +274,9 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
 }
 
 // Write the RAM data to the data area in the flash memory
+// Note: No wear leveling — every write erases and rewrites the entire page,
+// consuming one flash erase cycle (~10,000–100,000 cycles rated). Acceptable
+// because config writes are infrequent in normal operation.
 HAL_StatusTypeDef nvm_write_to_flash(void)
 {
     // Unlock the flash
@@ -270,8 +290,7 @@ HAL_StatusTypeDef nvm_write_to_flash(void)
     erase.NbPages = 1;
 
     uint32_t error = 0;
-    HAL_FLASHEx_Erase(&erase, &error);
-    if (error != NVM_ERASE_OK)
+    if (HAL_FLASHEx_Erase(&erase, &error) != HAL_OK || error != NVM_ERASE_OK)
     {
         HAL_FLASH_Lock();
         return HAL_ERROR;
