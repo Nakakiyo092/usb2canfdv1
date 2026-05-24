@@ -274,7 +274,7 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     else
     {
         // Compensate overflow of micro second counter using milli second counter
-        n_comp = ((uint64_t)UINT16_MAX / 2 + time_diff_ms * 1000 - time_diff_us);   // MAX 0x10000, 0xFFFFFFFF * 1000, 0xFFFF
+        n_comp = (uint64_t)time_diff_ms * 1000 + UINT16_MAX / 2 - time_diff_us;     // MAX 0xFFFFFFFF * 1000, 0x10000, 0xFFFF
         n_comp = n_comp / ((uint64_t)UINT16_MAX + 1);                               // Number of overflows  MAX 0x10000 * 1000
         time_diff_us = time_diff_us + n_comp * ((uint64_t)UINT16_MAX + 1);          // MAX 0x10000 * 1000 * 0x10000
     }
