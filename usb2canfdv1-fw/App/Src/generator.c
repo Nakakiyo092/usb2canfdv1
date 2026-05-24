@@ -247,7 +247,11 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     static uint32_t slcan_last_time_ms = 0;
     static uint16_t slcan_last_time_us = 0;
 
-    uint32_t current_time_ms = HAL_GetTick();    // TODO: Check if this tick syncs to TIM3
+    // Note: HAL_GetTick() and TIM3 share the same clock source
+    // but the moment of reading is not aligned. Small sample-time mismatch
+    // (bounded by main-loop cycle, ~300us) is handled by the counter
+    // mismatch branch below.
+    uint32_t current_time_ms = HAL_GetTick();
     uint16_t current_time_us = tim3_us; // MAX 0xFFFF
     uint32_t time_diff_ms;
     uint64_t time_diff_us;
@@ -256,8 +260,8 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     time_diff_ms = (uint32_t)(current_time_ms - slcan_last_time_ms);
     time_diff_us = (uint64_t)((uint16_t)(current_time_us - slcan_last_time_us));
 
-    // Counter mismatch (time_diff_ms <= 3 ms and time_diff_us > ~30ms, this can happen)
-    if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)     // 3ms >> main-loop cycle
+    // Counter mismatch (time_diff_ms <= 3 ms and time_diff_us > ~30 ms, this can happen)
+    if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)     // 3 ms >> main-loop cycle * CAN frame buffer size
     {
         // current_time_us was sampled before slcan_last_time_us (i.e. the frame arrived
         // slightly before the previous call).  This can happen when a CAN frame
