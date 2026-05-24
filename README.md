@@ -50,7 +50,7 @@ Use the packager tool and the upgrade tool in the [root repository](https://gith
 | Name | Author | License |
 |------|--------|---------|
 | [canable2-fw](https://github.com/normaldotcom/canable2-fw) | Openlight Labs | GPL-3.0 |
-| [WeActStudio.USB2CANFDV1](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1) | WeActStudio | See repository |
+| [WeActStudio.USB2CANFDV1](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1) | WeAct Studio | See repository |
 
 ### Bundled third-party components
 
