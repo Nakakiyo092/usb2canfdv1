@@ -33,6 +33,7 @@ enum LedState
 
 // Prototypes
 void led_init(void);
+uint8_t led_is_anim_active(void);
 void led_turn_txd(enum LedState state); // No led_turn_rxd: RX LED is managed exclusively via led_blink_rxd/led_process
 void led_blink_txd(void);
 void led_blink_rxd(void);

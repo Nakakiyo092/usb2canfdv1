@@ -47,6 +47,12 @@ void led_init(void)
     led_anim_active = 1;
 }
 
+// Return non-zero while the opening animation is still running
+uint8_t led_is_anim_active(void)
+{
+    return led_anim_active;
+}
+
 // Turn TX LED on/off
 void led_turn_txd(enum LedState state)
 {

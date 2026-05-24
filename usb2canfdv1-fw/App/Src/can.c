@@ -369,8 +369,8 @@ void can_process(void)
     
     last_time_stamp_cnt = curr_time_stamp_cnt;
 
-    // TX LED on during bus closed
-    if (can_bus_state == BUS_CLOSED)
+    // TX LED on during bus closed (skip during opening animation to avoid overriding it)
+    if (can_bus_state == BUS_CLOSED && !led_is_anim_active())
         led_turn_txd(LED_ON);
 
 }
