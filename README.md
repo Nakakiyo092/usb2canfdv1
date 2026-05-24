@@ -5,6 +5,7 @@ The implementation is for the [USB2CANFDV1](https://github.com/WeActStudio/WeAct
 
 URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
 
+
 ## Frequently used commands
 
 - `O[CR]` - Opens the CAN channel
@@ -26,6 +27,7 @@ URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
 
 Please find more information in the `doc` directory or the [wiki](https://github.com/Nakakiyo092/usb2canfdv1/wiki).
 
+
 ## Toolchain
 The toolchain in this repository is designed to run on a Windows PC.
 
@@ -39,3 +41,17 @@ Use the packager tool and the upgrade tool in the [root repository](https://gith
 > After flashing this firmware, there would be an issue upgrading to another firmware.
 > You should force upgrade mode by shorting DIO and GND as described in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1?tab=readme-ov-file#how-to-force-firmware-upgrade-mode).
 > There would be no command to enter firmware upgrade mode.
+
+
+## Credit
+
+### Related work
+
+| Name | Author | License |
+|------|--------|---------|
+| [canable2-fw](https://github.com/normaldotcom/canable2-fw) | Openlight Labs | GPL-3.0 |
+| [WeActStudio.USB2CANFDV1](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1) | WeActStudio | See repository |
+
+### Bundled third-party components
+
+See LICENSE.md for the full list of bundled components and their licenses.
