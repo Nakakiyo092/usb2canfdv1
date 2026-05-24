@@ -47,9 +47,11 @@ void led_init(void)
     led_anim_active = 1;
 }
 
-// Turn TX LED on/off
+// Turn TX LED on/off; requests are ignored while the opening animation is running
 void led_turn_txd(enum LedState state)
 {
+    if (led_anim_active)
+        return;
     HAL_GPIO_WritePin(LED_TXD, state);
 }
 
