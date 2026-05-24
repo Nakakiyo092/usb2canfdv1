@@ -216,7 +216,7 @@ uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_even
 
 
 // Gets milli second timestamp for the current time (2bytes, Resets at 60,000ms)
-// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice?).
+// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49.7 days).
 uint16_t slcan_get_timestamp_ms(void)
 {
     static uint16_t slcan_last_timestamp_ms = 0;
@@ -234,7 +234,7 @@ uint16_t slcan_get_timestamp_ms(void)
 }
 
 // Gets micro second timestamp for the time tim3_us was taken (4bytes, Resets at 3600,000,000us)
-// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49 days, or twice of it?).
+// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49.7 days).
 // The calculation is based on the combination of tim3 clock and the ms tick.
 // The tim3_us does not have to be the current value but supposed to be close to it (like ~1ms).
 // The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX us / 2 ~ 30ms.
@@ -247,7 +247,11 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     static uint32_t slcan_last_time_ms = 0;
     static uint16_t slcan_last_time_us = 0;
 
-    uint32_t current_time_ms = HAL_GetTick();    // TODO: Check if this tick syncs to TIM3
+    // Note: HAL_GetTick() and TIM3 share the same clock source
+    // but the moment of reading is not aligned. Small sample-time mismatch
+    // (bounded by main-loop cycle, ~300us) is handled by the counter
+    // mismatch branch below.
+    uint32_t current_time_ms = HAL_GetTick();
     uint16_t current_time_us = tim3_us; // MAX 0xFFFF
     uint32_t time_diff_ms;
     uint64_t time_diff_us;
@@ -256,8 +260,8 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     time_diff_ms = (uint32_t)(current_time_ms - slcan_last_time_ms);
     time_diff_us = (uint64_t)((uint16_t)(current_time_us - slcan_last_time_us));
 
-    // Counter mismatch (time_diff_ms <= 3 ms and time_diff_us > ~30ms, this can happen)
-    if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)     // 3ms >> main-loop cycle
+    // Counter mismatch (time_diff_ms <= 3 ms and time_diff_us > ~30 ms, this can happen)
+    if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)     // 3 ms >> main-loop cycle * CAN frame buffer size
     {
         // current_time_us was sampled before slcan_last_time_us (i.e. the frame arrived
         // slightly before the previous call).  This can happen when a CAN frame
@@ -274,7 +278,7 @@ uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us)
     else
     {
         // Compensate overflow of micro second counter using milli second counter
-        n_comp = ((uint64_t)UINT16_MAX / 2 + time_diff_ms * 1000 - time_diff_us);   // MAX 0x10000, 0xFFFFFFFF * 1000, 0xFFFF
+        n_comp = (uint64_t)time_diff_ms * 1000 + UINT16_MAX / 2 - time_diff_us;     // MAX 0xFFFFFFFF * 1000, 0x10000, 0xFFFF
         n_comp = n_comp / ((uint64_t)UINT16_MAX + 1);                               // Number of overflows  MAX 0x10000 * 1000
         time_diff_us = time_diff_us + n_comp * ((uint64_t)UINT16_MAX + 1);          // MAX 0x10000 * 1000 * 0x10000
     }
