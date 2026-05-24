@@ -193,6 +193,7 @@ HAL_StatusTypeDef can_disable(void)
         if (HAL_FDCAN_Stop(&hfdcan1) != HAL_OK) ret = HAL_ERROR;
         if (HAL_FDCAN_DeInit(&hfdcan1) != HAL_OK) ret = HAL_ERROR;
 
+        // Reset error counter etc.
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
 
