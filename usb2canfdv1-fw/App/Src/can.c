@@ -173,7 +173,6 @@ HAL_StatusTypeDef can_enable(void)
         buf_clear_can_buffer();
 
         can_update_bit_time_ns();
-        can_clear_cycle_time();
         can_bus_load_ppm = 0;
 
         led_turn_txd(LED_OFF);
@@ -197,10 +196,6 @@ HAL_StatusTypeDef can_disable(void)
         // Reset error counter etc.
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
-        can_error_state = (struct CanErrorState){0};
-        can_error_state.last_err_code = FDCAN_PROTOCOL_ERROR_NONE;
-
-        buf_clear_can_buffer();
 
         led_turn_txd(LED_ON);
 
@@ -689,7 +684,7 @@ uint32_t can_get_bus_load_ppm(void)
     return can_bus_load_ppm;
 }
 
-// Clear the maximum and average cycle time
+// Clear the maximum and average cycle time.
 void can_clear_cycle_time(void)
 {
     // Reset metrics only. last_time_stamp_cnt is left untouched so the next
