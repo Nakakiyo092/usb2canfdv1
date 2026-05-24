@@ -23,7 +23,6 @@
 
 /* USER CODE BEGIN INCLUDE */
 #include "buffer.h"
-#include "slcan.h"
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/

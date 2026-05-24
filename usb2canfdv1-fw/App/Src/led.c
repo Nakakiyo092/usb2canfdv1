@@ -24,7 +24,7 @@
 
 #include "stm32g0xx_hal.h"
 #include "led.h"
-#include "slcan.h"
+#include "generator.h"
 
 // Duration in ms
 #define LED_BLINK_DURATION          (25)

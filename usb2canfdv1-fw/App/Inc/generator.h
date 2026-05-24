@@ -20,8 +20,10 @@
 // THE SOFTWARE.
 ///////////////////////////////////////////////////////////////////////////////
 
-#ifndef USB2CANFDV1_SLCAN_H
-#define USB2CANFDV1_SLCAN_H
+#ifndef USB2CANFDV1_GENERATOR_H
+#define USB2CANFDV1_GENERATOR_H
+
+#include "stm32g0xx_hal.h"
 
 // Filter mode
 enum SlcanFilterMode
@@ -91,8 +93,6 @@ uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_even
 uint16_t slcan_get_timestamp_ms(void);
 uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us);
 
-void slcan_parse_str(uint8_t *buf, uint8_t len);
-
 HAL_StatusTypeDef slcan_set_filter_mode(enum SlcanFilterMode mode);
 HAL_StatusTypeDef slcan_set_filter_code(uint32_t code);
 HAL_StatusTypeDef slcan_set_filter_mask(uint32_t mask);
@@ -109,4 +109,4 @@ void slcan_raise_error(enum SlcanStatusFlag err);
 void slcan_clear_error(void);
 uint8_t slcan_get_status_flags(void);
 
-#endif // USB2CANFDV1_SLCAN_H
+#endif // USB2CANFDV1_GENERATOR_H

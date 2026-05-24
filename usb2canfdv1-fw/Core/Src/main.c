@@ -31,7 +31,6 @@
 #include "can.h"
 #include "led.h"
 #include "nvm.h"
-#include "slcan.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

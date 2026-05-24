@@ -26,7 +26,7 @@
 #include "buffer.h"
 #include "can.h"
 #include "led.h"
-#include "slcan.h"
+#include "parser.h"
 
 // Maximum number of frames between tail and send index
 // In one main loop, max. 3 frames can be sent, 1 tx event can be processed.
