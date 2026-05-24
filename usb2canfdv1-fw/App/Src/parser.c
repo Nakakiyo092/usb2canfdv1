@@ -373,7 +373,6 @@ void slcan_parse_str_open(uint8_t *buf, uint8_t len)
 
     // Reset variables
     slcan_clear_error();
-    can_clear_cycle_time();
 
     // Set mode
     if (buf[0] == 'O')
@@ -411,11 +410,7 @@ void slcan_parse_str_close(uint8_t *buf, uint8_t len)
     
     // Close CAN port
     if (can_disable() == HAL_OK)
-    {
         buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
-
-        can_clear_cycle_time();     // TODO: do we need this?
-    }
     else
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
 
@@ -556,6 +551,8 @@ void slcan_parse_str_report_mode(uint8_t *buf, uint8_t len)
 
         buf_enqueue_cdc((uint8_t *)", cycle_time_us_ave_max=[0x", 27);
 
+        // Read and clear cycle time. The max value accumulates from device boot
+        // (or since the last z[CR] query), spanning open and closed periods.
         uint16_t cycle_ave = (uint16_t)(can_get_cycle_ave_time_ns() >= 4095000 ? 4095 : can_get_cycle_ave_time_ns() / 1000);
         uint16_t cycle_max = (uint16_t)(can_get_cycle_max_time_ns() >= 4095000 ? 4095 : can_get_cycle_max_time_ns() / 1000);
         can_clear_cycle_time();
@@ -919,7 +916,6 @@ void slcan_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
 
     // Reset variables
     slcan_clear_error();
-    can_clear_cycle_time();
 
     // Set mode
     if (buf[0] == '=')

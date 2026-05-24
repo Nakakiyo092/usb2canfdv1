@@ -173,7 +173,6 @@ HAL_StatusTypeDef can_enable(void)
         buf_clear_can_buffer();
 
         can_update_bit_time_ns();
-        can_clear_cycle_time();
         can_bus_load_ppm = 0;
 
         led_turn_txd(LED_OFF);
@@ -684,7 +683,9 @@ uint32_t can_get_bus_load_ppm(void)
     return can_bus_load_ppm;
 }
 
-// Clear the maximum and average cycle time
+// Clear the maximum and average cycle time.
+// Called only from the z[CR] handler. The max value therefore accumulates from
+// device boot (or since the last z[CR] query), spanning open and closed periods.
 void can_clear_cycle_time(void)
 {
     // Reset metrics only. last_time_stamp_cnt is left untouched so the next
