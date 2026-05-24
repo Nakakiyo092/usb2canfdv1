@@ -28,7 +28,7 @@
 #include "buffer.h"
 #include "can.h"
 #include "led.h"
-#include "slcan.h"
+#include "generator.h"
 
 // Bit number for each frame type WithOut Data bytes (from SOF to ITM)
 #define CAN_BIT_NBR_WOD_CBFF            47

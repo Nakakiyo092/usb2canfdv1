@@ -25,7 +25,7 @@
 #include "stm32g0xx_hal.h"
 #include "can.h"
 #include "nvm.h"
-#include "slcan.h"
+#include "generator.h"
 
 // Memory status
 enum NvmMemoryStatus

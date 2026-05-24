@@ -29,7 +29,7 @@
 #include "can.h"
 #include "led.h"
 #include "nvm.h"
-#include "slcan.h"
+#include "parser.h"
 #ifdef DEBUG
 #include "bootloader.h"
 #endif

@@ -24,7 +24,7 @@
 
 #include "stm32g0xx_hal.h"
 #include "can.h"
-#include "slcan.h"
+#include "generator.h"
 
 // Public variables
 const uint8_t slcan_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
