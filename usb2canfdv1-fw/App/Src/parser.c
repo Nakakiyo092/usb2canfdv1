@@ -417,7 +417,7 @@ void slcan_parse_str_close(uint8_t *buf, uint8_t len)
     return;
 }
 
-// Set nominal bitrate
+// Set nominal and data bitrate
 void slcan_parse_str_set_bitrate(uint8_t *buf, uint8_t len)
 {
     if (buf[0] == 'S' || buf[0] == 'Y')
