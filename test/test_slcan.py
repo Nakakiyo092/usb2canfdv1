@@ -246,6 +246,66 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\a")
 
 
+    def test_sxxyy_command(self):
+        # Check response with CAN port closed (default: 125kbps, 87.5% SP)
+        self.dut.send(b"s031C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check response in CAN normal mode
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s031C\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check response in CAN silent mode
+        self.dut.send(b"L\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s031C\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check standard LAWICEL bit rates (all use BTR1=0x1C for 87.5% SP)
+        self.dut.send(b"s311C\r")    # 10kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s181C\r")    # 20kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s091C\r")    # 50kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s041C\r")    # 100kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s011C\r")    # 250kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s001C\r")    # 500kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s0016\r")    # 800kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s0014\r")    # 1Mbps
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check boundary values (all valid since formulas always produce in-range results)
+        self.dut.send(b"s0000\r")    # xx=0x00, yy=0x00 -> min values
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"sFFFF\r")    # xx=0xFF, yy=0xFF -> max values
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Sampling mode bit (MSB of yy) is ignored
+        self.dut.send(b"s031C\r")    # yy=0x1C (bit7=0)
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s039C\r")    # yy=0x9C (bit7=1, same timing)
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check invalid format
+        self.dut.send(b"s031\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"s031C0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"s0G1C\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+
+
     def test_Y_command(self):
         # Check response to Y with CAN port closed
         for idx in range(0, 10):
