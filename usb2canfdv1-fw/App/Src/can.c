@@ -379,11 +379,12 @@ HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate)
         return HAL_ERROR;
     }
 
-    // Set default bitrate 125k
+    // Set default bitrate 125kbps at 87.5% sampling point
+    // Equivalent to sxxyy command with BTR0=0x03, BTR1=0x1C
     can_bit_cfg_nominal.prescaler = 8;
-    can_bit_cfg_nominal.sjw = 8;
-    can_bit_cfg_nominal.time_seg1 = 70;
-    can_bit_cfg_nominal.time_seg2 = 9;
+    can_bit_cfg_nominal.sjw = 5;
+    can_bit_cfg_nominal.time_seg1 = 69;
+    can_bit_cfg_nominal.time_seg2 = 10;
 
     switch (bitrate)
     {
@@ -408,10 +409,11 @@ HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate)
         can_bit_cfg_nominal.prescaler = 2;
         break;
     case CAN_BITRATE_800K:
+        // 87.5% is not achievable at 800kbps with 80MHz clock;
+        // use 87% (prescaler=1, N=100, SP=87/100) as the closest value.
         can_bit_cfg_nominal.prescaler = 1;
-        can_bit_cfg_nominal.sjw = 10;
-        can_bit_cfg_nominal.time_seg1 = 88;
-        can_bit_cfg_nominal.time_seg2 = 11;
+        can_bit_cfg_nominal.time_seg1 = 86;
+        can_bit_cfg_nominal.time_seg2 = 13;
         break;
     case CAN_BITRATE_1000K:
         can_bit_cfg_nominal.prescaler = 1;
