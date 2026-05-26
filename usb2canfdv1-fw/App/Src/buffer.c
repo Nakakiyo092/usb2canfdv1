@@ -45,8 +45,8 @@ volatile struct BufCdcRx buf_cdc_rx = {0};
 
 // Private variables
 static struct BufCanTx buf_can_tx = {0};
-static uint8_t slcan_str[SLCAN_MTU];
-static uint8_t slcan_str_index = 0;
+static uint8_t cmd_str[SLCAN_MTU];
+static uint8_t cmd_str_idx = 0;
 
 // Private prototypes
 static HAL_StatusTypeDef buf_release_can_tail(void);
@@ -69,7 +69,7 @@ void buf_init(void)
     buf_can_tx.tail = 0;
     buf_can_tx.full = 0;
 
-    slcan_str_index = 0;
+    cmd_str_idx = 0;
 }
 
 // Process
@@ -98,8 +98,8 @@ void buf_process(void)
         uint8_t is_dropped = buf_cdc_rx.data_drop[buf_cdc_rx.tail];
         if (is_dropped)
         {
-            slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
-            slcan_str_index = 0;
+            gen_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
+            cmd_str_idx = 0;
             for (idx_start = 0; idx_start < buf_cdc_rx.msglen[buf_cdc_rx.tail]; idx_start++)
             {
                 if (buf_cdc_rx.data[buf_cdc_rx.tail][idx_start] == '\r')    // \r = [CR] = delimiter
@@ -115,23 +115,23 @@ void buf_process(void)
 	    {
             if (buf_cdc_rx.data[buf_cdc_rx.tail][i] == '\r')    // \r = [CR] = delimiter
             {
-                slcan_parse_str(slcan_str, slcan_str_index);
-                slcan_str_index = 0;
+                psr_parse_str(cmd_str, cmd_str_idx);
+                cmd_str_idx = 0;
 
                 // Blink RX LED as slcan rx if bus closed
                 if (can_get_bus_state() == BUS_CLOSED) led_blink_rxd();
             }
             else
             {
-                slcan_str[slcan_str_index++] = buf_cdc_rx.data[buf_cdc_rx.tail][i];
+                cmd_str[cmd_str_idx++] = buf_cdc_rx.data[buf_cdc_rx.tail][i];
 
                 // Check for command length
-                if (slcan_str_index == SLCAN_MTU)
+                if (cmd_str_idx == SLCAN_MTU)
                 {
                     // Any incoming command longer than MTU (including a [CR]) is invalid.
                     // Ensure a [BELL] will be returned when receiving a [CR].
-                    slcan_str_index = 0;                    // Clear the command and
-                    slcan_str[slcan_str_index++] = '\a';    // ... mark as invalid (\a = [BELL])
+                    cmd_str_idx = 0;                    // Clear the command and
+                    cmd_str[cmd_str_idx++] = '\a';    // ... mark as invalid (\a = [BELL])
                 }
             }
         }
@@ -201,7 +201,7 @@ void buf_process(void)
 
         if (status != HAL_OK)
         {
-            slcan_raise_error(SLCAN_STS_DATA_OVERRUN);
+            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
             // TODO Would it be better to try again later than dropping the frame?
         }
     }
@@ -212,7 +212,7 @@ void buf_enqueue_cdc(uint8_t* buf, uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
-        slcan_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);  // The data does not fit in the buffer
+        gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);  // The data does not fit in the buffer
         return;
     }
 
@@ -229,7 +229,7 @@ uint8_t *buf_reserve_cdc_dest(uint16_t len)
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
         // Raise error since the caller will not call commit after they fail to reserve buffer.
-		slcan_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);
+		gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);
         return NULL;
     }
 
@@ -242,7 +242,7 @@ void buf_commit_cdc_dest(uint16_t len)
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
         // The data will not fit in the buffer.
-		slcan_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);
+		gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);
         return;
     }
 
@@ -255,7 +255,7 @@ FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
 {
     if (buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
+        gen_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
         return NULL;
     }
 
@@ -268,7 +268,7 @@ FDCAN_TxHeaderTypeDef *buf_get_can_sent_header(uint8_t marker)
 {
     if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
+        gen_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
         return NULL;
     }
 
@@ -292,7 +292,7 @@ uint8_t *buf_get_can_head_data(void)
 {
     if (buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
+        gen_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
         return NULL;
     }
 
@@ -305,7 +305,7 @@ uint8_t *buf_get_can_sent_data(uint8_t marker)
 {
     if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
     {
-        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
+        gen_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
         return NULL;
     }
 
@@ -331,7 +331,7 @@ HAL_StatusTypeDef buf_commit_can_head(void)
         // If the queue is full
         if (buf_can_tx.full)
         {
-            slcan_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
+            gen_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
             return HAL_ERROR;
         }
 

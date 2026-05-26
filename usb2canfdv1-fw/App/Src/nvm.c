@@ -127,18 +127,18 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     if (SLCAN_FILTER_INVALID <= filter_mode)
         return HAL_ERROR;
 
-    slcan_set_filter_mode(filter_mode);
+    gen_set_filter_mode(filter_mode);
 
     uint8_t timestamp_mode = (uint8_t)((nvm_stp_config_raw >> 16) & 0xFF);
 
     if (SLCAN_TIMESTAMP_INVALID <= timestamp_mode)
         return HAL_ERROR;
 
-    if (slcan_set_timestamp_mode(timestamp_mode) != HAL_OK)
+    if (gen_set_timestamp_mode(timestamp_mode) != HAL_OK)
         return HAL_ERROR;
 
     uint16_t report_reg = (uint16_t)((nvm_stp_config_raw >> 24) & 0xFFFF);
-    slcan_set_report_mode(report_reg);
+    gen_set_report_mode(report_reg);
 
     // Read and apply bitrate
     // Prescaler is stored in 8 bits; project decision limits it to 255 or less
@@ -156,13 +156,13 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     can_set_data_bitrate_cfg(bitrate);
 
     // Read and apply filter
-    slcan_set_filter_code(nvm_stp_filter_code_raw & 0xFFFFFFFF);
-    slcan_set_filter_mask(nvm_stp_filter_mask_raw & 0xFFFFFFFF);
+    gen_set_filter_code(nvm_stp_filter_code_raw & 0xFFFFFFFF);
+    gen_set_filter_mask(nvm_stp_filter_mask_raw & 0xFFFFFFFF);
 
     // Start the CAN peripheral
     if (startup_mode == SLCAN_AUTO_STARTUP_NORMAL)
     {
-        slcan_clear_error();
+        gen_clear_error();
 
         // Default to normal mode
         if (can_set_mode(FDCAN_MODE_NORMAL) != HAL_OK)
@@ -176,7 +176,7 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     }
     else if (startup_mode == SLCAN_AUTO_STARTUP_LISTEN)
     {
-        slcan_clear_error();
+        gen_clear_error();
 
         // Mode silent
         if (can_set_mode(FDCAN_MODE_BUS_MONITORING) != HAL_OK)
@@ -199,11 +199,11 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
 
     startup_cfg = (startup_cfg | (uint64_t)mode);
 
-    if (0xFF < slcan_get_filter_mode()) return HAL_ERROR;
-    if (0xFF < slcan_get_timestamp_mode()) return HAL_ERROR;
-    startup_cfg = (startup_cfg | ((uint64_t)slcan_get_filter_mode() << 8));
-    startup_cfg = (startup_cfg | ((uint64_t)slcan_get_timestamp_mode() << 16));
-    startup_cfg = (startup_cfg | ((uint64_t)slcan_get_report_mode() << 24));
+    if (0xFF < gen_get_filter_mode()) return HAL_ERROR;
+    if (0xFF < gen_get_timestamp_mode()) return HAL_ERROR;
+    startup_cfg = (startup_cfg | ((uint64_t)gen_get_filter_mode() << 8));
+    startup_cfg = (startup_cfg | ((uint64_t)gen_get_timestamp_mode() << 16));
+    startup_cfg = (startup_cfg | ((uint64_t)gen_get_report_mode() << 24));
     startup_cfg = NVM_WRITE_MEM_STS(startup_cfg);
 
     // Make raw data for nominal bitrate
@@ -230,11 +230,11 @@ HAL_StatusTypeDef nvm_update_startup_cfg(uint8_t mode)
 
     // Make raw data for filter code
     uint64_t filter_code = 0;
-    filter_code = NVM_WRITE_MEM_STS((uint64_t)slcan_get_filter_code());
+    filter_code = NVM_WRITE_MEM_STS((uint64_t)gen_get_filter_code());
 
     // Make raw data for filter mask
     uint64_t filter_mask = 0;
-    filter_mask = NVM_WRITE_MEM_STS((uint64_t)slcan_get_filter_mask());
+    filter_mask = NVM_WRITE_MEM_STS((uint64_t)gen_get_filter_mask());
 
     // Check if the configuration is the same
     if (startup_cfg == nvm_stp_config_raw)
