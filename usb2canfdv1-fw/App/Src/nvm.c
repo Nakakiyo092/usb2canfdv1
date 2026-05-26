@@ -116,22 +116,22 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     // Read and apply the main configuration
     uint8_t startup_mode = (uint8_t)(nvm_stp_config_raw & 0xFF);
 
-    if (startup_mode == GEN_AUTO_STARTUP_OFF)
+    if (startup_mode == SLCAN_AUTO_STARTUP_OFF)
         return HAL_OK;
 
-    if (GEN_AUTO_STARTUP_INVALID <= startup_mode)
+    if (SLCAN_AUTO_STARTUP_INVALID <= startup_mode)
         return HAL_ERROR;
 
     uint8_t filter_mode = (uint8_t)((nvm_stp_config_raw >> 8) & 0xFF);
 
-    if (GEN_FILTER_INVALID <= filter_mode)
+    if (SLCAN_FILTER_INVALID <= filter_mode)
         return HAL_ERROR;
 
     gen_set_filter_mode(filter_mode);
 
     uint8_t timestamp_mode = (uint8_t)((nvm_stp_config_raw >> 16) & 0xFF);
 
-    if (GEN_TIMESTAMP_INVALID <= timestamp_mode)
+    if (SLCAN_TIMESTAMP_INVALID <= timestamp_mode)
         return HAL_ERROR;
 
     if (gen_set_timestamp_mode(timestamp_mode) != HAL_OK)
@@ -160,7 +160,7 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     gen_set_filter_mask(nvm_stp_filter_mask_raw & 0xFFFFFFFF);
 
     // Start the CAN peripheral
-    if (startup_mode == GEN_AUTO_STARTUP_NORMAL)
+    if (startup_mode == SLCAN_AUTO_STARTUP_NORMAL)
     {
         gen_clear_error();
 
@@ -174,7 +174,7 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
 
         return HAL_OK;
     }
-    else if (startup_mode == GEN_AUTO_STARTUP_LISTEN)
+    else if (startup_mode == SLCAN_AUTO_STARTUP_LISTEN)
     {
         gen_clear_error();
 

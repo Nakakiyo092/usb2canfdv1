@@ -29,19 +29,19 @@
 #include "bootloader.h"
 #endif
 
-#define PSR_VERSION       "VW1K4"
-#define PSR_SW_VERSION    "2.1.0"
-#define PSR_RET_OK    ((uint8_t*)"\r")
-#define PSR_RET_ERR   ((uint8_t*)"\a")
-#define PSR_RET_LEN   (1)
+#define SLCAN_VERSION       "VW1K4"
+#define SLCAN_SW_VERSION    "2.1.0"
+#define SLCAN_RET_OK    ((uint8_t*)"\r")
+#define SLCAN_RET_ERR   ((uint8_t*)"\a")
+#define SLCAN_RET_LEN   (1)
 
 // Private variables
 #ifndef DEBUG
-static char *hw_sw_ver = PSR_VERSION "\r";
+static char *hw_sw_ver = SLCAN_VERSION "\r";
 #else
-static char *hw_sw_ver = PSR_VERSION "-DEBUG\r";
+static char *hw_sw_ver = SLCAN_VERSION "-DEBUG\r";
 #endif
-static char *hw_sw_ver_detail = "v: hardware=\"USB2CANFDV1\", software=\"" PSR_SW_VERSION "\", url=\"" "github.com/Nakakiyo092/usb2canfdv1" "\"\r";
+static char *hw_sw_ver_detail = "v: hardware=\"USB2CANFDV1\", software=\"" SLCAN_SW_VERSION "\", url=\"" "github.com/Nakakiyo092/usb2canfdv1" "\"\r";
 static char *can_info = "I3050\r";
 static char *can_info_detail = "i: protocol=\"ISO-CANFD\", clock_mhz=80, controller=\"STM32G0B1CB\"\r";
 
@@ -75,14 +75,14 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // Reply OK to a blank command
     if (len == 0)
     {
-        buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         return;
     }
 
     // Convert an incoming slcan command from ASCII to number (2nd character to end)
     if (psr_convert_str_to_number(buf, len) != HAL_OK)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -171,7 +171,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
 
     if (frame_header == NULL || frame_data == NULL)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -224,7 +224,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
 
     // Invalid command
     default:
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -235,11 +235,11 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     frame_header->Identifier = 0;
 
     // Default to standard ID
-    uint8_t id_len = GEN_STD_ID_LEN;
+    uint8_t id_len = SLCAN_STD_ID_LEN;
 
     // Update length if message is extended ID
     if (frame_header->IdType == FDCAN_EXTENDED_ID)
-        id_len = GEN_EXT_ID_LEN;
+        id_len = SLCAN_EXT_ID_LEN;
 
     // Iterate through ID bytes
     while (parse_loc <= id_len)
@@ -251,12 +251,12 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // If CAN ID is too large
     if (frame_header->IdType == FDCAN_STANDARD_ID && 0x7FF < frame_header->Identifier)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
     else if (frame_header->IdType == FDCAN_EXTENDED_ID && 0x1FFFFFFF < frame_header->Identifier)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -269,7 +269,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // https://github.com/Nakakiyo092/annus-mirabilis
     if  (0xF < dlc_code_raw)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -294,7 +294,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // parse_loc is always updated after a byte is parsed
     if (len != parse_loc + 2 * bytes_in_msg)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -308,7 +308,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // Transmit the message
     if (buf_commit_can_head() != HAL_OK)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -317,7 +317,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     msg_marker++;
 
     // Send ACK
-    if (((gen_get_report_mode() >> GEN_REPORT_TX) & 1) == 0)
+    if (((gen_get_report_mode() >> SLCAN_REPORT_TX) & 1) == 0)
     {
         if (frame_header->IdType == FDCAN_EXTENDED_ID)
             buf_enqueue_cdc((uint8_t *)"Z\r", 2);
@@ -326,7 +326,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     }
     else
     {
-        buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
     }
 
     return;
@@ -360,14 +360,14 @@ void psr_parse_str_open(uint8_t *buf, uint8_t len)
     // Check command length
     if (len != 1)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
     // Check bus status
     if (can_get_bus_state() != BUS_CLOSED)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -384,9 +384,9 @@ void psr_parse_str_open(uint8_t *buf, uint8_t len)
 
     // Open CAN port
     if (can_enable() != HAL_OK)
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
     else
-        buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
 
     return;
 }
@@ -397,22 +397,22 @@ void psr_parse_str_close(uint8_t *buf, uint8_t len)
     // Check command length
     if (len != 1)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
     // Check bus status
     if (can_get_bus_state() != BUS_OPENED)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
     // Close CAN port
     if (can_disable() == HAL_OK)
-        buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
     else
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
 
     return;
 }
@@ -425,7 +425,7 @@ void psr_parse_str_set_bitrate(uint8_t *buf, uint8_t len)
         // Check for valid length
         if (len != 2)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
         HAL_StatusTypeDef ret;
@@ -435,16 +435,16 @@ void psr_parse_str_set_bitrate(uint8_t *buf, uint8_t len)
             ret = can_set_data_bitrate(buf[1]);
 
         if (ret == HAL_OK)
-            buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         else
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
     }
     else if (buf[0] == 's' || buf[0] == 'y')
     {
         // Check for valid length
         if (len != 9)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
 
@@ -461,9 +461,9 @@ void psr_parse_str_set_bitrate(uint8_t *buf, uint8_t len)
             ret = can_set_data_bitrate_cfg(bitrate_cfg);
 
         if (ret == HAL_OK)
-            buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         else
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
     }
     return;
 }
@@ -475,14 +475,14 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
     if (buf[0] == 'Z' && len == 1)
     {
         // Check timestamp mode
-        if (gen_get_timestamp_mode() == GEN_TIMESTAMP_MILLI)
+        if (gen_get_timestamp_mode() == SLCAN_TIMESTAMP_MILLI)
         {
-        	uint8_t* tmsstr = buf_reserve_cdc_dest(GEN_MTU);
+        	uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             if (tmsstr == NULL) return;
         	uint16_t timestamp_ms = gen_get_timestamp_ms();
 
         	tmsstr[0] = 'Z';
-        	tmsstr[1] = gen_nibble_to_ascii[GEN_TIMESTAMP_MILLI];
+        	tmsstr[1] = gen_nibble_to_ascii[SLCAN_TIMESTAMP_MILLI];
         	tmsstr[2] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
         	tmsstr[3] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
         	tmsstr[4] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
@@ -490,14 +490,14 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
         	tmsstr[6] = '\r';
             buf_commit_cdc_dest(7);
         }
-        else if (gen_get_timestamp_mode() == GEN_TIMESTAMP_MICRO)
+        else if (gen_get_timestamp_mode() == SLCAN_TIMESTAMP_MICRO)
         {
-        	uint8_t* tmsstr = buf_reserve_cdc_dest(GEN_MTU);
+        	uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             if (tmsstr == NULL) return;
         	uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
 
         	tmsstr[0] = 'Z';
-        	tmsstr[1] = gen_nibble_to_ascii[GEN_TIMESTAMP_MICRO];
+        	tmsstr[1] = gen_nibble_to_ascii[SLCAN_TIMESTAMP_MICRO];
         	tmsstr[2] = gen_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
         	tmsstr[3] = gen_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
         	tmsstr[4] = gen_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
@@ -511,7 +511,7 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
         }
         else
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         }
         return;
     }
@@ -528,7 +528,7 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
         uint16_t timestamp_ms = gen_get_timestamp_ms();
         uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
 
-        timstr = buf_reserve_cdc_dest(GEN_MTU);
+        timstr = buf_reserve_cdc_dest(SLCAN_MTU);
         if (timstr == NULL) return;
         timstr[0] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
         timstr[1] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
@@ -582,47 +582,47 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
         if (buf[0] == 'Z')
         {
             // Check for valid command
-            if (len != 2 || GEN_TIMESTAMP_INVALID <= buf[1])
+            if (len != 2 || SLCAN_TIMESTAMP_INVALID <= buf[1])
             {
-                buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
                 return;
             }
 
             if (gen_set_timestamp_mode(buf[1]) != HAL_OK)
             {
-                buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
                 return;
             }
 
             // 'Z' intentionally resets the full report register to the default value (Rx only,
             // no timestamp, no ESI, no Tx). Use 'z' to set individual report options.
             gen_set_report_mode(1);   // Default: no timestamp, no ESI, no Tx, but with Rx
-            buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
             return;
         }
         else if (buf[0] == 'z')
         {
             // Check for valid command
-            if (len != 5 || GEN_TIMESTAMP_INVALID <= buf[1])
+            if (len != 5 || SLCAN_TIMESTAMP_INVALID <= buf[1])
             {
-                buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
                 return;
             }
 
             if (gen_set_timestamp_mode(buf[1]) != HAL_OK)
             {
-                buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
                 return;
             }
             gen_set_report_mode((buf[3] << 4) + buf[4]);
-            buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
             return;
         }
     }
     // This command is only active if the CAN channel is closed.
     else
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 }
@@ -634,32 +634,32 @@ void psr_parse_str_filter_mode(uint8_t *buf, uint8_t len)
     if (can_get_bus_state() == BUS_CLOSED)
     {
         // Check for valid command
-        if (len != 2 || GEN_FILTER_INVALID <= buf[1])
+        if (len != 2 || SLCAN_FILTER_INVALID <= buf[1])
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
 
         // Check if the filter mode is supported
-        if (buf[1] != GEN_FILTER_DUAL_MODE && buf[1] != GEN_FILTER_SIMPLE_MODE)
+        if (buf[1] != SLCAN_FILTER_DUAL_MODE && buf[1] != SLCAN_FILTER_SIMPLE_MODE)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
 
         // Apply filter mode
         if (gen_set_filter_mode(buf[1]) != HAL_OK)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
-        buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         return;
     }
     // Command can only be sent if the device is initiated but not open.
     else
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 }
@@ -673,7 +673,7 @@ void psr_parse_str_filter_code(uint8_t *buf, uint8_t len)
         // Check for valid command
         if (len != 9)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
 
@@ -686,16 +686,16 @@ void psr_parse_str_filter_code(uint8_t *buf, uint8_t len)
 
         if (gen_set_filter_code(code) != HAL_OK)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
-        buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         return;
     }
     // This command is only active if the CAN channel is initiated and not opened.
     else
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 }
@@ -709,7 +709,7 @@ void psr_parse_str_filter_mask(uint8_t *buf, uint8_t len)
         // Check for valid command
         if (len != 9)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
 
@@ -722,16 +722,16 @@ void psr_parse_str_filter_mask(uint8_t *buf, uint8_t len)
 
         if (gen_set_filter_mask(mask) != HAL_OK)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
-        buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         return;
     }
     // This command is only active if the CAN channel is initiated and not opened.
     else
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 }
@@ -742,7 +742,7 @@ void psr_parse_str_version(uint8_t *buf, uint8_t len)
     // Check command length
     if (len != 1)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -760,7 +760,7 @@ void psr_parse_str_can_info(uint8_t *buf, uint8_t len)
     // Check command length
     if (len != 1)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -779,16 +779,16 @@ void psr_parse_str_number(uint8_t *buf, uint8_t len)
     {
         // Report serial number
         uint16_t serial;
-        uint8_t* numstr = buf_reserve_cdc_dest(GEN_MTU);
+        uint8_t* numstr = buf_reserve_cdc_dest(SLCAN_MTU);
         if (numstr == NULL) return;
         if (nvm_get_serial_number(&serial) == HAL_OK)
         {
-            snprintf((char*)numstr, GEN_MTU - 1, "N%04X\r", serial);
+            snprintf((char*)numstr, SLCAN_MTU - 1, "N%04X\r", serial);
             buf_commit_cdc_dest(6);
         }
         else
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         }
         return;
     }
@@ -797,14 +797,14 @@ void psr_parse_str_number(uint8_t *buf, uint8_t len)
         // Set serial number
         uint16_t serial = ((uint16_t)buf[1] << 12) + ((uint16_t)buf[2] << 8) + ((uint16_t)buf[3] << 4) + buf[4];
         if (nvm_update_serial_number(serial) == HAL_OK)
-            buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         else
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
     else
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 }
@@ -815,7 +815,7 @@ void psr_parse_str_status(uint8_t *buf, uint8_t len)
     // Check command length
     if (len != 1)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -824,7 +824,7 @@ void psr_parse_str_status(uint8_t *buf, uint8_t len)
     {
         if (buf[0] == 'F')
         {
-            uint8_t* stsstr = buf_reserve_cdc_dest(GEN_MTU);
+            uint8_t* stsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             if (stsstr == NULL) return;
             stsstr[0] = 'F';
             stsstr[1] = gen_nibble_to_ascii[gen_get_status_flags() >> 4];
@@ -839,12 +839,12 @@ void psr_parse_str_status(uint8_t *buf, uint8_t len)
         {
             // "f: node_sts=XXXXXXX, last_err_code=XXXX, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r"
 
-            uint8_t* stsstr = buf_reserve_cdc_dest(GEN_MTU);
+            uint8_t* stsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             if (stsstr == NULL) return;
 
             struct CanErrorState err = can_get_error_state();
 
-            uint16_t written = (uint16_t)snprintf((char*)stsstr, GEN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
+            uint16_t written = (uint16_t)snprintf((char*)stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
                                         (err.bus_off ? "BUS_OFF" : (err.err_pssv ? "ER_PSSV" : "ER_ACTV")),
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_NONE ? "NONE" :
                                         (err.last_err_code == FDCAN_PROTOCOL_ERROR_STUFF ? "STUF" :
@@ -863,7 +863,7 @@ void psr_parse_str_status(uint8_t *buf, uint8_t len)
     // This command is only active if the CAN channel is open.
     else
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
     }
     return;
 }
@@ -875,23 +875,23 @@ void psr_parse_str_auto_startup(uint8_t *buf, uint8_t len)
     if (can_get_bus_state() == BUS_OPENED)
     {
         // Check for valid command
-        if (len != 2 || GEN_AUTO_STARTUP_INVALID <= buf[1])
+        if (len != 2 || SLCAN_AUTO_STARTUP_INVALID <= buf[1])
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
 
         if (nvm_update_startup_cfg(buf[1]) != HAL_OK)
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         else
-            buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
 
         return;
     }
     // Command works only when CAN channel is open.
     else
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 }
@@ -903,14 +903,14 @@ void psr_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
     // Check command length
     if (len != 1)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
     // Check bus status
     if (can_get_bus_state() != BUS_CLOSED)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 
@@ -932,9 +932,9 @@ void psr_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
 
     // Open CAN port
     if (can_enable() != HAL_OK)
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
     else
-        buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
 
     return;
 }
@@ -949,23 +949,23 @@ void psr_parse_str_extended(uint8_t *buf, uint8_t len)
         // Check for valid command
         if (len != 5)
         {
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
             return;
         }
 
         if (buf[1] == 0xB && buf[2] == 0x0 && buf[3] == 0x0 && buf[4] == 0x7)
         {
-            buf_enqueue_cdc(PSR_RET_OK, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
         	bootloader_enter_update_mode();
         }
         else
-            buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
 
         return;
     }
     else
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 }
@@ -978,7 +978,7 @@ void psr_parse_str_debug(uint8_t *buf, uint8_t len)
     // Check for valid command
     if (len != 1)
     {
-        buf_enqueue_cdc(PSR_RET_ERR, PSR_RET_LEN);
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
 

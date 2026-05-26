@@ -220,13 +220,13 @@ void can_process(void)
         uint8_t *data = buf_get_can_sent_data(tx_event.MessageMarker);
         if (data != NULL)
         {
-            uint16_t len = gen_generate_tx_event(buf_reserve_cdc_dest(GEN_MTU), &tx_event, data);
+            uint16_t len = gen_generate_tx_event(buf_reserve_cdc_dest(SLCAN_MTU), &tx_event, data);
             buf_commit_cdc_dest(len);
             buf_release_can_until(tx_event.MessageMarker);
         }
         else
         {
-            gen_raise_error(GEN_STS_DATA_OVERRUN);
+            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
         }
 
         // Don't count the loop back frame in internal or external loop back mode.
@@ -242,7 +242,7 @@ void can_process(void)
     // If a message has been accepted, parse the frame
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
-        uint16_t len = gen_generate_rx_frame(buf_reserve_cdc_dest(GEN_MTU), &rx_msg_header, rx_msg_data);
+        uint16_t len = gen_generate_rx_frame(buf_reserve_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
         buf_commit_cdc_dest(len);
 
         bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
@@ -277,19 +277,19 @@ void can_process(void)
     // Check for message loss
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST))
     {
-        gen_raise_error(GEN_STS_DATA_OVERRUN);
+        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST);
     }
 
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST))
     {
-        gen_raise_error(GEN_STS_DATA_OVERRUN);
+        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST);
     }
 
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST))
     {
-        gen_raise_error(GEN_STS_DATA_OVERRUN);
+        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST);
     }
 
@@ -302,10 +302,10 @@ void can_process(void)
     {
         uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
         if (rec > can_error_state.rx_err_cnt || cnt.TxErrorCnt > can_error_state.tx_err_cnt)
-            gen_raise_error(GEN_STS_BUS_ERROR);
+            gen_raise_error(SLCAN_STS_BUS_ERROR);
         if (sts.BusOff && !can_error_state.bus_off)     // If it gets bus off right now
             // ... capture counter increase that caused bus off since it does not increase TxErrorCnt
-            gen_raise_error(GEN_STS_BUS_ERROR);
+            gen_raise_error(SLCAN_STS_BUS_ERROR);
 
         can_error_state.bus_off = (uint8_t)sts.BusOff;
         can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
@@ -325,19 +325,19 @@ void can_process(void)
     // https://github.com/Nakakiyo092/canable2-fw/issues/63
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING))
     {
-        gen_raise_error(GEN_STS_ERROR_WARNING);
+        gen_raise_error(SLCAN_STS_ERROR_WARNING);
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING);
     }
 
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE))
     {
-        gen_raise_error(GEN_STS_ERROR_PASSIVE);
+        gen_raise_error(SLCAN_STS_ERROR_PASSIVE);
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE);
     }
 
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF))
     {
-        gen_raise_error(GEN_STS_BUS_OFF);
+        gen_raise_error(SLCAN_STS_BUS_OFF);
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF);
     }
 

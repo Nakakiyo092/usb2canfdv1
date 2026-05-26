@@ -25,10 +25,10 @@
 const uint8_t gen_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
 // Private variables
-static enum GenFilterMode gen_filter_mode = GEN_FILTER_DUAL_MODE;
+static enum SlcanFilterMode gen_filter_mode = SLCAN_FILTER_DUAL_MODE;
 static uint32_t gen_filter_code = 0x00000000;
 static uint32_t gen_filter_mask = 0xFFFFFFFF;
-static enum GenTimestampMode gen_timestamp_mode = 0;
+static enum SlcanTimestampMode gen_timestamp_mode = 0;
 static uint16_t gen_report_reg = 1;   // Default: no timestamp, no ESI, no Tx, but with Rx
 static uint8_t gen_status_flags = 0;  // Owned by main loop only; MUST NOT be modified from ISR context.
 
@@ -38,8 +38,8 @@ static HAL_StatusTypeDef gen_configure_filter(void);
 
 // Generate a slcan message from a CAN frame
 // Returns number of bytes written into buf
-//  MIN: 1 (r) + GEN_STD_ID_LEN + 2 (DLC & [CR])
-//  MAX: GEN_MTU - 1 (z/Z) - 16 (padding)
+//  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
+//  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
 uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data)
 {
     // Start building the slcan message string at idx 0 in buf
@@ -74,13 +74,13 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
     // Check id type
     if (frame_header->IdType == FDCAN_STANDARD_ID)
     {
-        msg_idx = 1 + GEN_STD_ID_LEN;     // Type & ID
+        msg_idx = 1 + SLCAN_STD_ID_LEN;     // Type & ID
     }
     else
     {
         // Convert first char to upper case for extended frame
         buf[msg_idx] -= 32;     // 'a' - 'A'
-        msg_idx = 1 + GEN_EXT_ID_LEN;     // Type & ID
+        msg_idx = 1 + SLCAN_EXT_ID_LEN;     // Type & ID
     }
 
     // Add identifier to the buffer
@@ -108,7 +108,7 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
     }
 
     // Add time stamp
-    if (gen_timestamp_mode == GEN_TIMESTAMP_MILLI)
+    if (gen_timestamp_mode == SLCAN_TIMESTAMP_MILLI)
     {
         // Use current time instead of frame timestamp
         // By this way the complex compensation for TIM3 overflow is not needed
@@ -120,7 +120,7 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
         buf[msg_idx++] = gen_nibble_to_ascii[timestamp_ms & 0xF];
     }
-    else if (gen_timestamp_mode == GEN_TIMESTAMP_MICRO)
+    else if (gen_timestamp_mode == SLCAN_TIMESTAMP_MICRO)
     {
         // If a CAN frame is re-transmitted, the reported timestamp corresponds to the final, successful transmission.
         // See the link for details.
@@ -139,7 +139,7 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
 
     // Add error state indicator
     // FD frame only. No ESI for a classical frame.
-    if ((gen_report_reg >> GEN_REPORT_ESI) & 1)
+    if ((gen_report_reg >> SLCAN_REPORT_ESI) & 1)
     {
         if (frame_header->FDFormat == FDCAN_FD_CAN)
         {
@@ -159,12 +159,12 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
 
 // Generate an outgoing slcan message from an incoming CAN frame
 // Returns number of bytes written into buf
-//  MIN: 1 (r) + GEN_STD_ID_LEN + 2 (DLC & [CR])
-//  MAX: GEN_MTU - 1 (z/Z) - 16 (padding)
+//  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
+//  MAX: SLCAN_MTU - 1 (z/Z) - 16 (padding)
 uint16_t gen_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data)
 {
     // Check if Rx reporting is required
-    if (((gen_report_reg >> GEN_REPORT_RX) & 1) == 0)
+    if (((gen_report_reg >> SLCAN_REPORT_RX) & 1) == 0)
         return 0;
 
     if (buf == NULL)
@@ -178,12 +178,12 @@ uint16_t gen_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header
 
 // Generate an outgoing slcan message from an incoming Tx event
 // Returns number of bytes written into buf
-//  MIN: 1 (r) + GEN_STD_ID_LEN + 2 (DLC & [CR])
-//  MAX: GEN_MTU - 16 (padding)
+//  MIN: 1 (r) + SLCAN_STD_ID_LEN + 2 (DLC & [CR])
+//  MAX: SLCAN_MTU - 16 (padding)
 uint16_t gen_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, const uint8_t *frame_data)
 {
     // Check if Tx reporting is required
-    if (((gen_report_reg >> GEN_REPORT_TX) & 1) == 0)
+    if (((gen_report_reg >> SLCAN_REPORT_TX) & 1) == 0)
         return 0;
 
     if (buf == NULL)
@@ -291,9 +291,9 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us)
 }
 
 // Setter and getter for the filter settings
-HAL_StatusTypeDef gen_set_filter_mode(enum GenFilterMode mode)
+HAL_StatusTypeDef gen_set_filter_mode(enum SlcanFilterMode mode)
 {
-    if (mode < GEN_FILTER_INVALID)
+    if (mode < SLCAN_FILTER_INVALID)
         gen_filter_mode = mode;
     else
         return HAL_ERROR;
@@ -321,7 +321,7 @@ HAL_StatusTypeDef gen_set_filter_mask(uint32_t mask)
 
     return HAL_OK;
 }
-enum GenFilterMode gen_get_filter_mode(void)
+enum SlcanFilterMode gen_get_filter_mode(void)
 {
     return gen_filter_mode;
 }
@@ -340,7 +340,7 @@ HAL_StatusTypeDef gen_configure_filter(void)
     FunctionalState state_std = ENABLE;
     FunctionalState state_ext = ENABLE;
 
-    if (gen_filter_mode == GEN_FILTER_DUAL_MODE)
+    if (gen_filter_mode == SLCAN_FILTER_DUAL_MODE)
     {
         // TODO: Dual filter mode is not implemented yet. Pass all messages.
 
@@ -354,7 +354,7 @@ HAL_StatusTypeDef gen_configure_filter(void)
             return HAL_ERROR;
         }
     }
-    else if (gen_filter_mode == GEN_FILTER_SIMPLE_MODE)
+    else if (gen_filter_mode == SLCAN_FILTER_SIMPLE_MODE)
     {
         // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
         // https://github.com/Nakakiyo092/canable2-fw/issues/66
@@ -392,16 +392,16 @@ void gen_set_report_mode(uint16_t reg)
     gen_report_reg = reg;
     return;
 }
-HAL_StatusTypeDef gen_set_timestamp_mode(enum GenTimestampMode mode)
+HAL_StatusTypeDef gen_set_timestamp_mode(enum SlcanTimestampMode mode)
 {
-    if (mode < GEN_TIMESTAMP_INVALID)
+    if (mode < SLCAN_TIMESTAMP_INVALID)
         gen_timestamp_mode = mode;
     else
         return HAL_ERROR;
 
     return HAL_OK;
 }
-enum GenTimestampMode gen_get_timestamp_mode(void)
+enum SlcanTimestampMode gen_get_timestamp_mode(void)
 {
     return gen_timestamp_mode;
 }
@@ -411,7 +411,7 @@ uint16_t gen_get_report_mode(void)
 }
 
 // Setter and getter for the status flags
-void gen_raise_error(enum GenStatusFlag err)
+void gen_raise_error(enum SlcanStatusFlag err)
 {
     gen_status_flags |= (uint8_t)(1 << err);
 }
