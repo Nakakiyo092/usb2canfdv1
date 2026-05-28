@@ -1,22 +1,35 @@
 #!/usr/bin/env python3
 """
-Test cases for the W0 dual filter mode.
+Test cases for acceptance filter modes.
 
-In dual filter mode (W0), the 4-byte Code (M command) and Mask (m command)
-are split into two independent filters:
+W0 (dual filter mode): The 4-byte Code (M command) and Mask (m command)
+are split into two independent 2-byte filters:
   - Filter 1: bytes AC0/AC1 (most-significant pair)
   - Filter 2: bytes AC2/AC3 (least-significant pair)
 A frame is accepted if EITHER filter matches (logical OR).
 
-Mapping for base (standard) CAN ID (11 bits):
+Mapping for base (standard) CAN ID (11 bits) in dual mode:
   AC0/AM0[7:0] -> ID[10:3],  AC1/AM1[7:5] -> ID[2:0]
   AC1/AM1[4:0]: accepted as input but not compared (".")
   Filter 2 uses AC2/AM2 and AC3/AM3 with the same mapping.
 
-Mapping for extended CAN ID (29 bits):
+Mapping for extended CAN ID (29 bits) in dual mode:
   AC0/AM0[7:0] -> ID[28:21],  AC1/AM1[7:0] -> ID[20:13]
   ID[12:0]: always don't-care
   Filter 2 uses AC2/AM2 and AC3/AM3 with the same mapping.
+
+W2 (simple filter mode): The full 4-byte Code (M command) and Mask (m
+command) form a single filter. A frame is accepted only if it matches
+that filter.
+
+Mapping for base (standard) CAN ID (11 bits) in simple mode:
+  M[31] selects frame type: 1=STD only, 0=EXT only, ignored when m[31]=1
+  M[28:21] -> ID[10:3],  M[20:18] -> ID[2:0]
+  M[17:13]: accepted as input but not compared (".")
+  M[12:0] -> duplicated lower bits (same mapping as M[28:16])
+
+Mapping for extended CAN ID (29 bits) in simple mode:
+  M[28:0] -> ID[28:0] (exact 29-bit mapping)
 
 Reference: doc/3.-Acceptance-Filter.md
 """
@@ -353,6 +366,235 @@ class DualFilterTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"z\r" + b"t2000\r")   # passes again
         self.dut.send(b"t3000\r")
         self.assertEqual(self.dut.receive(), b"z\r")   # still blocked
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+class SimpleFilterTestCase(unittest.TestCase):
+    """Test cases for the W2 simple filter mode."""
+
+    dut: DeviceUnderTest
+
+    def setUp(self):
+        self.dut = DeviceUnderTest()
+        self.dut.open()
+        self.dut.setup()
+
+    def tearDown(self):
+        self.dut.close()
+
+
+    def test_simple_filter_basic(self):
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
+        #self.dut.print_on = True
+
+        # Check pass all filter (default)
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.dut.send(cmd + b"7C00\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"7C00\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0000003F0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
+            self.dut.send(cmd + b"000007C00\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"000007C00\r")
+            self.dut.send(cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.dut.send(cmd + b"1EC801370\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"1EC801370\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check pass 0x03F and 0x0000003F filter
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"M0000003F\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"mFFFFF800\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.dut.send(cmd + b"7C00\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0000003F0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
+            self.dut.send(cmd + b"000007C00\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"1EC801370\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check pass 0x6C8 and 0x0137FEC8 filter
+        self.dut.send(b"M0137FEC8\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"mE0000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+            self.dut.send(cmd + b"7C00\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+            self.dut.send(cmd + b"6C80\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"6C80\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0000003F0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"000007C00\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.dut.send(cmd + b"1EC801370\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check pass STD ID 0x03F filter
+        self.dut.send(b"M8000003F\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.dut.send(cmd + b"7C00\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0000003F0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"000007C00\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"1EC801370\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check pass EXT ID 0x0137FEC8 filter
+        self.dut.send(b"M0137FEC8\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+            self.dut.send(cmd + b"7C00\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+            self.dut.send(cmd + b"6C80\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0000003F0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"000007C00\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+            self.dut.send(cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.dut.send(cmd + b"1EC801370\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_simple_filter_every_bits(self):
+        # Check pass STD ID 0x000 filter comparing every bit in CAN ID
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"M80000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t0000\r")
+        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
+        for idx in range(0, 11):
+            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+        self.dut.send(b"T000000000\r")
+        self.assertEqual(self.dut.receive(), b"Z\r")
+        for idx in range(0, 29):
+            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check pass EXT ID 0x00000000 filter comparing every bit in CAN ID
+        self.dut.send(b"M00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t0000\r")
+        self.assertEqual(self.dut.receive(), b"z\r")
+        for idx in range(0, 11):
+            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+        self.dut.send(b"T000000000\r")
+        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
+        for idx in range(0, 29):
+            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check pass 0x000 and 0x00000000 filter comparing every bit in CAN ID
+        self.dut.send(b"M00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m80000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t0000\r")
+        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
+        for idx in range(0, 11):
+            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+        self.dut.send(b"T000000000\r")
+        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
+        for idx in range(0, 29):
+            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check consistency by setting pass STD ID 0x000 filter again
+        self.dut.send(b"m80000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"M00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t0000\r")
+        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
+        for idx in range(0, 11):
+            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
+            self.assertEqual(self.dut.receive(), b"z\r")
+        self.dut.send(b"T000000000\r")
+        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
+        for idx in range(0, 29):
+            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
+            self.assertEqual(self.dut.receive(), b"Z\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
