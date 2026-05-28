@@ -519,7 +519,7 @@ struct CanBitrateCfg can_get_nominal_bitrate_cfg(void)
 
 // Set filter for standard CAN ID
 // Code and mask entries outside the valid range are left unchanged.
-HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint32_t mask)
+HAL_StatusTypeDef can_set_filter1_std(FunctionalState state, uint32_t code, uint32_t mask)
 {
     HAL_StatusTypeDef ret = HAL_OK;
 
@@ -546,7 +546,7 @@ HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint3
 
 // Set filter for extended CAN ID
 // Code and mask entries outside the valid range are left unchanged.
-HAL_StatusTypeDef can_set_filter_ext(FunctionalState state, uint32_t code, uint32_t mask)
+HAL_StatusTypeDef can_set_filter1_ext(FunctionalState state, uint32_t code, uint32_t mask)
 {
     HAL_StatusTypeDef ret = HAL_OK;
 

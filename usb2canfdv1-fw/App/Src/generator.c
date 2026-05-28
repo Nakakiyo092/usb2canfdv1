@@ -376,11 +376,11 @@ HAL_StatusTypeDef gen_configure_filter(void)
         // Convert SLCAN mask (1=don't-care) to STM32 mask (1=must-match) and apply.
         // Filter 1 uses FilterIndex=0; Filter 2 uses FilterIndex=1 (routed to FIFO0).
         // A frame is accepted if either filter matches (logical OR).
-        if (can_set_filter_std(state_std, code_std_f1, (~mask_std_f1) & 0x7FF) != HAL_OK)
+        if (can_set_filter1_std(state_std, code_std_f1, (~mask_std_f1) & 0x7FF) != HAL_OK)
             return HAL_ERROR;
         if (can_set_filter2_std(ENABLE, code_std_f2, (~mask_std_f2) & 0x7FF) != HAL_OK)
             return HAL_ERROR;
-        if (can_set_filter_ext(state_ext, code_ext_f1, (~mask_ext_f1) & 0x1FFFFFFF) != HAL_OK)
+        if (can_set_filter1_ext(state_ext, code_ext_f1, (~mask_ext_f1) & 0x1FFFFFFF) != HAL_OK)
             return HAL_ERROR;
         if (can_set_filter2_ext(ENABLE, code_ext_f2, (~mask_ext_f2) & 0x1FFFFFFF) != HAL_OK)
             return HAL_ERROR;
@@ -405,11 +405,11 @@ HAL_StatusTypeDef gen_configure_filter(void)
         }
 
         // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
-        if (can_set_filter_std(state_std, gen_filter_code & 0x7FF, (~gen_filter_mask) & 0x7FF) != HAL_OK)
+        if (can_set_filter1_std(state_std, gen_filter_code & 0x7FF, (~gen_filter_mask) & 0x7FF) != HAL_OK)
         {
             return HAL_ERROR;
         }
-        if (can_set_filter_ext(state_ext, gen_filter_code & 0x1FFFFFFF, (~gen_filter_mask) & 0x1FFFFFFF) != HAL_OK)
+        if (can_set_filter1_ext(state_ext, gen_filter_code & 0x1FFFFFFF, (~gen_filter_mask) & 0x1FFFFFFF) != HAL_OK)
         {
             return HAL_ERROR;
         }
