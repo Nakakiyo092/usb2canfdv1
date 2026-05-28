@@ -613,6 +613,74 @@ uint32_t can_get_filter_ext_mask(void)
     return can_ext_filter.FilterID2 & 0x1FFFFFFF;
 }
 
+// Set second filter (FilterIndex=1) for standard CAN ID
+// state=ENABLE: acceptance filter routed to FIFO0; state=DISABLE: resets to pass-all drain (FIFO1)
+// Code and mask entries outside the valid range are left unchanged.
+HAL_StatusTypeDef can_set_filter2_std(FunctionalState state, uint32_t code, uint32_t mask)
+{
+    HAL_StatusTypeDef ret = HAL_OK;
+
+    if (can_bus_state == BUS_OPENED) return HAL_ERROR;
+
+    if (state == ENABLE)
+    {
+        can_std_pass_all.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+        if (code > 0x7FF)
+            ret = HAL_ERROR;
+        else
+            can_std_pass_all.FilterID1 = code;
+        if (mask > 0x7FF)
+            ret = HAL_ERROR;
+        else
+            can_std_pass_all.FilterID2 = mask;
+    }
+    else if (state == DISABLE)
+    {
+        // Reset to pass-all drain mode (FIFO1)
+        can_std_pass_all.FilterConfig = FDCAN_FILTER_TO_RXFIFO1;
+        can_std_pass_all.FilterID1 = 0x7FF;
+        can_std_pass_all.FilterID2 = 0x000;
+    }
+    else
+        return HAL_ERROR;
+
+    return ret;
+}
+
+// Set second filter (FilterIndex=1) for extended CAN ID
+// state=ENABLE: acceptance filter routed to FIFO0; state=DISABLE: resets to pass-all drain (FIFO1)
+// Code and mask entries outside the valid range are left unchanged.
+HAL_StatusTypeDef can_set_filter2_ext(FunctionalState state, uint32_t code, uint32_t mask)
+{
+    HAL_StatusTypeDef ret = HAL_OK;
+
+    if (can_bus_state == BUS_OPENED) return HAL_ERROR;
+
+    if (state == ENABLE)
+    {
+        can_ext_pass_all.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+        if (code > 0x1FFFFFFF)
+            ret = HAL_ERROR;
+        else
+            can_ext_pass_all.FilterID1 = code;
+        if (mask > 0x1FFFFFFF)
+            ret = HAL_ERROR;
+        else
+            can_ext_pass_all.FilterID2 = mask;
+    }
+    else if (state == DISABLE)
+    {
+        // Reset to pass-all drain mode (FIFO1)
+        can_ext_pass_all.FilterConfig = FDCAN_FILTER_TO_RXFIFO1;
+        can_ext_pass_all.FilterID1 = 0x1FFFFFFF;
+        can_ext_pass_all.FilterID2 = 0x00000000;
+    }
+    else
+        return HAL_ERROR;
+
+    return ret;
+}
+
 // Set CAN peripheral to the specific mode
 // normal: FDCAN_MODE_NORMAL
 // silent: FDCAN_MODE_BUS_MONITORING

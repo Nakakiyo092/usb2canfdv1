@@ -109,6 +109,11 @@ uint32_t can_get_filter_std_mask(void);
 uint32_t can_get_filter_ext_code(void);
 uint32_t can_get_filter_ext_mask(void);
 
+// Second filter slot functions (FilterIndex=1)
+// state=ENABLE: acceptance filter routed to FIFO0; state=DISABLE: resets to pass-all drain (FIFO1)
+HAL_StatusTypeDef can_set_filter2_std(FunctionalState state, uint32_t code, uint32_t mask);
+HAL_StatusTypeDef can_set_filter2_ext(FunctionalState state, uint32_t code, uint32_t mask);
+
 // CAN mode and status
 HAL_StatusTypeDef can_set_mode(uint32_t mode);
 HAL_StatusTypeDef can_set_auto_retransmit(FunctionalState state);
