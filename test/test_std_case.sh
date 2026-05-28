@@ -20,6 +20,10 @@ echo "Running internal loopback test cases"
 python3 test/test_in_loopback.py
 echo ""
 echo ""
+echo "Running dual filter test cases"
+python3 test/test_dual_filter.py
+echo ""
+echo ""
 echo "Running external loopback test cases"
 python3 test/test_ex_loopback.py
 echo ""
