@@ -412,6 +412,7 @@ HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate)
         // 87.5% is not achievable at 800kbps with 80MHz clock;
         // use 87% (prescaler=1, N=100, SP=87/100) as the closest value.
         can_bit_cfg_nominal.prescaler = 1;
+        can_bit_cfg_nominal.sjw = 7;
         can_bit_cfg_nominal.time_seg1 = 86;
         can_bit_cfg_nominal.time_seg2 = 13;
         break;
