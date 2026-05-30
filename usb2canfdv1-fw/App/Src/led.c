@@ -115,7 +115,7 @@ void led_process(void)
     }
 
     // If an error is stored, override LEDs with constant on
-    if (slcan_get_status_flags())
+    if (gen_get_status_flags())
     {
         HAL_GPIO_WritePin(LED_RXD, LED_ON);
         HAL_GPIO_WritePin(LED_TXD, LED_ON);

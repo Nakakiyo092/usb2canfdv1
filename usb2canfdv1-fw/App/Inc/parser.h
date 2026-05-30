@@ -21,6 +21,6 @@
 #include "generator.h"
 
 // Prototypes
-void slcan_parse_str(uint8_t *buf, uint8_t len);
+void psr_parse_str(uint8_t *buf, uint8_t len);
 
 #endif // USB2CANFDV1_PARSER_H

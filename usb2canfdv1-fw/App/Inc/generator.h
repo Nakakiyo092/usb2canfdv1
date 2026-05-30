@@ -80,28 +80,28 @@ enum SlcanReportFlag
 #define SLCAN_EXT_ID_LEN    (8)
 
 // Public variables
-extern const uint8_t slcan_nibble_to_ascii[];
+extern const uint8_t gen_nibble_to_ascii[];
 
 // Prototypes
-uint16_t slcan_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
-uint16_t slcan_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, const uint8_t *frame_data);
-uint16_t slcan_get_timestamp_ms(void);
-uint32_t slcan_get_timestamp_us_from_tim3(uint16_t tim3_us);
+uint16_t gen_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
+uint16_t gen_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, const uint8_t *frame_data);
+uint16_t gen_get_timestamp_ms(void);
+uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us);
 
-HAL_StatusTypeDef slcan_set_filter_mode(enum SlcanFilterMode mode);
-HAL_StatusTypeDef slcan_set_filter_code(uint32_t code);
-HAL_StatusTypeDef slcan_set_filter_mask(uint32_t mask);
-enum SlcanFilterMode slcan_get_filter_mode(void);
-uint32_t slcan_get_filter_code(void);
-uint32_t slcan_get_filter_mask(void);
+HAL_StatusTypeDef gen_set_filter_mode(enum SlcanFilterMode mode);
+HAL_StatusTypeDef gen_set_filter_code(uint32_t code);
+HAL_StatusTypeDef gen_set_filter_mask(uint32_t mask);
+enum SlcanFilterMode gen_get_filter_mode(void);
+uint32_t gen_get_filter_code(void);
+uint32_t gen_get_filter_mask(void);
 
-HAL_StatusTypeDef slcan_set_timestamp_mode(enum SlcanTimestampMode mode);
-void slcan_set_report_mode(uint16_t reg);
-enum SlcanTimestampMode slcan_get_timestamp_mode(void);
-uint16_t slcan_get_report_mode(void);
+HAL_StatusTypeDef gen_set_timestamp_mode(enum SlcanTimestampMode mode);
+void gen_set_report_mode(uint16_t reg);
+enum SlcanTimestampMode gen_get_timestamp_mode(void);
+uint16_t gen_get_report_mode(void);
 
-void slcan_raise_error(enum SlcanStatusFlag err);
-void slcan_clear_error(void);
-uint8_t slcan_get_status_flags(void);
+void gen_raise_error(enum SlcanStatusFlag err);
+void gen_clear_error(void);
+uint8_t gen_get_status_flags(void);
 
 #endif // USB2CANFDV1_GENERATOR_H
