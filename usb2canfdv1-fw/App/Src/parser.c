@@ -439,6 +439,24 @@ void psr_parse_str_set_bitrate(uint8_t *buf, uint8_t len)
         else
             buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
     }
+    else if (buf[0] == 's' && len == 5)
+    {
+        // sxxyy[CR]: LAWICEL-compatible BTR0/BTR1 register mapping
+        // xx = BTR0 (buf[1..2]), yy = BTR1 (buf[3..4])
+        uint8_t xx = ((uint8_t)buf[1] << 4) + buf[2];
+        uint8_t yy = ((uint8_t)buf[3] << 4) + buf[4];
+
+        struct CanBitrateCfg bitrate_cfg;
+        bitrate_cfg.prescaler = (uint16_t)(2 * ((xx & 0x3F) + 1));
+        bitrate_cfg.time_seg1 = (uint8_t)(5 * (yy & 0x0F) + 9);
+        bitrate_cfg.time_seg2 = (uint8_t)(5 * ((yy >> 4) & 0x07) + 5);
+        bitrate_cfg.sjw       = (uint8_t)(5 * ((xx >> 6) & 0x03) + 5);
+
+        if (can_set_nominal_bitrate_cfg(bitrate_cfg) == HAL_OK)
+            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+        else
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+    }
     else if (buf[0] == 's' || buf[0] == 'y')
     {
         // Check for valid length
