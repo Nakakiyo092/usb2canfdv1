@@ -48,7 +48,7 @@ class DualFilterTestCase(unittest.TestCase):
         self.dut = DeviceUnderTest()
         self.dut.open()
         self.dut.setup()
-        # setUp already sets: W0 + M00000000 + mFFFFFFFF (pass-all dual filter)
+
 
     def tearDown(self):
         self.dut.close()
@@ -379,6 +379,7 @@ class SimpleFilterTestCase(unittest.TestCase):
         self.dut = DeviceUnderTest()
         self.dut.open()
         self.dut.setup()
+
 
     def tearDown(self):
         self.dut.close()

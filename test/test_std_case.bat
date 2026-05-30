@@ -17,12 +17,12 @@ echo Running internal loopback test cases
 python test\test_in_loopback.py
 echo.
 echo.
-echo Running filter test cases
-python test\test_filter.py
-echo.
-echo.
 echo Running external loopback test cases
 python test\test_ex_loopback.py
+echo.
+echo.
+echo Running filter test cases
+python test\test_filter.py
 echo.
 echo.
 echo Running buffer test cases
