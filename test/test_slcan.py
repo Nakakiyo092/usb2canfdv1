@@ -26,6 +26,22 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_unsupported_commands(self):
+        """Check that unsupported commands P, A, X, U return BELL"""
+        # P: Polls incoming FIFO (not supported)
+        self.dut.send(b"P\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        # A: Polls all pending frames (not supported)
+        self.dut.send(b"A\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        # X: Sets Auto Poll/Send (not supported)
+        self.dut.send(b"X0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        # U: Sets UART baud rate (not supported)
+        self.dut.send(b"U0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+
+
     def test_error_command(self):
         """Check response to a [BELL]"""
         self.dut.send(b"\a")
