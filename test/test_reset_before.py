@@ -36,6 +36,11 @@ class ResetBeforeTestCase(unittest.TestCase):
         self.dut.send(b"mFFFFF800\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
+        # Set S0 (10 kbps) to verify nominal bitrate is saved and restored by Q1.
+        # Distinguishable from the S4 default (125 kbps) via timestamp difference.
+        self.dut.send(b"S0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
