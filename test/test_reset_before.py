@@ -49,6 +49,11 @@ class ResetBeforeTestCase(unittest.TestCase):
         self.dut.send(b"z0000\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
+        # Set Z2 (microsecond timestamp) in RAM without Q.
+        # This should NOT persist after reset; the Q1-saved z1011 should be restored.
+        self.dut.send(b"Z2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
         self.dut.send(b"M00000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"mFFFFFFFF\r")

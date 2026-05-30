@@ -58,6 +58,32 @@ class ResetAfterTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_Z_without_Q_no_persist(self):
+        """Check that Z command without Q does not write non-volatile memory.
+
+        Z2 (microsecond timestamp) was set in RAM in test_reset_before without
+        a subsequent Q call, so it must NOT survive the reset.  The Q1-saved
+        setting (z1011) uses millisecond timestamp; after reset frames should
+        carry 4-char timestamps, not the 8-char microsecond ones.
+        """
+        #self.dut.print_on = True
+        self.dut.send(b"C\r")
+        self.dut.receive()
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # ms timestamp (z1011): z[CR] + t03F0 + TTTT + [CR]  = 12 bytes
+        # us timestamp (Z2)   : z[CR] + t03F0 + TTTTTTTT + [CR] = 16 bytes
+        self.dut.send(b"t03F0\r")
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
+                         "Z2 without Q must not persist: expected 4-char ms timestamp")
+        self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
     def test_filter(self):
         #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
