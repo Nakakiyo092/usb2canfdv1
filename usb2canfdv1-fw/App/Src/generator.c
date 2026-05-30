@@ -342,20 +342,57 @@ HAL_StatusTypeDef gen_configure_filter(void)
 
     if (gen_filter_mode == SLCAN_FILTER_DUAL_MODE)
     {
-        // TODO: Dual filter mode is not implemented yet. Pass all messages.
+        // Extract the four byte fields from the 4-byte Code and Mask
+        // (SJA1000 / LAWICEL dual-filter register layout: AC0..AC3 / AM0..AM3)
+        uint32_t ac0 = (gen_filter_code >> 24) & 0xFF;
+        uint32_t am0 = (gen_filter_mask >> 24) & 0xFF;
+        uint32_t ac1 = (gen_filter_code >> 16) & 0xFF;
+        uint32_t am1 = (gen_filter_mask >> 16) & 0xFF;
+        uint32_t ac2 = (gen_filter_code >>  8) & 0xFF;
+        uint32_t am2 = (gen_filter_mask >>  8) & 0xFF;
+        uint32_t ac3 = (gen_filter_code >>  0) & 0xFF;
+        uint32_t am3 = (gen_filter_mask >>  0) & 0xFF;
 
-        // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
-        if (can_set_filter_std(state_std, 0x000, 0x000) != HAL_OK)
-        {
+        // --- Base (standard) CAN ID filter ---
+        // Bit mapping per documentation:
+        //   AC0[7:0] -> ID[10:3],  AC1[7:5] -> ID[2:0],  AC1[4:0] = don't-care ('.')
+        // Filter 1 uses AC0/AC1; Filter 2 uses AC2/AC3 with the same mapping.
+        uint32_t code_std_f1 = (ac0 << 3) | (ac1 >> 5);
+        uint32_t mask_std_f1 = (am0 << 3) | (am1 >> 5);   // SLCAN convention: 1 = don't-care
+
+        uint32_t code_std_f2 = (ac2 << 3) | (ac3 >> 5);
+        uint32_t mask_std_f2 = (am2 << 3) | (am3 >> 5);   // SLCAN convention: 1 = don't-care
+
+        // --- Extended CAN ID filter ---
+        // Bit mapping per documentation:
+        //   AC0[7:0] -> ID[28:21],  AC1[7:0] -> ID[20:13],  ID[12:0] = don't-care ('.')
+        // Filter 1 uses AC0/AC1; Filter 2 uses AC2/AC3 with the same mapping.
+        uint32_t code_ext_f1 = (ac0 << 21) | (ac1 << 13);
+        uint32_t mask_ext_f1 = (am0 << 21) | (am1 << 13) | 0x1FFF;   // ID[12:0] always don't-care
+
+        uint32_t code_ext_f2 = (ac2 << 21) | (ac3 << 13);
+        uint32_t mask_ext_f2 = (am2 << 21) | (am3 << 13) | 0x1FFF;   // ID[12:0] always don't-care
+
+        // Convert SLCAN mask (1=don't-care) to STM32 mask (1=must-match) and apply.
+        // Filter 1 uses FilterIndex=0; Filter 2 uses FilterIndex=1 (routed to FIFO0).
+        // A frame is accepted if either filter matches (logical OR).
+        if (can_set_filter1_std(state_std, code_std_f1, (~mask_std_f1) & 0x7FF) != HAL_OK)
             return HAL_ERROR;
-        }
-        if (can_set_filter_ext(state_ext, 0x00000000, 0x00000000) != HAL_OK)
-        {
+        if (can_set_filter2_std(ENABLE, code_std_f2, (~mask_std_f2) & 0x7FF) != HAL_OK)
             return HAL_ERROR;
-        }
+        if (can_set_filter1_ext(state_ext, code_ext_f1, (~mask_ext_f1) & 0x1FFFFFFF) != HAL_OK)
+            return HAL_ERROR;
+        if (can_set_filter2_ext(ENABLE, code_ext_f2, (~mask_ext_f2) & 0x1FFFFFFF) != HAL_OK)
+            return HAL_ERROR;
     }
     else if (gen_filter_mode == SLCAN_FILTER_SIMPLE_MODE)
     {
+        // Reset the second filter slot to pass-all drain mode (FIFO1) when not in dual mode
+        if (can_set_filter2_std(DISABLE, 0, 0) != HAL_OK)
+            return HAL_ERROR;
+        if (can_set_filter2_ext(DISABLE, 0, 0) != HAL_OK)
+            return HAL_ERROR;
+
         // Frame type selection by AC0 bit 7 and AM0 bit 7. See the link for details.
         // https://github.com/Nakakiyo092/canable2-fw/issues/66
         if (!(gen_filter_code >> 31) && !(gen_filter_mask >> 31))
@@ -368,11 +405,11 @@ HAL_StatusTypeDef gen_configure_filter(void)
         }
 
         // Mask definition, SLCAN: 0 -> Enable, STM32: 1 -> Enable
-        if (can_set_filter_std(state_std, gen_filter_code & 0x7FF, (~gen_filter_mask) & 0x7FF) != HAL_OK)
+        if (can_set_filter1_std(state_std, gen_filter_code & 0x7FF, (~gen_filter_mask) & 0x7FF) != HAL_OK)
         {
             return HAL_ERROR;
         }
-        if (can_set_filter_ext(state_ext, gen_filter_code & 0x1FFFFFFF, (~gen_filter_mask) & 0x1FFFFFFF) != HAL_OK)
+        if (can_set_filter1_ext(state_ext, gen_filter_code & 0x1FFFFFFF, (~gen_filter_mask) & 0x1FFFFFFF) != HAL_OK)
         {
             return HAL_ERROR;
         }

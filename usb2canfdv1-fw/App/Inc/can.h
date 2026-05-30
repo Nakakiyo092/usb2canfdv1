@@ -100,14 +100,19 @@ struct CanBitrateCfg can_get_nominal_bitrate_cfg(void);
 struct CanBitrateCfg can_get_data_bitrate_cfg(void);
 
 // Filter functions
-HAL_StatusTypeDef can_set_filter_std(FunctionalState state, uint32_t code, uint32_t mask);
-HAL_StatusTypeDef can_set_filter_ext(FunctionalState state, uint32_t code, uint32_t mask);
+HAL_StatusTypeDef can_set_filter1_std(FunctionalState state, uint32_t code, uint32_t mask);
+HAL_StatusTypeDef can_set_filter1_ext(FunctionalState state, uint32_t code, uint32_t mask);
 FunctionalState can_is_filter_std_enabled(void);
 FunctionalState can_is_filter_ext_enabled(void);
 uint32_t can_get_filter_std_code(void);
 uint32_t can_get_filter_std_mask(void);
 uint32_t can_get_filter_ext_code(void);
 uint32_t can_get_filter_ext_mask(void);
+
+// Second filter slot functions (FilterIndex=1)
+// state=ENABLE: acceptance filter routed to FIFO0; state=DISABLE: resets to pass-all drain (FIFO1)
+HAL_StatusTypeDef can_set_filter2_std(FunctionalState state, uint32_t code, uint32_t mask);
+HAL_StatusTypeDef can_set_filter2_ext(FunctionalState state, uint32_t code, uint32_t mask);
 
 // CAN mode and status
 HAL_StatusTypeDef can_set_mode(uint32_t mode);
