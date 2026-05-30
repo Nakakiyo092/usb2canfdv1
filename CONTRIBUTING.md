@@ -15,7 +15,7 @@ Pull requests are not expected to be accepted.
 └── usb2canfdv1-fw/         # Firmware source code
 ```
 
-The commands below sync changes between this repository and subtrees
+The commands below sync changes between this repository and the subtrees
 ([wiki](https://github.com/Nakakiyo092/usb2canfdv1/wiki) and [slcan-tester](https://github.com/Nakakiyo092/slcan-tester)).  
 It would be a good practice to sync at release time.
 
@@ -39,3 +39,8 @@ git subtree push --prefix=test testtree merge
 - Review individual test cases as needed before submitting a pull request.
 - Confirm all standard test cases before releasing firmware.
 - Visually inspect the pre-release checklist prior to release.
+
+## Test coverage
+
+- Every requirement described in the documents under `doc/` should be covered by at least one test.
+- Beyond that, branch or edge-case coverage is added at the developer's discretion — wherever there is doubt about correctness, add a test.
