@@ -193,6 +193,7 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_s_command(self):
+        """Check response for the longer version of s command (sddxxyyzz[CR])"""
         # Check response with CAN port closed
         self.dut.send(b"s10460908\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -247,6 +248,7 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_sxxyy_command(self):
+        """Check response for the shorter version of s command (sxxyy[CR])"""
         # Check response with CAN port closed (default: 125kbps, 87.5% SP)
         self.dut.send(b"s031C\r")
         self.assertEqual(self.dut.receive(), b"\r")
