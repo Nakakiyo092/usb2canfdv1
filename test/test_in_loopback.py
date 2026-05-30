@@ -574,6 +574,51 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_z_Z_mutual_exclusivity(self):
+        """Issuing Z resets all z-command settings to their defaults.
+
+        The z command note states: "settings made by z will be overwritten by
+        the Z command or reset to default."
+
+        Procedure:
+        1. Configure with z2003 (microsecond timestamp, tx event on, rx on).
+        2. Issue Z1 (millisecond timestamp).
+        3. Open internal loopback and send a frame.
+
+        Expected after Z1 (default reporting + ms timestamp):
+        - Tx event disabled  -> buffer save response is z[CR]
+        - Rx frame enabled   -> loopback frame is reported
+        - Millisecond timestamp (4 hex chars), no microsecond (8 chars)
+
+        Wrong if z2003 persisted:
+        - Tx event on -> buffer save response is [CR]
+        - Response would include separate tx event and rx frame reports
+        - 8-char microsecond timestamps
+        """
+        #self.dut.print_on = True
+        # Configure z2003: us timestamp, rx on, tx event on, ESI off
+        self.dut.send(b"z2003\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Z1 must overwrite z settings and reset reporting to default
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        self.dut.send(b"t03F0\r")
+        rx_data = self.dut.receive()
+
+        # With Z1 + defaults: z[CR] (tx event off) + t03F0TTTT[CR] (ms ts, rx on)
+        self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
+                         "Z1 must override z2003: expected tx-event-off and ms timestamp (4 chars)")
+        self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
     def test_dual_filter_basic(self):
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
