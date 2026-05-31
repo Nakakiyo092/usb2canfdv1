@@ -22,7 +22,7 @@ It would be a good practice to sync at release time.
 
 ```
 git subtree pull --prefix=doc doctree master --squash
-git subtree push --prefix=doc doctree master --squash
+git subtree push --prefix=doc doctree master
 git subtree pull --prefix=test testtree merge
 git subtree push --prefix=test testtree merge
 ```
