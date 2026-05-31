@@ -8,7 +8,6 @@ from device_under_test import DeviceUnderTest
 
 class BufferTestCase(unittest.TestCase):
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):

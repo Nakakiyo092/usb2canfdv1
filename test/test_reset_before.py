@@ -21,7 +21,6 @@ class ResetBeforeTestCase(unittest.TestCase):
     device reset.
     """
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):

@@ -16,7 +16,6 @@ from device_under_test import DeviceUnderTest
 class ResetAfterTestCase(unittest.TestCase):
     """Verify auto-startup behavior and persisted settings after reset."""
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):

@@ -11,7 +11,6 @@ from device_under_test import DeviceUnderTest
 #       The test_nack requires the channel of the aux device becoming open and closed repeatedly.
 class TxEventTestCase(unittest.TestCase):
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):

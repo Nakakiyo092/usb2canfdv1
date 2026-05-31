@@ -9,7 +9,6 @@ from device_under_test import DeviceUnderTest
 # NOTE: This test needs to be done with CAN high and low shorted.
 class ShortTestCase(unittest.TestCase):
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):

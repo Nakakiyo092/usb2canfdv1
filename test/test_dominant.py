@@ -9,7 +9,6 @@ from device_under_test import DeviceUnderTest
 # NOTE: This test needs to be done with CAN bus fixed at dominant level.
 class DominantTestCase(unittest.TestCase):
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):
