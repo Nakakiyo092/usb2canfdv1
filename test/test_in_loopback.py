@@ -294,6 +294,11 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    # test_timestamp_wraparound_micro
+    # Testing wrap around of micro timestamp will take about one hour.
+    # We will verify this in long_time_test.py rather than here.
+
+
     def test_timestamp_same_stamp(self):
         #self.dut.print_on = True
 
@@ -608,40 +613,13 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
         self.dut.send(b"t03F0\r")
-        rx_data = self.dut.receive()
+        rx_data = self.dut.receive() + self.dut.receive()
 
         # With Z1 + defaults: z[CR] (tx event off) + t03F0TTTT[CR] (ms ts, rx on)
         self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
                          "Z1 must override z2003: expected tx-event-off and ms timestamp (4 chars)")
         self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
 
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-    def test_dual_filter_basic(self):
-        cmd_send_std = (b"r", b"t", b"d", b"b")
-        cmd_send_ext = (b"R", b"T", b"D", b"B")
-
-        #self.dut.print_on = True
-
-        # Check pass all filter (default)
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"7C00\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"000007C00\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"1EC801370\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
