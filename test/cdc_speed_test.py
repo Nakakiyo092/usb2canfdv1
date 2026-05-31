@@ -136,7 +136,8 @@ def print_round_trip_time(dev: serial.Serial) -> int:
 def make_data_to_write(mode: str, chunk_size: int) -> bytes:
     """Make data to write to device."""
     if mode == "rx":
-        single_msg = b"v\r"    # TODO: V[CR] option for wider support
+        #single_msg = b"v\r"    # Higher TX-to-RX gain (if supported by device)
+        single_msg = b"V\r"    # Lower gain but widely supported
     else:
         single_msg = b"00112233445566778899AABBCCDDEEFF"
         single_msg = b"B00000000F" + single_msg * 4 + b"\r" # a frame with 64 bytes data
