@@ -39,10 +39,11 @@ class ResetBeforeTestCase(unittest.TestCase):
 
         Persisted (expected to survive reset):
             serial number, report mode z1011, filter mode W2 + 0x03F
-            filter, nominal bitrate S0.
+            filter, nominal bitrate S0, data bitrate Y0.
 
         RAM-only (expected to be lost on reset):
             z0000 + Z2 (report flags off, us timestamp),
+            S4 + Y4 (bitrate overrides),
             W0 (dual filter mode), all-pass filter.
         """
         # Persisted: serial number (N writes NVM directly, no Q required).
@@ -61,8 +62,10 @@ class ResetBeforeTestCase(unittest.TestCase):
         self.dut.send(b"mFFFFF800\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Persisted: nominal bitrate S0 (10 kbps).
+        # Persisted: nominal bitrate S0 (10 kbps), data bitrate Y0 (500 kbps).
         self.dut.send(b"S0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Y0\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
         # Open and commit to non-volatile memory via Q1 (auto-startup ON).
@@ -73,10 +76,15 @@ class ResetBeforeTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # RAM-only: report flags off (z0000), us timestamp (Z2), dual filter mode (W0), all-pass filter.
+        # RAM-only: report flags off (z0000), us timestamp (Z2),
+        # bitrate overrides (S4 + Y4), dual filter mode (W0), all-pass filter.
         self.dut.send(b"z0000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"S4\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Y4\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"W0\r")
         self.assertEqual(self.dut.receive(), b"\r")

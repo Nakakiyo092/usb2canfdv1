@@ -76,12 +76,13 @@ class ResetAfterTestCase(unittest.TestCase):
 
 
     def test_bitrate(self):
-        """Persisted nominal bitrate S0 (10 kbps) is restored.
+        """Persisted nominal + data bitrates (S0 + Y0) are restored.
 
         Sends two back-to-back FD BRS frames with a long data portion
         in internal loopback.  The long data portion ensures back-to-back
         transmission even with host-side latency, and makes the data
-        bitrate (Y) contribute to the inter-frame timing as well.
+        bitrate (Y) contribute to the inter-frame timing, so both S and
+        Y persistence are verified by the single measurement.
         """
         # Verify auto-startup opened the channel.  Relies on unittest's default
         # alphabetical method ordering: this is the first channel-touching test
@@ -95,8 +96,10 @@ class ResetAfterTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # FD BRS frame: ID=0x03F (passes filter), DLC=F (64 bytes data),
-        # alternating bit pattern.
+        # FD BRS frame: ID=0x03F (passes filter; the 0...01...1 pattern
+        # forces 2 stuff bits in the arbitration phase, unavoidable),
+        # DLC=F (64 bytes data), alternating bit pattern (no dynamic stuff
+        # in the data phase).
         data = b"55" * 64
         tx_frame = b"b03FF" + data + b"\r"
         self.dut.send(tx_frame + tx_frame)
@@ -117,14 +120,19 @@ class ResetAfterTestCase(unittest.TestCase):
         if diff_us < 0:
             diff_us += 3600000000  # us timestamp wraps at 60 minutes
 
-        # At S0 (nominal 10 kbps) + default Y2 (data 2 Mbps), expected ~3500 us.
-        # At S4 default (125 kbps) the same frame would take ~400 us.
-        self.assertGreater(diff_us, 2500,
+        # Expected ~4300 us at S0 (10 kbps) + Y0 (500 kbps).  Any RAM-leftover
+        # leak scenario produces a much shorter interval:
+        # - Y2 default leak (S persisted, Y not): ~3470 us
+        # - Y4 RAM leak (S persisted, Y RAM): ~3340 us
+        # - S4 RAM leak (S RAM, Y persisted): ~1350 us
+        # - Both RAM leak (S RAM, Y RAM): ~390 us
+        # Tolerance 4000-5200 us cleanly distinguishes correct from any leak.
+        self.assertGreater(diff_us, 4000,
                            f"Inter-frame interval {diff_us} us too short; "
-                           f"expected ~3500 us at S0")
-        self.assertLess(diff_us, 4500,
+                           f"expected ~4300 us at S0+Y0 (NVM-restored)")
+        self.assertLess(diff_us, 5200,
                         f"Inter-frame interval {diff_us} us too long; "
-                        f"expected ~3500 us at S0")
+                        f"expected ~4300 us at S0+Y0 (NVM-restored)")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
