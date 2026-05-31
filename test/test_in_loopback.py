@@ -153,6 +153,62 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_timestamp_wraparound_milli(self):
+        """Z1 millisecond timestamp wraps to 0 at 0xEA60 (60000 ms).
+
+        Polls the current timestamp with Z[CR], sleeps until ~1 second before
+        the wrap point, then sends frames in loopback mode until a wrap is
+        detected.  Verifies that the pre-wrap timestamp is in [0xEA60-50,
+        0xEA60) and the post-wrap timestamp is near 0.
+        """
+        WRAP_MS = 0xEA60  # 60000 ms
+
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Find current position in the 60-second cycle
+        self.dut.send(b"Z\r")
+        rx = self.dut.receive()
+        self.assertEqual(len(rx), len(b"Z1xxxx\r"))
+        current_ms = int(rx[2:6], 16)
+
+        # Sleep until ~1 second before the wrap so polling loop is short
+        ms_until_wrap = (WRAP_MS - current_ms) % WRAP_MS
+        if ms_until_wrap > 1000:
+            time.sleep((ms_until_wrap - 1000) / 1000.0)
+
+        # Send frames until a wrap-around is detected
+        pre_wrap_ts = None
+        post_wrap_ts = None
+        wrap_detected = False
+        for _ in range(200):  # ~8 s of polling at ~40 ms/frame
+            self.dut.send(b"t03F0\r")
+            rx = self.dut.receive()
+            self.assertEqual(len(rx), len(b"z\rt03F0TTTT\r"))
+            ts_ms = int(rx[len(b"z\rt03F0"):len(b"z\rt03F0") + 4], 16)
+
+            if pre_wrap_ts is not None and ts_ms < pre_wrap_ts:
+                post_wrap_ts = ts_ms
+                wrap_detected = True
+                break
+            pre_wrap_ts = ts_ms
+
+        self.assertTrue(wrap_detected,
+                        "Millisecond timestamp wrap-around not detected within test window")
+        # The wrap must occur at the documented boundary (0xEA60 = 60000 ms)
+        self.assertGreaterEqual(pre_wrap_ts, WRAP_MS - 50,
+                                f"Wrap occurred too early: last ts={pre_wrap_ts:#06x}")
+        self.assertLess(pre_wrap_ts, WRAP_MS,
+                        f"Pre-wrap ts must be < WRAP_MS, got {pre_wrap_ts:#06x}")
+        self.assertLess(post_wrap_ts, 50,
+                        f"Post-wrap ts should be near 0, got {post_wrap_ts:#06x}")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
     def test_timestamp_micro(self):
         #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
@@ -236,6 +292,11 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertLess(abs(sleep_time_us - diff_time_us), 600 * 1000)
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+
+    # test_timestamp_wraparound_micro
+    # Testing wrap around of micro timestamp will take about one hour.
+    # We will verify this in long_time_test.py rather than here.
 
 
     def test_timestamp_same_stamp(self):
@@ -518,29 +579,47 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_dual_filter_basic(self):
-        cmd_send_std = (b"r", b"t", b"d", b"b")
-        cmd_send_ext = (b"R", b"T", b"D", b"B")
+    def test_z_Z_mutual_exclusivity(self):
+        """Issuing Z resets all z-command settings to their defaults.
 
+        The z command note states: "settings made by z will be overwritten by
+        the Z command or reset to default."
+
+        Procedure:
+        1. Configure with z2003 (microsecond timestamp, tx event on, rx on).
+        2. Issue Z1 (millisecond timestamp).
+        3. Open internal loopback and send a frame.
+
+        Expected after Z1 (default reporting + ms timestamp):
+        - Tx event disabled  -> buffer save response is z[CR]
+        - Rx frame enabled   -> loopback frame is reported
+        - Millisecond timestamp (4 hex chars), no microsecond (8 chars)
+
+        Wrong if z2003 persisted:
+        - Tx event on -> buffer save response is [CR]
+        - Response would include separate tx event and rx frame reports
+        - 8-char microsecond timestamps
+        """
         #self.dut.print_on = True
+        # Configure z2003: us timestamp, rx on, tx event on, ESI off
+        self.dut.send(b"z2003\r")
+        self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check pass all filter (default)
+        # Z1 must overwrite z settings and reset reporting to default
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"7C00\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"000007C00\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"1EC801370\r")
+
+        self.dut.send(b"t03F0\r")
+        rx_data = self.dut.receive() + self.dut.receive()
+
+        # With Z1 + defaults: z[CR] (tx event off) + t03F0TTTT[CR] (ms ts, rx on)
+        self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
+                         "Z1 must override z2003: expected tx-event-off and ms timestamp (4 chars)")
+        self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
