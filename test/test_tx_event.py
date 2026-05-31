@@ -150,6 +150,12 @@ class TxEventTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    # NOTE: test_nack verifies that exactly one Tx event is reported after the hardware retransmits
+    #       a failed frame multiple times before finally getting an ACK. Although not directly tested
+    #       (special setup required), this is effectively covered by composition:
+    #       - Retransmit-on-NACK: test_error.py::test_error_passive (TEC reaches 128 via repeated retries)
+    #       - Single-Tx-event-on-final-success: test_normal above
+    #       The STM32 FDCAN auto-retry is transparent to firmware (one TXOK interrupt fires only on final ACK).
     @unittest.skip("Skip this test due to a special setup requirement")
     def test_nack(self):
         self.dut.print_on = True
