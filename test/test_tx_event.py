@@ -7,10 +7,10 @@ import random
 from device_under_test import DeviceUnderTest
 
 
-# NOTE: This test requires another device with the default setup on CAN bus.
+# NOTE: This test requires another device (aux) with the default setup on CAN bus.
+#       The test_nack requires the channel of the aux device becoming open and closed repeatedly.
 class TxEventTestCase(unittest.TestCase):
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):
@@ -111,13 +111,10 @@ class TxEventTestCase(unittest.TestCase):
         random.seed(92)
         rx_data = b""
         rx_data_exp = b""
-        # Setup sampling point so that CBFF is OK but FBFF with BRS is not. See the link for details.
-        # TODO Just a unmatched data bit rate is not enough?
-        # https://github.com/Nakakiyo092/canable2-fw/discussions/72#discussioncomment-14331610
-        #self.dut.send(b"s10420D0C\r")   # For CANable2
-        self.dut.send(b"s08420D0C\r")   # For WeActStudio   TODO use VXXXX
+        # Setup bit rate so that CBFF is OK but FBFF with BRS is not.
+        self.dut.send(b"Y5\r")      # Rx side is default (125kbps / 2Mbps)
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"z0002\r")  # no rx, tx event only
+        self.dut.send(b"z0002\r")   # no rx, tx event only
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"-\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -148,6 +145,47 @@ class TxEventTestCase(unittest.TestCase):
 
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F80\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    # NOTE: test_nack verifies that exactly one Tx event is reported after the hardware retransmits
+    #       a failed frame multiple times before finally getting an ACK. Although not directly tested
+    #       (special setup required), this is effectively covered by composition:
+    #       - Retransmit-on-NACK: test_error.py::test_error_passive (TEC reaches 128 via repeated retries)
+    #       - Single-Tx-event-on-final-success: test_normal above
+    #       The STM32 FDCAN auto-retry is transparent to firmware (one TXOK interrupt fires only on final ACK).
+    @unittest.skip("Skip this test due to a special setup requirement")
+    def test_nack(self):
+        self.dut.print_on = True
+        rx_data = b""
+        rx_data_exp = b""
+        #self.dut.send(b"S0\r")
+        #self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0002\r")  # no rx, tx event only
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        #for i in range(0x000, 0x800):
+        for i in range(0x000, 0x100):
+            tx_data = b"t"
+            tx_data += format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r"
+            rx_data_exp += b"\r" + b"z" + tx_data
+            self.dut.send(tx_data)
+            if i % 180 == 0:
+                # the buffer can store as least 180 messages (4096 / 22)
+                rx_data += self.dut.receive()
+            time.sleep(0.1)
+
+        # check all reply
+        rx_data += self.dut.receive()
+        rx_data = rx_data.replace(b"\r", b"")   # [CR] and tx event may swap
+        rx_data_exp = rx_data_exp.replace(b"\r", b"")
+        self.assertEqual(rx_data, rx_data_exp)
+
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"FA4\r")  # This will not be true
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 

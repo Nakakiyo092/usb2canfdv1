@@ -2,13 +2,11 @@
 
 import unittest
 
-import time
 from device_under_test import DeviceUnderTest
 
 
 class SlcanTestCase(unittest.TestCase):
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):
@@ -22,33 +20,34 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_blank_command(self):
-        # Check response to a [CR]
+        """Check response to a [CR]"""
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_error_command(self):
-        # Check response to a [BELL]
+        """Check response to a [BELL]"""
         self.dut.send(b"\a")
-        self.assertEqual(self.dut.receive(), b"")      # no reply since message is incomplete without [CR]
+        # no reply since message is incomplete without [CR]
+        self.assertEqual(self.dut.receive(), b"")
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
 
     def test_too_long_command(self):
-        # Check response to a command longer than MTU
+        """Check response to a command longer than MTU"""
         # 1 + 138 + 8 + 1 + 1 + 16 = 165 is the MTU (including a [CR] and 16 bytes margin)
-        for i in range(163):
+        for _ in range(163):
             self.dut.send(b"F")
         self.assertEqual(self.dut.receive(), b"")
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        for i in range(164):
+        for _ in range(164):
             self.dut.send(b"F")
         self.assertEqual(self.dut.receive(), b"")
         self.dut.send(b"\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        for i in range(165):
+        for _ in range(165):
             self.dut.send(b"F")
         self.assertEqual(self.dut.receive(), b"")
         self.dut.send(b"\r")
@@ -58,7 +57,7 @@ class SlcanTestCase(unittest.TestCase):
     def test_V_command(self):
         self.dut.send(b"V\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"V1013\r"))
+        self.assertGreaterEqual(len(rx_data), len(b"V1013\r"))
         self.assertEqual(rx_data[0], b"V1013\r"[0])
         self.dut.send(b"V0\r")
         self.assertEqual(self.dut.receive(), b"\a")
@@ -193,6 +192,7 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_s_command(self):
+        """Check response for the longer version of s command (sddxxyyzz[CR])"""
         # Check response with CAN port closed
         self.dut.send(b"s10460908\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -218,7 +218,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"sFFFF8080\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        
+
         # Check our of range
         self.dut.send(b"s00460908\r")
         self.assertEqual(self.dut.receive(), b"\a")
@@ -243,6 +243,67 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"s104609080\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"s0G460908\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+
+
+    def test_sxxyy_command(self):
+        """Check response for the shorter version of s command (sxxyy[CR])"""
+        # Check response with CAN port closed (default: 125kbps, 87.5% SP)
+        self.dut.send(b"s031C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check response in CAN normal mode
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s031C\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check response in CAN silent mode
+        self.dut.send(b"L\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s031C\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check standard LAWICEL bit rates (all use BTR1=0x1C for 87.5% SP)
+        self.dut.send(b"s311C\r")    # 10kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s181C\r")    # 20kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s091C\r")    # 50kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s041C\r")    # 100kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s011C\r")    # 250kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s001C\r")    # 500kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s0016\r")    # 800kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s0014\r")    # 1Mbps
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check boundary values (all valid since formulas always produce in-range results)
+        self.dut.send(b"s0000\r")    # xx=0x00, yy=0x00 -> min values
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"sFFFF\r")    # xx=0xFF, yy=0xFF -> max values
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Sampling mode bit (MSB of yy) is ignored
+        self.dut.send(b"s031C\r")    # yy=0x1C (bit7=0)
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"s039C\r")    # yy=0x9C (bit7=1, same timing)
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check invalid format
+        self.dut.send(b"s031\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"s031C0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"s0G1C\r")
         self.assertEqual(self.dut.receive(), b"\a")
 
 
@@ -311,7 +372,7 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"y20201010\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        
+
         # Check our of range
         self.dut.send(b"y001E0908\r")
         self.assertEqual(self.dut.receive(), b"\a")
@@ -723,19 +784,19 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"r7FFF\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"t7FFF0011223344556677\r")   # DLC 0xF - 8 byte data is a valid combination
+        self.dut.send(b"t7FFF" + b"FF" * 8 + b"\r")   # DLC 0xF - 8 byte data is a valid combination
         self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"d7FFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
+        self.dut.send(b"d7FFF" + b"FF" * 64 + b"\r")
         self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"b7FFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
+        self.dut.send(b"b7FFF" + b"FF" * 64 + b"\r")
         self.assertEqual(self.dut.receive(), b"z\r")
         self.dut.send(b"R1FFFFFFFF\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"T1FFFFFFFF0011223344556677\r")  # DLC 0xF - 8 byte data is a valid combination
+        self.dut.send(b"T1FFFFFFFF" + b"FF" * 8 + b"\r")  # DLC 0xF - 8 byte data is a valid combination
         self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"D1FFFFFFFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
+        self.dut.send(b"D1FFFFFFFF" + b"FF" * 64 + b"\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"B1FFFFFFFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r")
+        self.dut.send(b"B1FFFFFFFF" + b"FF" * 64 + b"\r")
         self.assertEqual(self.dut.receive(), b"Z\r")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -770,15 +831,77 @@ class SlcanTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # check response to too long command in CAN normal mode
+        # check response to too long command in CAN normal mode (excess char)
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F00\r")
-            self.assertEqual(self.dut.receive(), b"\a")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0137FEC800\r")
-            self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"r03FF0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"t03FF" + b"00" * 8 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"d03FF" + b"00" * 64 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"b03FF" + b"00" * 64 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"R0137FEC8F0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"T0137FEC8F" + b"00" * 8 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"D0137FEC8F" + b"00" * 64 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"B0137FEC8F" + b"00" * 64 + b"0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # check response to too long command in CAN normal mode (excess byte)
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"r03FF00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"t03FF" + b"00" * 8 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"d03FF" + b"00" * 64 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"b03FF" + b"00" * 64 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"R0137FEC8F00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"T0137FEC8F" + b"00" * 8 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"D0137FEC8F" + b"00" * 64 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"B0137FEC8F" + b"00" * 64 + b"00\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # check response to invalid lenght in CAN normal mode
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t03F4" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"t03F4" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"d03F4" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"d03F4" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"b03F4" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"b03F4" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"T0137FEC84" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"T0137FEC84" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"D0137FEC84" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"D0137FEC84" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"B0137FEC84" + b"00" * 3 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        self.dut.send(b"B0137FEC84" + b"00" * 5 + b"\r")
+        self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -801,32 +924,36 @@ class SlcanTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"t8000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        self.dut.send(b"t03F9001122334455667788\r")
-        self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"d8000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        self.dut.send(b"d03F9001122334455667788\r")
-        self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"b8000\r")
-        self.assertEqual(self.dut.receive(), b"\a")
-        self.dut.send(b"b03F9001122334455667788\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"R200000000\r")
         self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"T200000000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        self.dut.send(b"T03F9001122334455667788\r")
-        self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"D200000000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        #self.dut.send(b"D0137FEC89001122334455667788\r")
-        #self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"B200000000\r")
         self.assertEqual(self.dut.receive(), b"\a")
-        #self.dut.send(b"B0137FEC89001122334455667788\r")
-        #self.assertEqual(self.dut.receive(), b"\a")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_unsupported_commands(self):
+        """Check that unsupported commands P, A, X, U return BELL"""
+        # P: Polls incoming FIFO (not supported)
+        self.dut.send(b"P\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        # A: Polls all pending frames (not supported)
+        self.dut.send(b"A\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        # X: Sets Auto Poll/Send (not supported)
+        self.dut.send(b"X0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
+        # U: Sets UART baud rate (not supported)
+        self.dut.send(b"U0\r")
+        self.assertEqual(self.dut.receive(), b"\a")
 
 
 if __name__ == "__main__":

@@ -2,14 +2,12 @@
 
 import unittest
 
-import time
 from device_under_test import DeviceUnderTest
 
 # Tool to get the device back to default setup
 
 class ToolDefaultTestCase(unittest.TestCase):
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):
@@ -20,10 +18,16 @@ class ToolDefaultTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.dut.close()
-        
+
 
     def test_default(self):
         #self.dut.print_on = True
+
+        # Serial number: write NA123 if not already stored
+        self.dut.send(b"N\r")
+        if self.dut.receive() == b"\a":
+            self.dut.send(b"NA123\r")
+            self.assertEqual(self.dut.receive(), b"\r")
 
         # Bit rate
         self.dut.send(b"S4\r")
@@ -55,19 +59,6 @@ class ToolDefaultTestCase(unittest.TestCase):
 
         # Close port
         self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-    def test_serial_number(self):
-        #self.dut.print_on = True
-
-        # Check response to N
-        self.dut.send(b"N\r")
-        rx_data = self.dut.receive()
-
-        # Update serial number
-        self.dut.send(b"NAC01\r")
-        time.sleep(0.1)         # Extra wait for flash update
         self.assertEqual(self.dut.receive(), b"\r")
 
 

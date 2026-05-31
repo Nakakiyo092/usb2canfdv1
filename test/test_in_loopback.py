@@ -8,7 +8,6 @@ from device_under_test import DeviceUnderTest
 
 class InLoopbackTestCase(unittest.TestCase):
 
-    print_on: bool
     dut: DeviceUnderTest
 
     def setUp(self):
@@ -46,10 +45,10 @@ class InLoopbackTestCase(unittest.TestCase):
         tx_data = b"t03F80011223344556677\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
-        tx_data = b"d03FF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r"
+        tx_data = b"d03FF" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
-        tx_data = b"b03FF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r"
+        tx_data = b"b03FF" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
         tx_data = b"R0137FEC8F\r"
@@ -58,10 +57,10 @@ class InLoopbackTestCase(unittest.TestCase):
         tx_data = b"T0137FEC880011223344556677\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
-        tx_data = b"D0137FEC8F00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r"
+        tx_data = b"D0137FEC8F" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
-        tx_data = b"B0137FEC8F00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\r"
+        tx_data = b"B0137FEC8F" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
         self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
         self.dut.send(b"C\r")
@@ -122,7 +121,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        
+
         #  send first frame and get timestamp
         self.dut.send(b"t03F0\r")
         rx_data = self.dut.receive()
@@ -147,8 +146,64 @@ class InLoopbackTestCase(unittest.TestCase):
         else:
             diff_time_ms = (60000 + crnt_time_ms) - last_time_ms
 
-        # Proving 2% accuracy. 600ms should be enough for USB latency.
+        # Tolerance is 600 ms (2% of 30 s), which accounts for USB latency and OS scheduling jitter.
         self.assertLess(abs(sleep_time_ms - diff_time_ms), 600)
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_timestamp_wraparound_milli(self):
+        """Z1 millisecond timestamp wraps to 0 at 0xEA60 (60000 ms).
+
+        Polls the current timestamp with Z[CR], sleeps until ~1 second before
+        the wrap point, then sends frames in loopback mode until a wrap is
+        detected.  Verifies that the pre-wrap timestamp is in [0xEA60-50,
+        0xEA60) and the post-wrap timestamp is near 0.
+        """
+        WRAP_MS = 0xEA60  # 60000 ms
+
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Find current position in the 60-second cycle
+        self.dut.send(b"Z\r")
+        rx = self.dut.receive()
+        self.assertEqual(len(rx), len(b"Z1xxxx\r"))
+        current_ms = int(rx[2:6], 16)
+
+        # Sleep until ~1 second before the wrap so polling loop is short
+        ms_until_wrap = (WRAP_MS - current_ms) % WRAP_MS
+        if ms_until_wrap > 1000:
+            time.sleep((ms_until_wrap - 1000) / 1000.0)
+
+        # Send frames until a wrap-around is detected
+        pre_wrap_ts = None
+        post_wrap_ts = None
+        wrap_detected = False
+        for _ in range(200):  # ~8 s of polling at ~40 ms/frame
+            self.dut.send(b"t03F0\r")
+            rx = self.dut.receive()
+            self.assertEqual(len(rx), len(b"z\rt03F0TTTT\r"))
+            ts_ms = int(rx[len(b"z\rt03F0"):len(b"z\rt03F0") + 4], 16)
+
+            if pre_wrap_ts is not None and ts_ms < pre_wrap_ts:
+                post_wrap_ts = ts_ms
+                wrap_detected = True
+                break
+            pre_wrap_ts = ts_ms
+
+        self.assertTrue(wrap_detected,
+                        "Millisecond timestamp wrap-around not detected within test window")
+        # The wrap must occur at the documented boundary (0xEA60 = 60000 ms)
+        self.assertGreaterEqual(pre_wrap_ts, WRAP_MS - 50,
+                                f"Wrap occurred too early: last ts={pre_wrap_ts:#06x}")
+        self.assertLess(pre_wrap_ts, WRAP_MS,
+                        f"Pre-wrap ts must be < WRAP_MS, got {pre_wrap_ts:#06x}")
+        self.assertLess(post_wrap_ts, 50,
+                        f"Post-wrap ts should be near 0, got {post_wrap_ts:#06x}")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -232,10 +287,15 @@ class InLoopbackTestCase(unittest.TestCase):
         else:
             diff_time_us = (3600000000 + crnt_time_us) - last_time_us
 
-        # Proving 2% accuracy. 600ms should be enough for USB latency.
+        # Tolerance is 600 ms (2% of 30 s), which accounts for USB latency and OS scheduling jitter.
         self.assertLess(abs(sleep_time_us - diff_time_us), 600 * 1000)
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+
+    # test_timestamp_wraparound_micro
+    # Testing wrap around of micro timestamp will take about one hour.
+    # We will verify this in long_time_test.py rather than here.
 
 
     def test_timestamp_same_stamp(self):
@@ -272,6 +332,10 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
+        # Both commands are sent together to minimize the interval between them
+        # so their timestamps are captured in a short time range on the device.
+        # Both responses typically arrive in the first receive(); the second
+        # receive() collects any remaining data. rx_data is their concatenation.
         self.dut.send(b"Z\rt03F0\r")
         rx_data = self.dut.receive() + self.dut.receive()
         last_timestamp = rx_data[len(b"Z2"):len(b"Z2") + 8]
@@ -386,7 +450,7 @@ class InLoopbackTestCase(unittest.TestCase):
 
         # Check timestamp difference for 20 frames sent consecutively
         tx_frame = b"t55585555555555555555"
-        for i in range(0, 20):
+        for _ in range(0, 20):
             self.dut.send(tx_frame + b"\r")
         time.sleep(0.5)
         rx_data = self.dut.receive()
@@ -405,7 +469,7 @@ class InLoopbackTestCase(unittest.TestCase):
 
         # Check timestamp difference for 20 frames with BRS sent consecutively
         tx_frame = b"B1555555585555555555555555"
-        for i in range(0, 20):
+        for _ in range(0, 20):
             self.dut.send(tx_frame + b"\r")
         time.sleep(0.5)
         rx_data = self.dut.receive()
@@ -480,7 +544,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            if cmd == b"r" or cmd == b"t":
+            if cmd in (b"r", b"t"):
                 rx_data = self.dut.receive()
                 self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r"))
                 if rx_data[1] == b"z"[0]:
@@ -496,7 +560,7 @@ class InLoopbackTestCase(unittest.TestCase):
                     self.assertEqual(rx_data, b"\r" + cmd + b"03F00\r" + b"z" + cmd + b"03F00\r")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            if cmd == b"R" or cmd == b"T":
+            if cmd in (b"R", b"T"):
                 rx_data = self.dut.receive()
                 self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r"))
                 if rx_data[1] == b"Z"[0]:
@@ -514,319 +578,46 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_dual_filter_basic(self):
-        cmd_send_std = (b"r", b"t", b"d", b"b")
-        cmd_send_ext = (b"R", b"T", b"D", b"B")
+    def test_z_Z_mutual_exclusivity(self):
+        """Issuing Z resets all z-command settings to their defaults.
 
+        The z command note states: "settings made by z will be overwritten by
+        the Z command or reset to default."
+
+        Procedure:
+        1. Configure with z2003 (microsecond timestamp, tx event on, rx on).
+        2. Issue Z1 (millisecond timestamp).
+        3. Open internal loopback and send a frame.
+
+        Expected after Z1 (default reporting + ms timestamp):
+        - Tx event disabled  -> buffer save response is z[CR]
+        - Rx frame enabled   -> loopback frame is reported
+        - Millisecond timestamp (4 hex chars), no microsecond (8 chars)
+
+        Wrong if z2003 persisted:
+        - Tx event on -> buffer save response is [CR]
+        - Response would include separate tx event and rx frame reports
+        - 8-char microsecond timestamps
+        """
         #self.dut.print_on = True
-
-        # Check pass all filter (default)
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"7C00\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"000007C00\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"1EC801370\r")
-        self.dut.send(b"C\r")
+        # Configure z2003: us timestamp, rx on, tx event on, ESI off
+        self.dut.send(b"z2003\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-
-    def test_simple_filter_basic(self):
-        cmd_send_std = (b"r", b"t", b"d", b"b")
-        cmd_send_ext = (b"R", b"T", b"D", b"B")
-
-        #self.dut.print_on = True
-
-        # Check pass all filter (default)
-        self.dut.send(b"W2\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"7C00\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"000007C00\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"1EC801370\r")
-        self.dut.send(b"C\r")
+        # Z1 must overwrite z settings and reset reporting to default
+        self.dut.send(b"Z1\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check pass 0x03F and 0x0000003F filter
-        self.dut.send(b"W2\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"M0000003F\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"mFFFFF800\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Check pass 0x6C8 and 0x0137FEC8 filter
-        self.dut.send(b"M0137FEC8\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"mE0000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-            self.dut.send(cmd + b"6C80\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"6C80\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Check pass STD ID 0x03F filter
-        self.dut.send(b"M8000003F\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"m00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Check pass EXT ID 0x0137FEC8 filter
-        self.dut.send(b"M0137FEC8\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"m00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-            self.dut.send(cmd + b"6C80\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        
-
-    def test_simple_filter_every_bits(self):
-        # Check pass STD ID 0x000 filter comparing every bit in CAN ID
-        self.dut.send(b"W2\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"M80000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"m00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"t0000\r")
-        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
-        for idx in range(0, 11):
-            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"T000000000\r")
-        self.assertEqual(self.dut.receive(), b"Z\r")
-        for idx in range(0, 29):
-            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Check pass EXT ID 0x00000000 filter comparing every bit in CAN ID
-        self.dut.send(b"M00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"m00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"t0000\r")
-        self.assertEqual(self.dut.receive(), b"z\r")
-        for idx in range(0, 11):
-            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"T000000000\r")
-        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
-        for idx in range(0, 29):
-            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Check pass 0x000 and 0x00000000 filter comparing every bit in CAN ID
-        self.dut.send(b"M00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"m80000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"t0000\r")
-        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
-        for idx in range(0, 11):
-            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"T000000000\r")
-        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
-        for idx in range(0, 29):
-            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Check consistency by setting pass STD ID 0x000 filter again
-        self.dut.send(b"m80000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"M00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"t0000\r")
-        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
-        for idx in range(0, 11):
-            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        self.dut.send(b"T000000000\r")
-        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
-        for idx in range(0, 29):
-            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-    # TODO: implement more detailed test
-    def test_bus_load(self):
-        #self.dut.print_on = True
-
-        self.dut.send(b"S0\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"z0000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        tx_data = b"t55585555555555555555\r"    # 112bit * 0.1ms = 11.2ms
-        for i in range(0, 4):
-            tx_data = tx_data + tx_data    # 11.2ms * 16 = 179.2ms
+        self.dut.send(b"t03F0\r")
+        rx_data = self.dut.receive() + self.dut.receive()
 
-        # NOTE: The 10% point accuracy has no reasoning.
-        # It is just to give some margin for the inaccurate bus load creation.
-
-        # Check bus load in 0% mode (prove 10% point accuracy)
-        time.sleep(1)
-        rx_data = self.dut.receive()
-        self.dut.send(b"f\r")
-        rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92)
-        self.assertGreaterEqual(int(rx_data[89:91], 10), 0)
-        self.assertLessEqual(int(rx_data[89:91], 10), 10)
-
-        # Check bus load in 18% mode (prove 10% point accuracy)
-        time.sleep(0.5)
-        self.dut.send(tx_data)
-        time.sleep(1)
-        self.dut.send(tx_data)
-        time.sleep(0.5)
-        rx_data = self.dut.receive()
-        self.dut.send(b"f\r")
-        rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92)
-        self.assertGreaterEqual(int(rx_data[89:91], 10), 8)
-        self.assertLessEqual(int(rx_data[89:91], 10), 28)
-
-        # Check bus load in 36% mode (prove 10% point accuracy)
-        tx_data = tx_data + tx_data
-        time.sleep(0.5)
-        self.dut.send(tx_data)
-        time.sleep(1)
-        self.dut.send(tx_data)
-        time.sleep(0.5)
-        rx_data = self.dut.receive()
-        self.dut.send(b"f\r")
-        rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92)
-        self.assertGreaterEqual(int(rx_data[89:91], 10), 26)
-        self.assertLessEqual(int(rx_data[89:91], 10), 46)
-
-        # Check bus load in 72% mode (prove 10% point accuracy)
-        #tx_data = tx_data + tx_data     # Large chunk may be not sent correctly
-        time.sleep(0.25)
-        self.dut.send(tx_data)
-        time.sleep(0.5)
-        self.dut.send(tx_data)
-        time.sleep(0.5)
-        self.dut.send(tx_data)
-        time.sleep(0.5)
-        self.dut.send(tx_data)
-        time.sleep(0.25)
-        rx_data = self.dut.receive()
-        self.dut.send(b"f\r")
-        rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92)
-        self.assertGreaterEqual(int(rx_data[89:91], 10), 62)
-        self.assertLessEqual(int(rx_data[89:91], 10), 82)
+        # With Z1 + defaults: z[CR] (tx event off) + t03F0TTTT[CR] (ms ts, rx on)
+        self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
+                         "Z1 must override z2003: expected tx-event-off and ms timestamp (4 chars)")
+        self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")

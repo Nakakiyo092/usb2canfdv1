@@ -1,6 +1,10 @@
 # WeActStudio.USB2CANFDV1
 
-This repository contains sources for an alternative USB2CANFDV1 firmware. This firmware implements non-standard slcan commands to support CAN FD messaging and other new features, alongside the LAWICEL-style command set.
+This repository contains documentation and an implementation of a protocol that extends the LAWICEL CAN ASCII protocol with additional commands for CAN FD and new features.
+The implementation is for the [USB2CANFDV1](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1) from WeAct Studio.  
+
+URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
+
 
 ## Frequently used commands
 
@@ -23,12 +27,31 @@ This repository contains sources for an alternative USB2CANFDV1 firmware. This f
 
 Please find more information in the `doc` directory or the [wiki](https://github.com/Nakakiyo092/usb2canfdv1/wiki).
 
-## How to compile firmware
-Use STM32CubeIDE 1.19.0 or later.
 
-## How to upgrade firmware
-Use the upgrade tool in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1).
+## Toolchain
+The toolchain in this repository is designed to run on a Windows PC.
 
-Note: After flashing this firmware, there would be an issue upgrading to another firmware.
-You should force upgrade mode by shorting DIO and GND as described in the root repository.
-There would be no command to enter firmware upgrade mode.
+### How to build firmware
+Use STM32CubeIDE 1.19.0 with FW_G0 V1.6.2.
+
+### How to flash firmware
+Use the packager tool and the upgrade tool in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1/tree/master/Tools).
+
+> [!NOTE]
+> After flashing this firmware, there would be an issue upgrading to another firmware.
+> You should force upgrade mode by shorting DIO and GND as described in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1?tab=readme-ov-file#how-to-force-firmware-upgrade-mode).
+> There would be no command to enter firmware upgrade mode.
+
+
+## Credit
+
+### Related work
+
+| Name | Author | License |
+|------|--------|---------|
+| [canable2-fw](https://github.com/normaldotcom/canable2-fw) | Openlight Labs | GPL-3.0 |
+| [WeActStudio.USB2CANFDV1](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1) | WeAct Studio | See repository |
+
+### Bundled third-party components
+
+See LICENSE.md for the full list of bundled components and their licenses.

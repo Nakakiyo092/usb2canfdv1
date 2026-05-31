@@ -31,7 +31,6 @@
 #include "can.h"
 #include "led.h"
 #include "nvm.h"
-#include "slcan.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -103,7 +102,6 @@ int main(void)
   buf_init();
   can_init();
   nvm_init();
-  led_blink_sequence(5);
   nvm_apply_startup_cfg();
   /* USER CODE END 2 */
 
