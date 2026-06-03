@@ -23,10 +23,24 @@
 #include "led.h"
 #include "parser.h"
 
-// Maximum number of frames between tail and send index
-// In one main loop, max. 3 frames can be sent, 1 tx event can be processed.
-// The value below is set considering the case with 3 successful transmissions followed by 9 failed ones.
-#define BUF_MAX_NBR_SENT_FRAMES         (3 * 3 * 2)         // SRAMCAN_TFQ_NBR 3 * SRAMCAN_TEF_NBR 3 * Margin (must be < BUF_CAN_TXQUEUE_LEN)
+// APP FIFO release pacing — bound on (send − tail) before forced release.
+//
+// Worst case: a burst of successes followed by all-failure pushes while
+// the HAL TEF drains.
+//   loop 1: push 3 frames, all succeed → 3 events fill HAL TEF
+//   loops 2-4: push 3 frames each, all fail; process 1 event per loop
+//   After loop 4: send=12, tail=3, nbr_sent_frames = TFQ * TEF = 9
+//
+// Other shapes stay below this peak:
+//   - All-failure runs: TEF stays empty, growth is capped by buf_release_can_tail().
+//   - Mixed runs: each released success drags older failed entries along, so
+//     (send − tail) shrinks instead of drifting up.
+//
+// (3 * 3 * 2) = TFQ * TEF * Margin = 18 — 2× the worst case in case the
+// pattern repeats, and well below BUF_CAN_TXQUEUE_LEN (64) so genuine
+// overflow remains observable.
+// See also: https://github.com/Nakakiyo092/usb2canfdv1/issues/49
+#define BUF_MAX_NBR_SENT_FRAMES         (3 * 3 * 2)
 
 // Cirbuf structure for CAN TX frames
 struct BufCanTx
