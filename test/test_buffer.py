@@ -373,7 +373,14 @@ class BufferTestCase(unittest.TestCase):
                 rx_msgs.remove(rx_msgs[0])
         self.assertEqual(rx_msgs, [])
 
-        # Check message loss in the HAL buffer to confrim a frame stack
+        # Check F bit 3 (DATA_OVERRUN) is raised.
+        # F bit 3 has three possible sources (HAL Rx FIFO lost, HAL Tx Frame FIFO write fail,
+        # HAL Tx Event FIFO element lost), but only the last applies here:
+        #   - Rx is disabled by z0002, so no Rx FIFO loss can occur.
+        #   - Tx Frame FIFO writes are guarded by HAL_FDCAN_GetTxFifoFreeLevel() > 0,
+        #     so write failures do not occur under normal test conditions.
+        # Therefore F bit 3 here specifically proves HAL Tx Event FIFO element loss (frame stack).
+        # See also: https://github.com/Nakakiyo092/usb2canfdv1/issues/49
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F08\r")
         self.dut.send(b"C\r")
