@@ -32,7 +32,7 @@ Please find more information in the `doc` directory or the [wiki](https://github
 The toolchain in this repository is designed to run on a Windows PC.
 
 ### How to build firmware
-Use STM32CubeIDE 1.19.0 with FW_G0 V1.6.2.
+Use STM32CubeIDE 2.1.1 with FW_G0 V1.6.3.
 
 ### How to flash firmware
 Use the packager tool and the upgrade tool in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1/tree/master/Tools).
