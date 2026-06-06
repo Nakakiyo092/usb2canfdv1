@@ -67,6 +67,153 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_tx_off_rx_on(self):
+        #self.dut.print_on = True
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
+        # Check tx event is disabled and rx frame is enabled
+        self.dut.send(b"z0001\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_tx_on_rx_off(self):
+        #self.dut.print_on = True
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
+        # Check tx event is enabled and rx frame is disabled
+        self.dut.send(b"z0002\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"\r" + b"z" + cmd + b"03F0\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"\r" + b"Z" + cmd + b"0137FEC80\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_esi_on(self):
+        #self.dut.print_on = True
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
+        # Check CC frames are reported without ESI and FD frames with ESI (Rx frame and Tx event)
+        # TODO: check ESI bit 0 for error active and 1 for error passive
+        self.dut.send(b"z0013\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for cmd in cmd_send_std:
+            self.dut.send(cmd + b"03F0\r")
+            if cmd in (b"r", b"t"):
+                rx_data = self.dut.receive()
+                self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r"))
+                if rx_data[1] == b"z"[0]:
+                    self.assertEqual(rx_data, b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r")
+                else:
+                    self.assertEqual(rx_data, b"\r" + cmd + b"03F0\r" + b"z" + cmd + b"03F0\r")
+            else:
+                rx_data = self.dut.receive()
+                self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F00\r" + cmd + b"03F00\r"))
+                if rx_data[1] == b"z"[0]:
+                    self.assertEqual(rx_data, b"\r" + b"z" + cmd + b"03F00\r" + cmd + b"03F00\r")
+                else:
+                    self.assertEqual(rx_data, b"\r" + cmd + b"03F00\r" + b"z" + cmd + b"03F00\r")
+        for cmd in cmd_send_ext:
+            self.dut.send(cmd + b"0137FEC80\r")
+            if cmd in (b"R", b"T"):
+                rx_data = self.dut.receive()
+                self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r"))
+                if rx_data[1] == b"Z"[0]:
+                    self.assertEqual(rx_data, b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r")
+                else:
+                    self.assertEqual(rx_data, b"\r" + cmd + b"0137FEC80\r" + b"Z" + cmd + b"0137FEC80\r")
+            else:
+                rx_data = self.dut.receive()
+                self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC800\r" + cmd + b"0137FEC800\r"))
+                if rx_data[1] == b"Z"[0]:
+                    self.assertEqual(rx_data, b"\r" + b"Z" + cmd + b"0137FEC800\r" + cmd + b"0137FEC800\r")
+                else:
+                    self.assertEqual(rx_data, b"\r" + cmd + b"0137FEC800\r" + b"Z" + cmd + b"0137FEC800\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_z_Z_mutual_exclusivity(self):
+        """Issuing Z resets all z-command settings to their defaults.
+
+        The z command note states: "settings made by z will be overwritten by
+        the Z command or reset to default."
+
+        Procedure:
+        1. Configure with z2003 (microsecond timestamp, tx event on, rx on).
+        2. Issue Z1 (millisecond timestamp).
+        3. Open internal loopback and send a frame.
+
+        Expected after Z1 (default reporting + ms timestamp):
+        - Tx event disabled  -> buffer save response is z[CR]
+        - Rx frame enabled   -> loopback frame is reported
+        - Millisecond timestamp (4 hex chars), no microsecond (8 chars)
+
+        Wrong if z2003 persisted:
+        - Tx event on -> buffer save response is [CR]
+        - Response would include separate tx event and rx frame reports
+        - 8-char microsecond timestamps
+        """
+        #self.dut.print_on = True
+        # Configure z2003: us timestamp, rx on, tx event on, ESI off
+        self.dut.send(b"z2003\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Z1 must overwrite z settings and reset reporting to default
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        self.dut.send(b"t03F0\r")
+        rx_data = self.dut.receive() + self.dut.receive()
+
+        # With Z1 + defaults: z[CR] (tx event off) + t03F0TTTT[CR] (ms ts, rx on)
+        self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
+                         "Z1 must override z2003: expected tx-event-off and ms timestamp (4 chars)")
+        self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+
+class InLoopbackTimestampMsTestCase(unittest.TestCase):
+
+    dut: DeviceUnderTest
+
+    def setUp(self):
+        self.dut = DeviceUnderTest()
+        self.dut.open()
+        self.dut.setup()
+
+
+    def tearDown(self):
+        self.dut.close()
+
+
     def test_timestamp_milli(self):
         #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
@@ -206,6 +353,71 @@ class InLoopbackTestCase(unittest.TestCase):
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_timestamp_accuracy_milli(self):
+        #self.dut.print_on = True
+
+        # Configure a CAN bus with the slowest bitrates
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"S0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Y1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Check timestamp difference for two frames sent consecutively
+        tx_frame = b"t55585555555555555555" # Minimize stuffing bits
+        self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
+        time.sleep(0.1)
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 2 * (len(b"z\r") + len(tx_frame) + len(b"TTTT\r")))
+
+        pos = 2 * len(b"z\r") + len(tx_frame)
+        timestamp_1st = rx_data[pos : pos + 4]
+
+        pos = 2 * len(b"z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
+        timestamp_2nd = rx_data[pos : pos + 4]
+
+        time_exp_us = (int(timestamp_1st, 16) * 1000 + (47 + 8 * 8 + 1) * 100) % 60000000   # 1 stuff bit?
+        self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
+
+        # Check timestamp difference for two frames with BRS sent consecutively
+        tx_frame = b"B1555555585555555555555555" # Minimize stuffing bits
+        self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
+        time.sleep(0.1)
+        rx_data = self.dut.receive()
+        self.assertEqual(len(rx_data), 2 * (len(b"Z\r") + len(tx_frame) + len(b"TTTT\r")))
+
+        pos = 2 * len(b"Z\r") + len(tx_frame)
+        timestamp_1st = rx_data[pos : pos + 4]
+
+        pos = 2 * len(b"Z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
+        timestamp_2nd = rx_data[pos : pos + 4]
+
+        time_exp_us = (int(timestamp_1st, 16) * 1000 + 49 * 100 + 8 * 8 + 26 + 7) % 60000000   # 7 stuff bits?
+        self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
+
+        # Close port
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+
+class InLoopbackTimestampUsTestCase(unittest.TestCase):
+
+    dut: DeviceUnderTest
+
+    def setUp(self):
+        self.dut = DeviceUnderTest()
+        self.dut.open()
+        self.dut.setup()
+
+
+    def tearDown(self):
+        self.dut.close()
 
 
     def test_timestamp_micro(self):
@@ -353,56 +565,6 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_timestamp_accuracy_milli(self):
-        #self.dut.print_on = True
-
-        # Configure a CAN bus with the slowest bitrates
-        self.dut.send(b"Z1\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"S0\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"Y1\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Check timestamp difference for two frames sent consecutively
-        tx_frame = b"t55585555555555555555" # Minimize stuffing bits
-        self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
-        time.sleep(0.1)
-        rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 2 * (len(b"z\r") + len(tx_frame) + len(b"TTTT\r")))
-
-        pos = 2 * len(b"z\r") + len(tx_frame)
-        timestamp_1st = rx_data[pos : pos + 4]
-
-        pos = 2 * len(b"z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
-        timestamp_2nd = rx_data[pos : pos + 4]
-
-        time_exp_us = (int(timestamp_1st, 16) * 1000 + (47 + 8 * 8 + 1) * 100) % 60000000   # 1 stuff bit?
-        self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
-
-        # Check timestamp difference for two frames with BRS sent consecutively
-        tx_frame = b"B1555555585555555555555555" # Minimize stuffing bits
-        self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
-        time.sleep(0.1)
-        rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 2 * (len(b"Z\r") + len(tx_frame) + len(b"TTTT\r")))
-
-        pos = 2 * len(b"Z\r") + len(tx_frame)
-        timestamp_1st = rx_data[pos : pos + 4]
-
-        pos = 2 * len(b"Z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
-        timestamp_2nd = rx_data[pos : pos + 4]
-
-        time_exp_us = (int(timestamp_1st, 16) * 1000 + 49 * 100 + 8 * 8 + 26 + 7) % 60000000   # 7 stuff bits?
-        self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
-
-        # Close port
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
     def test_timestamp_accuracy_micro(self):
         #self.dut.print_on = True
 
@@ -487,138 +649,6 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
         # Close port
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-    def test_tx_off_rx_on(self):
-        #self.dut.print_on = True
-        cmd_send_std = (b"r", b"t", b"d", b"b")
-        cmd_send_ext = (b"R", b"T", b"D", b"B")
-
-        # Check tx event is disabled and rx frame is enabled
-        self.dut.send(b"z0001\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-    def test_tx_on_rx_off(self):
-        #self.dut.print_on = True
-        cmd_send_std = (b"r", b"t", b"d", b"b")
-        cmd_send_ext = (b"R", b"T", b"D", b"B")
-
-        # Check tx event is enabled and rx frame is disabled
-        self.dut.send(b"z0002\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"\r" + b"z" + cmd + b"03F0\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"\r" + b"Z" + cmd + b"0137FEC80\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-    def test_esi_on(self):
-        #self.dut.print_on = True
-        cmd_send_std = (b"r", b"t", b"d", b"b")
-        cmd_send_ext = (b"R", b"T", b"D", b"B")
-
-        # Check CC frames are reported without ESI and FD frames with ESI (Rx frame and Tx event)
-        # TODO: check ESI bit 0 for error active and 1 for error passive
-        self.dut.send(b"z0013\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            if cmd in (b"r", b"t"):
-                rx_data = self.dut.receive()
-                self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r"))
-                if rx_data[1] == b"z"[0]:
-                    self.assertEqual(rx_data, b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r")
-                else:
-                    self.assertEqual(rx_data, b"\r" + cmd + b"03F0\r" + b"z" + cmd + b"03F0\r")
-            else:
-                rx_data = self.dut.receive()
-                self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F00\r" + cmd + b"03F00\r"))
-                if rx_data[1] == b"z"[0]:
-                    self.assertEqual(rx_data, b"\r" + b"z" + cmd + b"03F00\r" + cmd + b"03F00\r")
-                else:
-                    self.assertEqual(rx_data, b"\r" + cmd + b"03F00\r" + b"z" + cmd + b"03F00\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0137FEC80\r")
-            if cmd in (b"R", b"T"):
-                rx_data = self.dut.receive()
-                self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r"))
-                if rx_data[1] == b"Z"[0]:
-                    self.assertEqual(rx_data, b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r")
-                else:
-                    self.assertEqual(rx_data, b"\r" + cmd + b"0137FEC80\r" + b"Z" + cmd + b"0137FEC80\r")
-            else:
-                rx_data = self.dut.receive()
-                self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC800\r" + cmd + b"0137FEC800\r"))
-                if rx_data[1] == b"Z"[0]:
-                    self.assertEqual(rx_data, b"\r" + b"Z" + cmd + b"0137FEC800\r" + cmd + b"0137FEC800\r")
-                else:
-                    self.assertEqual(rx_data, b"\r" + cmd + b"0137FEC800\r" + b"Z" + cmd + b"0137FEC800\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-    def test_z_Z_mutual_exclusivity(self):
-        """Issuing Z resets all z-command settings to their defaults.
-
-        The z command note states: "settings made by z will be overwritten by
-        the Z command or reset to default."
-
-        Procedure:
-        1. Configure with z2003 (microsecond timestamp, tx event on, rx on).
-        2. Issue Z1 (millisecond timestamp).
-        3. Open internal loopback and send a frame.
-
-        Expected after Z1 (default reporting + ms timestamp):
-        - Tx event disabled  -> buffer save response is z[CR]
-        - Rx frame enabled   -> loopback frame is reported
-        - Millisecond timestamp (4 hex chars), no microsecond (8 chars)
-
-        Wrong if z2003 persisted:
-        - Tx event on -> buffer save response is [CR]
-        - Response would include separate tx event and rx frame reports
-        - 8-char microsecond timestamps
-        """
-        #self.dut.print_on = True
-        # Configure z2003: us timestamp, rx on, tx event on, ESI off
-        self.dut.send(b"z2003\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Z1 must overwrite z settings and reset reporting to default
-        self.dut.send(b"Z1\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        self.dut.send(b"t03F0\r")
-        rx_data = self.dut.receive() + self.dut.receive()
-
-        # With Z1 + defaults: z[CR] (tx event off) + t03F0TTTT[CR] (ms ts, rx on)
-        self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
-                         "Z1 must override z2003: expected tx-event-off and ms timestamp (4 chars)")
-        self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
-
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
