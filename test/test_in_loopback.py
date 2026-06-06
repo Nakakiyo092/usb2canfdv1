@@ -656,7 +656,8 @@ class TimestampUsTestCase(unittest.TestCase):
         timestamp_2nd = rx_data[pos : pos + 8]
 
         time_exp_us = (int(timestamp_1st, 16) + (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bit?
-        self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
+        # Allow +/-1 us jitter from TIM2/TIM3 independent-clock phase quantisation.
+        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1)
 
         # Check timestamp difference for two frames with BRS sent consecutively
         tx_frame = b"B1555555585555555555555555" # Minimize stuffing bits
@@ -672,7 +673,8 @@ class TimestampUsTestCase(unittest.TestCase):
         timestamp_2nd = rx_data[pos : pos + 8]
 
         time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + 8 * 8 + 26 + 5 + 2) % 3600000000   # 2 stuff bits?
-        self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
+        # Allow +/-1 us jitter from TIM2/TIM3 independent-clock phase quantisation.
+        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1)
 
         # Check timestamp difference for 20 frames sent consecutively
         tx_frame = b"t55585555555555555555"
@@ -691,7 +693,8 @@ class TimestampUsTestCase(unittest.TestCase):
         timestamp_2nd = rx_data[pos : pos + 8]
 
         time_exp_us = (int(timestamp_1st, 16) + 19 * (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bit?
-        self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
+        # Allow +/-1 us jitter from TIM2/TIM3 independent-clock phase quantisation.
+        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1)
 
         # Check timestamp difference for 20 frames with BRS sent consecutively
         tx_frame = b"B1555555585555555555555555"
@@ -710,7 +713,8 @@ class TimestampUsTestCase(unittest.TestCase):
         timestamp_2nd = rx_data[pos : pos + 8]
 
         time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + 8 * 8 + 26 + 5 + 2)) % 3600000000   # 2 stuff bits?
-        self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
+        # Allow +/-1 us jitter from TIM2/TIM3 independent-clock phase quantisation.
+        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1)
 
         # Close port
         self.dut.send(b"C\r")
