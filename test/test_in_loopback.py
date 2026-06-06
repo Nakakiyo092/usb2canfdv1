@@ -357,7 +357,7 @@ class TimestampMsTestCase(unittest.TestCase):
     def test_timestamp_invalid_when_stalled(self):
         """Verify the ms timestamp returns the 0xFFFF sentinel when the
         firmware's main loop is stalled beyond the Note 3 design window
-        (~10 ms).
+        (~20 ms).
 
         Uses the debug-only stall command ~<HHHH>[CR] to block the main
         loop while a CAN frame arrives via internal loopback. The frame
@@ -365,25 +365,22 @@ class TimestampMsTestCase(unittest.TestCase):
         expected to be the sentinel.
         """
         #self.dut.print_on = True
-        self.dut.send(b"S3\r")          # 100 kbps (slow enough that frame arrives during the stall)
+        self.dut.send(b"S0\r")          # 10 kbps (slow enough that frame arrives during the stall)
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z1\r")          # ms timestamp on
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")           # internal loopback open
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Atomic packet: enqueue Tx frame, then immediately stall for 20 ms
-        # (above the ~10 ms detection window). The frame loops back during
-        # the stall; the main loop only picks it up after HAL_Delay returns.
-        self.dut.send(b"t12340000\r~0014\r")
+        # Enqueue Tx frame, sleep for 2 ms, then stall for 40 ms
+        self.dut.send(b"T0137FEC880011223344556677\r")
+        time.sleep(0.002)
+        self.dut.send(b"~0028\r")
 
-        rx_data = b""
-        for _ in range(3):
-            rx_data += self.dut.receive()
-            if b"t12340000FFFF\r" in rx_data:
-                break
+        # Keep receiving for more than 40ms
+        rx_data = self.dut.receive() + self.dut.receive() + self.dut.receive()
 
-        self.assertIn(b"t12340000FFFF\r", rx_data,
+        self.assertIn(b"T0137FEC880011223344556677FFFF\r", rx_data,
                       f"Expected ms sentinel FFFF in timestamp position, got: {rx_data!r}")
 
         self.dut.send(b"C\r")
@@ -602,7 +599,7 @@ class TimestampUsTestCase(unittest.TestCase):
     def test_timestamp_invalid_when_stalled(self):
         """Verify the us timestamp returns the 0xFFFFFFFF sentinel when the
         firmware's main loop is stalled beyond the Note 3 design window
-        (~10 ms).
+        (~20 ms).
 
         Uses the debug-only stall command ~<HHHH>[CR] to block the main
         loop while a CAN frame arrives via internal loopback. The frame
@@ -610,23 +607,22 @@ class TimestampUsTestCase(unittest.TestCase):
         expected to be the sentinel.
         """
         #self.dut.print_on = True
-        self.dut.send(b"S3\r")          # 100 kbps
+        self.dut.send(b"S0\r")          # 10 kbps (slow enough that frame arrives during the stall)
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z2\r")          # us timestamp on
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")           # internal loopback open
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Atomic packet: enqueue Tx frame, then immediately stall for 20 ms.
-        self.dut.send(b"t12340000\r~0014\r")
+        # Enqueue Tx frame, sleep for 2 ms, then stall for 40 ms
+        self.dut.send(b"T0137FEC880011223344556677\r")
+        time.sleep(0.002)
+        self.dut.send(b"~0028\r")
 
-        rx_data = b""
-        for _ in range(3):
-            rx_data += self.dut.receive()
-            if b"t12340000FFFFFFFF\r" in rx_data:
-                break
+        # Keep receiving for more than 40ms
+        rx_data = self.dut.receive() + self.dut.receive() + self.dut.receive()
 
-        self.assertIn(b"t12340000FFFFFFFF\r", rx_data,
+        self.assertIn(b"T0137FEC880011223344556677FFFFFFFF\r", rx_data,
                       f"Expected us sentinel FFFFFFFF in timestamp position, got: {rx_data!r}")
 
         self.dut.send(b"C\r")
@@ -675,7 +671,7 @@ class TimestampUsTestCase(unittest.TestCase):
         pos = 2 * len(b"Z\r") + len(tx_frame) + len(b"TTTTTTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + 8 * 8 + 26 + 7) % 3600000000   # 7 stuff bits?
+        time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + 8 * 8 + 26 + 5 + 2) % 3600000000   # 2 stuff bits?
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
         # Check timestamp difference for 20 frames sent consecutively
@@ -713,7 +709,7 @@ class TimestampUsTestCase(unittest.TestCase):
         pos = 19 * (len(tx_frame) + len(b"TTTTTTTT\r")) + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + 8 * 8 + 26 + 7)) % 3600000000   # 7 stuff bits?
+        time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + 8 * 8 + 26 + 5 + 2)) % 3600000000   # 2 stuff bits?
         self.assertEqual(time_exp_us, int(timestamp_2nd, 16))
 
         # Close port
