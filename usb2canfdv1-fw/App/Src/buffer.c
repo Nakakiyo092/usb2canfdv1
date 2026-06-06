@@ -59,8 +59,8 @@ volatile struct BufCdcRx buf_cdc_rx = {0};
 
 // Private variables
 static struct BufCanTx buf_can_tx = {0};
-static uint8_t cmd_str[SLCAN_MTU];
-static uint8_t cmd_str_idx = 0;
+static uint8_t cmd_line_buf[SLCAN_MTU];          // Command line buffer
+static uint8_t cmd_line_buf_idx = 0;
 
 // Private prototypes
 static HAL_StatusTypeDef buf_release_can_tail(void);
@@ -83,7 +83,7 @@ void buf_init(void)
     buf_can_tx.tail = 0;
     buf_can_tx.full = 0;
 
-    cmd_str_idx = 0;
+    cmd_line_buf_idx = 0;
 }
 
 // Process
@@ -113,7 +113,7 @@ void buf_process(void)
         if (is_dropped)
         {
             gen_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
-            cmd_str_idx = 0;
+            cmd_line_buf_idx = 0;
             for (idx_start = 0; idx_start < buf_cdc_rx.msglen[buf_cdc_rx.tail]; idx_start++)
             {
                 if (buf_cdc_rx.data[buf_cdc_rx.tail][idx_start] == '\r')    // \r = [CR] = delimiter
@@ -129,23 +129,24 @@ void buf_process(void)
 	    {
             if (buf_cdc_rx.data[buf_cdc_rx.tail][i] == '\r')    // \r = [CR] = delimiter
             {
-                psr_parse_str(cmd_str, cmd_str_idx);
-                cmd_str_idx = 0;
+                psr_parse_str(cmd_line_buf, cmd_line_buf_idx);
+                cmd_line_buf_idx = 0;
 
                 // Blink RX LED as slcan rx if bus closed
                 if (can_get_bus_state() == BUS_CLOSED) led_blink_rxd();
             }
             else
             {
-                cmd_str[cmd_str_idx++] = buf_cdc_rx.data[buf_cdc_rx.tail][i];
+                // Accumulate chars to reassemble them into a line of command (terminated by a [CR])
+                cmd_line_buf[cmd_line_buf_idx++] = buf_cdc_rx.data[buf_cdc_rx.tail][i];
 
                 // Check for command length
-                if (cmd_str_idx == SLCAN_MTU)
+                if (cmd_line_buf_idx == SLCAN_MTU)
                 {
                     // Any incoming command longer than MTU (including a [CR]) is invalid.
                     // Ensure a [BELL] will be returned when receiving a [CR].
-                    cmd_str_idx = 0;                    // Clear the command and
-                    cmd_str[cmd_str_idx++] = '\a';    // ... mark as invalid (\a = [BELL])
+                    cmd_line_buf_idx = 0;                    // Clear the command and
+                    cmd_line_buf[cmd_line_buf_idx++] = '\a';    // ... mark as invalid (\a = [BELL])
                 }
             }
         }
