@@ -26,7 +26,8 @@
 #define GEN_TS_SAFE_WINDOW_US      ((uint32_t)UINT16_MAX / 2U) // ~32,768
 #define GEN_TS_MARGIN_US           22768U                      // +/- safety (~10 ms detection window)
 #define GEN_TS_RING_US             3600000000U                 // spec wrap
-#define GEN_TS_INVALID_US          0xFFFFFFFFU                 // Out-of-spec sentinel: timestamp is unreliable
+#define GEN_TS_INVALID_US          0xFFFFFFFFU                 // Out-of-spec sentinel: us timestamp is unreliable
+#define GEN_TS_INVALID_MS          0xFFFFU                     // Out-of-spec sentinel: ms timestamp is unreliable
 
 // Public variables
 const uint8_t gen_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -41,6 +42,7 @@ static uint8_t gen_status_flags = 0x00;     // Owned by main loop only; MUST NOT
 
 // Private methods
 static uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
+static uint16_t gen_get_timestamp_ms_legacy(void);
 static uint32_t gen_get_timestamp_us_from_tim3_legacy(uint16_t tim3_us);
 static HAL_StatusTypeDef gen_configure_filter(void);
 
@@ -118,10 +120,7 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
     // Add time stamp
     if (gen_timestamp_mode == SLCAN_TIMESTAMP_MILLI)
     {
-        // Use current time instead of frame timestamp
-        // By this way the complex compensation for TIM3 overflow is not needed
-        // and the main loop delay at most ~300us will not greatly affect the timestamp correctness.
-        uint16_t timestamp_ms = gen_get_timestamp_ms();
+        uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(frame_header->RxTimestamp);
 
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
@@ -223,22 +222,21 @@ uint16_t gen_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event,
 }
 
 
-// Gets milli second timestamp for the current time (2bytes, Resets at 60,000ms)
-// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49.7 days).
-uint16_t gen_get_timestamp_ms(void)
+// Gets milli second timestamp for the time `latched_tim3` was sampled
+// (2 bytes, resets at 60,000 ms per spec).
+//
+// Derives the value from gen_get_timestamp_us_from_tim3 by scaling to
+// 1 ms resolution and folding into the 0..59,999 ms spec range. The us
+// and ms timestamps therefore share the same time origin and sample
+// moment.
+//
+// Returns GEN_TS_INVALID_MS if the underlying us value is unreliable
+// (see gen_get_timestamp_us_from_tim3 for the call frequency constraint).
+uint16_t gen_get_timestamp_ms_from_tim3(uint16_t latched_tim3)
 {
-    static uint16_t gen_last_timestamp_ms = 0;
-    static uint32_t gen_last_time_ms = 0;
-
-    uint32_t current_time_ms = HAL_GetTick();
-    uint32_t time_diff_ms;
-
-    time_diff_ms = (uint32_t)(current_time_ms - gen_last_time_ms);
-
-    gen_last_timestamp_ms = (uint16_t)(((uint32_t)gen_last_timestamp_ms + time_diff_ms % 60000) % 60000);
-    gen_last_time_ms = current_time_ms;
-
-    return gen_last_timestamp_ms;
+    uint32_t us = gen_get_timestamp_us_from_tim3(latched_tim3);
+    if (us == GEN_TS_INVALID_US) return GEN_TS_INVALID_MS;
+    return (uint16_t)((us / 1000U) % 60000U);
 }
 
 // Gets micro second timestamp for the time `latched_tim3` was sampled
@@ -400,6 +398,35 @@ uint32_t gen_get_timestamp_us_from_tim3_legacy(uint16_t tim3_us)
     gen_last_time_us = current_time_us;
 
     return gen_last_timestamp_us;
+}
+
+// Legacy ms-timestamp implementation, kept as a reference path.
+// The active implementation is gen_get_timestamp_ms_from_tim3.
+//
+// Implementation:
+//   Returns a free-running millisecond counter derived from HAL_GetTick,
+//   folded into the 0..59,999 ms spec range. Represents the time at the
+//   call site rather than a specific frame's sample moment.
+//
+// Limitations:
+//   - The reported time corresponds to the moment the function is called,
+//     not the moment of frame arrival; main-loop delay between the two
+//     appears as a positive offset on the timestamp.
+//   - Breaks after HAL_GetTick wraps (~49.7 days of uptime).
+uint16_t gen_get_timestamp_ms_legacy(void)
+{
+    static uint16_t gen_last_timestamp_ms = 0;
+    static uint32_t gen_last_time_ms = 0;
+
+    uint32_t current_time_ms = HAL_GetTick();
+    uint32_t time_diff_ms;
+
+    time_diff_ms = (uint32_t)(current_time_ms - gen_last_time_ms);
+
+    gen_last_timestamp_ms = (uint16_t)(((uint32_t)gen_last_timestamp_ms + time_diff_ms % 60000) % 60000);
+    gen_last_time_ms = current_time_ms;
+
+    return gen_last_timestamp_ms;
 }
 
 // Setter and getter for the filter settings
