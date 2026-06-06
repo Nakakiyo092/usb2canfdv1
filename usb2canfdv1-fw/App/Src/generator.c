@@ -42,8 +42,6 @@ static uint8_t gen_status_flags = 0x00;     // Owned by main loop only; MUST NOT
 
 // Private methods
 static uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
-static uint16_t gen_get_timestamp_ms_legacy(void);
-static uint32_t gen_get_timestamp_us_from_tim3_legacy(uint16_t tim3_us);
 static HAL_StatusTypeDef gen_configure_filter(void);
 
 // Generate a slcan message from a CAN frame
@@ -332,6 +330,38 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
     return accum_us;
 }
 
+#if 0  /* legacy: kept for reference */
+// Legacy ms-timestamp implementation, kept as a reference path.
+// The active implementation is gen_get_timestamp_ms_from_tim3.
+//
+// Implementation:
+//   Returns a free-running millisecond counter derived from HAL_GetTick,
+//   folded into the 0..59,999 ms spec range. Represents the time at the
+//   call site rather than a specific frame's sample moment.
+//
+// Limitations:
+//   - The reported time corresponds to the moment the function is called,
+//     not the moment of frame arrival; main-loop delay between the two
+//     appears as a positive offset on the timestamp.
+//   - Breaks after HAL_GetTick wraps (~49.7 days of uptime).
+uint16_t gen_get_timestamp_ms(void)
+{
+    static uint16_t gen_last_timestamp_ms = 0;
+    static uint32_t gen_last_time_ms = 0;
+
+    uint32_t current_time_ms = HAL_GetTick();
+    uint32_t time_diff_ms;
+
+    time_diff_ms = (uint32_t)(current_time_ms - gen_last_time_ms);
+
+    gen_last_timestamp_ms = (uint16_t)(((uint32_t)gen_last_timestamp_ms + time_diff_ms % 60000) % 60000);
+    gen_last_time_ms = current_time_ms;
+
+    return gen_last_timestamp_ms;
+}
+#endif
+
+#if 0  /* legacy: kept for reference */
 // Legacy us-timestamp implementation, kept as a reference path.
 // The active implementation is gen_get_timestamp_us_from_tim3.
 //
@@ -351,7 +381,7 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
 //   - Breaks after HAL_GetTick wraps (~49.7 days of uptime).
 //   - 64bit arithmetic is significantly more expensive than the active
 //     implementation, which uses the 32bit TIM2 directly.
-uint32_t gen_get_timestamp_us_from_tim3_legacy(uint16_t tim3_us)
+uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us)
 {
     static uint32_t gen_last_timestamp_us = 0;
     static uint32_t gen_last_time_ms = 0;
@@ -399,35 +429,7 @@ uint32_t gen_get_timestamp_us_from_tim3_legacy(uint16_t tim3_us)
 
     return gen_last_timestamp_us;
 }
-
-// Legacy ms-timestamp implementation, kept as a reference path.
-// The active implementation is gen_get_timestamp_ms_from_tim3.
-//
-// Implementation:
-//   Returns a free-running millisecond counter derived from HAL_GetTick,
-//   folded into the 0..59,999 ms spec range. Represents the time at the
-//   call site rather than a specific frame's sample moment.
-//
-// Limitations:
-//   - The reported time corresponds to the moment the function is called,
-//     not the moment of frame arrival; main-loop delay between the two
-//     appears as a positive offset on the timestamp.
-//   - Breaks after HAL_GetTick wraps (~49.7 days of uptime).
-uint16_t gen_get_timestamp_ms_legacy(void)
-{
-    static uint16_t gen_last_timestamp_ms = 0;
-    static uint32_t gen_last_time_ms = 0;
-
-    uint32_t current_time_ms = HAL_GetTick();
-    uint32_t time_diff_ms;
-
-    time_diff_ms = (uint32_t)(current_time_ms - gen_last_time_ms);
-
-    gen_last_timestamp_ms = (uint16_t)(((uint32_t)gen_last_timestamp_ms + time_diff_ms % 60000) % 60000);
-    gen_last_time_ms = current_time_ms;
-
-    return gen_last_timestamp_ms;
-}
+#endif
 
 // Setter and getter for the filter settings
 HAL_StatusTypeDef gen_set_filter_mode(enum SlcanFilterMode mode)
