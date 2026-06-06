@@ -386,7 +386,7 @@ def main():
         ms = int(round(time.time() * 1000))
         if ms >= tick_tx:
             rnd = random.randint(1, 1000)
-            if rnd <= 20:
+            if rnd <= 500:
                 # Short delay (0-150 ms) covers idle that crosses up to 2 TIM3
                 # 16-bit wraps (~65.5 ms each); verifies the sentinel does not
                 # fire across wrap boundaries.
