@@ -21,6 +21,7 @@
 #include "can.h"
 #include "generator.h"
 
+// Constants used in gen_get_timestamp_us_from_tim3
 #define GEN_TS_SKEW_TOLERANCE_US   2u                          // Note 2
 #define GEN_TS_SAFE_WINDOW_US      ((uint32_t)UINT16_MAX / 2u) // ~32,768
 #define GEN_TS_MARGIN_US           2768u                       // +/- safety
@@ -39,7 +40,7 @@ static uint8_t gen_status_flags = 0;  // Owned by main loop only; MUST NOT be mo
 
 // Private methods
 static uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
-static uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us);
+static uint32_t gen_get_timestamp_us_from_tim3_old(uint16_t tim3_us);
 static HAL_StatusTypeDef gen_configure_filter(void);
 
 // Generate a slcan message from a CAN frame
@@ -276,7 +277,7 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
         tim2_before = TIM2->CNT;
         now_tim3    = (uint16_t)TIM3->CNT;
         tim2_after  = TIM2->CNT;
-    } while ((uint32_t)(tim2_after - tim2_before) > SLCAN_TS_SKEW_TOLERANCE_US);
+    } while ((uint32_t)(tim2_after - tim2_before) > GEN_TS_SKEW_TOLERANCE_US);
 
     // Reconstruct the latched moment in 32bit TIM2 space.
     // `back` is the distance from `latched_tim3` to `now_tim3`, modulo 2^16.
@@ -288,13 +289,13 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
     // Unsigned subtraction handles TIM2 wrap and short backward jumps.
     uint32_t elapsed = tim2_at_latch - last_tim2;
 
-    if (elapsed <= SLCAN_TS_SAFE_WINDOW_US - SLCAN_TS_MARGIN_US)
+    if (elapsed <= GEN_TS_SAFE_WINDOW_US - GEN_TS_MARGIN_US)
     {
         // --- Normal forward path ---
         accum_us += elapsed;
-        if (accum_us >= SLCAN_TS_RING_US) accum_us -= SLCAN_TS_RING_US;
+        if (accum_us >= GEN_TS_RING_US) accum_us -= GEN_TS_RING_US;
     }
-    else if (elapsed >= 0xFFFFFFFFu - SLCAN_TS_SAFE_WINDOW_US)
+    else if (elapsed >= 0xFFFFFFFFu - GEN_TS_SAFE_WINDOW_US)
     {
         // --- Short backward path ---
         // `latched_tim3` was sampled just before the previous call
@@ -303,7 +304,7 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
         uint32_t back_us = 0u - elapsed;   // small positive
         accum_us = (back_us <= accum_us)
                        ? (accum_us - back_us)
-                       : (accum_us + SLCAN_TS_RING_US - back_us);
+                       : (accum_us + GEN_TS_RING_US - back_us);
     }
     else
     {
@@ -311,9 +312,9 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
         // We cannot tell whether `back` represents a small forward distance
         // or a wrapped one. Trust `elapsed` (TIM2 is 32bit and unambiguous)
         // but flag the upstream loop-time violation for the host.
-        slcan_raise_error(SLCAN_STS_DATA_OVERRUN);
+        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
         accum_us += elapsed;
-        while (accum_us >= SLCAN_TS_RING_US) accum_us -= SLCAN_TS_RING_US;
+        while (accum_us >= GEN_TS_RING_US) accum_us -= GEN_TS_RING_US;
     }
 
     last_tim2 = tim2_at_latch;
