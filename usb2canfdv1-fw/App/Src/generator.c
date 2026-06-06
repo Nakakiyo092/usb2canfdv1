@@ -22,12 +22,19 @@
 #include "generator.h"
 
 // Constants used in gen_get_timestamp_us_from_tim3
-#define GEN_TS_SKEW_TOLERANCE_US   1U                          // Target: 1 us accuracy (see Note 2)
-#define GEN_TS_SAFE_WINDOW_US      ((uint32_t)UINT16_MAX / 2U) // ~32,768
-#define GEN_TS_MARGIN_US           22768U                      // +/- safety (~10 ms detection window)
-#define GEN_TS_RING_US             3600000000U                 // spec wrap
-#define GEN_TS_INVALID_US          0xFFFFFFFFU                 // Out-of-spec sentinel: us timestamp is unreliable
-#define GEN_TS_INVALID_MS          0xFFFFU                     // Out-of-spec sentinel: ms timestamp is unreliable
+#define GEN_TS_SKEW_TOLERANCE_US   1U            // Target: 1 us accuracy (see Note 2)
+#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay (Note 3): DLC8 classic @10kbps ~16ms + margin
+#define GEN_TS_SANDWICH_MAX_RETRY  8U            // Cap on sandwiched-read retries before giving up
+#define GEN_TS_RING_MS             60000U        // spec wrap
+#define GEN_TS_RING_US             3600000000U   // spec wrap; also TIM2 ARR + 1
+#define GEN_TS_INVALID_MS          0xFFFFU       // Out-of-spec sentinel: ms timestamp is unreliable
+#define GEN_TS_INVALID_US          0xFFFFFFFFU   // Out-of-spec sentinel: us timestamp is unreliable
+
+// Subtraction in the 3.6e9 (TIM2 ring) modulo space.
+static inline uint32_t gen_ring_sub(uint32_t a, uint32_t b)
+{
+    return (a >= b) ? (a - b) : (a + GEN_TS_RING_US - b);
+}
 
 // Public variables
 const uint8_t gen_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -234,100 +241,56 @@ uint16_t gen_get_timestamp_ms_from_tim3(uint16_t latched_tim3)
 {
     uint32_t us = gen_get_timestamp_us_from_tim3(latched_tim3);
     if (us == GEN_TS_INVALID_US) return GEN_TS_INVALID_MS;
-    return (uint16_t)((us / 1000U) % 60000U);
+    return (uint16_t)((us / 1000U) % GEN_TS_RING_MS);
 }
 
 // Gets micro second timestamp for the time `latched_tim3` was sampled
 // (4 bytes, resets at 3,600,000,000us = 0xD693A400 per spec).
 //
-// `latched_tim3` must have been sampled within UINT16_MAX/2 - margin us
-// (~10ms) of the call site, per the design constraint.
+// TIM2 free-runs at 1 us with ARR = GEN_TS_RING_US - 1, so TIM2->CNT already
+// IS the spec timestamp. This function only steps it back to the moment
+// `latched_tim3` was captured. It is STATELESS, so every call pattern is
+// safe: the first call, idle/low-rate queries, and the two calls inside z[CR].
 //
 // Note 1 (startup phase):
-//   TIM2 and TIM3 are started independently, so their starting phase may
-//   differ by a few cycles. This appears as a constant offset on the
-//   device-up-time origin only; relative timestamps are unaffected.
+//   TIM2 and TIM3 start independently, so their phase may differ by a few
+//   cycles -> a constant offset on the up-time origin only. `back` is a
+//   difference, so the offset cancels; relative timestamps are unaffected.
 //
 // Note 2 (non-atomic read):
-//   The pair (TIM2->CNT, TIM3->CNT) cannot be read atomically. We sandwich
-//   the TIM3 read between two TIM2 reads and retry while the gap is large.
-//   The bounded loop limits the systematic skew to a few us.
+//   (TIM2->CNT, TIM3->CNT) cannot be read atomically. We sandwich the TIM3
+//   read between two TIM2 reads and retry while the gap exceeds the
+//   tolerance. Retries are capped (GEN_TS_SANDWICH_MAX_RETRY); on exhaustion
+//   the timestamp is reported unreliable (GEN_TS_INVALID_US).
 //
-// Note 3 (call frequency assumption):
-//   Caller must invoke within ~10 ms (= GEN_TS_SAFE_WINDOW_US -
-//   GEN_TS_MARGIN_US) of `latched_tim3` sample moment. When an
-//   out-of-range `elapsed` is detected, this call returns
-//   GEN_TS_INVALID_US to mark the timestamp as unreliable; internal
-//   state is still updated so subsequent calls stay coherent. The
-//   underlying frame data is unaffected.
-//
-// Limitation:
-//   A delay near a TIM3 wrap multiple (~65.5 ms) can land the result
-//   back inside the safe window and slip past the check. The margin
-//   shrinks this residual window; observed loop cycle stays well below
-//   the limit.
+// Note 3 (latch->report window -- a CALLER requirement):
+//   The caller MUST report within GEN_TS_LATCH_LIMIT_US (~20 ms) of the SOF
+//   latch. `back` = now_tim3 - latched_tim3 (lower 16 bits). If it exceeds the
+//   limit, the latch may have wrapped TIM3, so the result is reported as
+//   GEN_TS_INVALID_US. This is an out-of-spec input (an extremely slow bitrate
+//   and/or a stalled main loop), not a normal operating point. The underlying
+//   frame data is unaffected.
 uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
 {
-    static uint32_t accum_us  = 0;     // 32bit ring counter, folded to 3.6e9
-    static uint32_t last_tim2 = 0;     // TIM2 value at the previous call
-
-    uint32_t tim2_before;
-    uint32_t tim2_after;
+    uint32_t t2_before, t2_after;
     uint16_t now_tim3;
 
-    // --- Note 2: bound the cross-timer skew with a sandwiched read ---
-    // If the two TIM2 samples agree within tolerance, the TIM3 read in the
-    // middle is consistent with tim2_after to within that tolerance.
+    // Note 2: sandwiched read with a capped retry count.
+    uint8_t retry = 0;
     do {
-        tim2_before = TIM2->CNT;
-        now_tim3    = (uint16_t)TIM3->CNT;
-        tim2_after  = TIM2->CNT;
-    } while ((uint32_t)(tim2_after - tim2_before) > GEN_TS_SKEW_TOLERANCE_US);
+        if (retry++ >= GEN_TS_SANDWICH_MAX_RETRY) return GEN_TS_INVALID_US;
+        t2_before = TIM2->CNT;
+        now_tim3  = (uint16_t)TIM3->CNT;
+        t2_after  = TIM2->CNT;
+    } while (gen_ring_sub(t2_after, t2_before) > GEN_TS_SKEW_TOLERANCE_US);
 
-    // Reconstruct the latched moment in 32bit TIM2 space.
-    // `back` is the distance from `latched_tim3` to `now_tim3`, modulo 2^16.
-    // 32bit subtraction wraps cleanly across TIM2's 71-minute period.
-    uint16_t back          = (uint16_t)(now_tim3 - latched_tim3);
-    uint32_t tim2_at_latch = tim2_after - (uint32_t)back;
+    // Note 3: distance from the latch moment to now. Too large -> unreliable.
+    uint16_t back = (uint16_t)(now_tim3 - latched_tim3);
+    if (back > GEN_TS_LATCH_LIMIT_US) return GEN_TS_INVALID_US;
 
-    // Elapsed since the previous call, in 32bit TIM2 space.
-    // Unsigned subtraction handles TIM2 wrap and short backward jumps.
-    uint32_t elapsed = tim2_at_latch - last_tim2;
-
-    if (elapsed <= GEN_TS_SAFE_WINDOW_US - GEN_TS_MARGIN_US)
-    {
-        // --- Normal forward path ---
-        accum_us += elapsed;
-        if (accum_us >= GEN_TS_RING_US) accum_us -= GEN_TS_RING_US;
-    }
-    else if (elapsed >= 0xFFFFFFFFU - GEN_TS_SAFE_WINDOW_US)
-    {
-        // --- Short backward path ---
-        // `latched_tim3` was sampled just before the previous call
-        // (e.g. CAN frame arrived right after a Z[CR] query).
-        // `elapsed` is a small negative encoded as a large uint32_t.
-        uint32_t back_us = 0U - elapsed;   // small positive
-        accum_us = (back_us <= accum_us)
-                       ? (accum_us - back_us)
-                       : (accum_us + GEN_TS_RING_US - back_us);
-    }
-    else
-    {
-        // --- Note 3: call frequency assumption violated ---
-        // `elapsed` is out of the safe window, so `back` may have wrapped.
-        // Update the internal state from the unambiguous 32bit TIM2
-        // distance so future calls stay coherent, but return
-        // GEN_TS_INVALID_US for this call. The host detects this as an
-        // out-of-spec sentinel and treats only this timestamp as
-        // unreliable; the underlying frame data is unaffected.
-        accum_us += elapsed;
-        while (accum_us >= GEN_TS_RING_US) accum_us -= GEN_TS_RING_US;
-        last_tim2 = tim2_at_latch;
-        return GEN_TS_INVALID_US;
-    }
-
-    last_tim2 = tim2_at_latch;
-    return accum_us;
+    // t2_after is TIM2 (the spec timestamp) at now_tim3; step back to the
+    // latch moment, correcting a ring underflow when back > t2_after.
+    return gen_ring_sub(t2_after, (uint32_t)back);
 }
 
 #if 0  /* legacy: kept for reference */
