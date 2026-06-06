@@ -26,6 +26,7 @@
 #define GEN_TS_SAFE_WINDOW_US      ((uint32_t)UINT16_MAX / 2U) // ~32,768
 #define GEN_TS_MARGIN_US           22768U                      // +/- safety (~10 ms detection window)
 #define GEN_TS_RING_US             3600000000U                 // spec wrap
+#define GEN_TS_INVALID_US          0xFFFFFFFFU                 // Out-of-spec sentinel: timestamp is unreliable
 
 // Public variables
 const uint8_t gen_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -258,8 +259,11 @@ uint16_t gen_get_timestamp_ms(void)
 //
 // Note 3 (call frequency assumption):
 //   Caller must invoke within ~10 ms (= GEN_TS_SAFE_WINDOW_US -
-//   GEN_TS_MARGIN_US) of `latched_tim3` sample moment. Out-of-range
-//   `elapsed` is detected and reported.
+//   GEN_TS_MARGIN_US) of `latched_tim3` sample moment. When an
+//   out-of-range `elapsed` is detected, this call returns
+//   GEN_TS_INVALID_US to mark the timestamp as unreliable; internal
+//   state is still updated so subsequent calls stay coherent. The
+//   underlying frame data is unaffected.
 //
 // Limitation:
 //   A delay near a TIM3 wrap multiple (~65.5 ms) can land the result
@@ -315,11 +319,15 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
     {
         // --- Note 3: call frequency assumption violated ---
         // `elapsed` is out of the safe window, so `back` may have wrapped.
-        // We trust `elapsed` here (TIM2 is 32bit and unambiguous) and
-        // flag the upstream timing violation for the host.
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
+        // Update the internal state from the unambiguous 32bit TIM2
+        // distance so future calls stay coherent, but return
+        // GEN_TS_INVALID_US for this call. The host detects this as an
+        // out-of-spec sentinel and treats only this timestamp as
+        // unreliable; the underlying frame data is unaffected.
         accum_us += elapsed;
         while (accum_us >= GEN_TS_RING_US) accum_us -= GEN_TS_RING_US;
+        last_tim2 = tim2_at_latch;
+        return GEN_TS_INVALID_US;
     }
 
     last_tim2 = tim2_at_latch;
