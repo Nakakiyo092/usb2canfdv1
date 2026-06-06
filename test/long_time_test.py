@@ -4,7 +4,9 @@
 Collection of tests which take long time to complete.
 
 - CAN bus error and buffer error rate (loopback as default or with receiver option)
-- Verify the us timestamp against the rounding compensation result (~66ms)
+- Demonstrate that the timestamp sentinel (firmware's last-resort defence) does
+  not appear under normal operation across many samples, including long idle
+  periods that cross TIM3 16-bit wrap (~65.5 ms) and the 1-hour TIM2 wrap
 - Compare clock accuracy between host and device
 
 License:
@@ -385,14 +387,19 @@ def main():
         if ms >= tick_tx:
             rnd = random.randint(1, 1000)
             if rnd <= 20:
-                # Short delay to check max 2 compensation as a most likely case (66ms * 2 = 132ms)
+                # Short delay (0-150 ms) covers idle that crosses up to 2 TIM3
+                # 16-bit wraps (~65.5 ms each); verifies the sentinel does not
+                # fire across wrap boundaries.
                 tick_tx = ms + random.randint(0, 150)
             elif rnd <= 999:
-                # No delay to stress the buffer and increase the number of frames as an extreme case
+                # No delay maximises sample count for the sentinel-never-fires
+                # assertion and exercises the buffer under sustained pressure.
                 tick_tx = ms + 0
             else:
-                # Long delay to check max ~100 compensation as another extreme case (66ms * 100 = 6600ms)
-                # The rough device clock accuracy (0.5%) limits the max duration to around 66ms / 2 / 0.005 = 6600ms.
+                # Long delay (0-6600 ms) covers idle far beyond the design
+                # window so that the sentinel-never-fires assertion holds even
+                # after prolonged inactivity. Upper bound is the host/device
+                # drift budget: 65.5 ms / 2 / 0.5% ~= 6.6 s.
                 tick_tx = ms + random.randint(0, 6600)
 
             # Record host TX timestamp in us (perf_counter returns seconds, convert to us)

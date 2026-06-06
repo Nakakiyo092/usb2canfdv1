@@ -213,24 +213,31 @@ class TimestampMsTestCase(unittest.TestCase):
         self.dut.close()
 
 
-    def test_timestamp_milli(self):
-        #self.dut.print_on = True
+    def test_format_when_off(self):
+        """When timestamp mode is off (default), Tx event reports for all
+        frame types carry no timestamp suffix."""
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        # Check no timestamp when timestamp is off
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
+                             f"Frame {cmd!r} should be echoed without timestamp")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
+                             f"Frame {cmd!r} should be echoed without timestamp")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check millisec timestamp when timestamp is on
+
+    def test_format_when_on(self):
+        """With Z1, every Tx event report appends a 4-hex-digit ms timestamp."""
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
         self.dut.send(b"Z1\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -238,53 +245,68 @@ class TimestampMsTestCase(unittest.TestCase):
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
             rx_data = self.dut.receive()
-            self.assertEqual(len(rx_data), len(b"z\r" + cmd + b"03F0TTTT\r"))
-            self.assertEqual(rx_data[:len(b"z\r" + cmd + b"03F0")], b"z\r" + cmd + b"03F0")
+            self.assertEqual(len(rx_data), len(b"z\r" + cmd + b"03F0TTTT\r"),
+                             f"Frame {cmd!r}: expected 4-char timestamp suffix, got {rx_data!r}")
+            self.assertEqual(rx_data[:len(b"z\r" + cmd + b"03F0")], b"z\r" + cmd + b"03F0",
+                             f"Frame {cmd!r}: body mismatch, got {rx_data!r}")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
             rx_data = self.dut.receive()
-            self.assertEqual(len(rx_data), len(b"Z\r" + cmd + b"0137FEC80TTTT\r"))
-            self.assertEqual(rx_data[:len(b"Z\r" + cmd + b"0137FEC80")], b"Z\r" + cmd + b"0137FEC80")
+            self.assertEqual(len(rx_data), len(b"Z\r" + cmd + b"0137FEC80TTTT\r"),
+                             f"Frame {cmd!r}: expected 4-char timestamp suffix, got {rx_data!r}")
+            self.assertEqual(rx_data[:len(b"Z\r" + cmd + b"0137FEC80")], b"Z\r" + cmd + b"0137FEC80",
+                             f"Frame {cmd!r}: body mismatch, got {rx_data!r}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check no timestamp when timestamp is back to off
+
+    def test_mode_toggle(self):
+        """Switching Z1 -> Z0 restores the no-timestamp format, confirming
+        the mode setter is not sticky."""
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
+        # Turn on, then off.
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z0\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
+                             f"Frame {cmd!r} should be echoed without timestamp after Z1->Z0")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
+                             f"Frame {cmd!r} should be echoed without timestamp after Z1->Z0")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check timestamp accuracy
+
+    def test_basic_accuracy_30s(self):
+        """Send two frames 30 s apart and confirm the reported ms timestamp
+        difference matches the host-side sleep within 600 ms (2% of 30 s).
+        The tolerance absorbs USB latency and OS scheduling jitter."""
         self.dut.send(b"Z1\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        #  send first frame and get timestamp
+        # First frame -> grab baseline timestamp.
         self.dut.send(b"t03F0\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"z\r" + b"t03F0TTTT\r"))
-        self.assertEqual(rx_data[:len(b"z\r" + b"t03F0")], b"z\r" + b"t03F0")
         last_timestamp = rx_data[len(b"z\r" + b"t03F0"):len(b"z\r" + b"t03F0") + 4]
         last_time_ms = int(last_timestamp.decode(), 16)
 
-        #  sleep for a while
+        # Sleep across the gap we want to measure.
         sleep_time_ms = 30 * 1000
         time.sleep(sleep_time_ms / 1000.0)
 
-        #  send second frame and get timestamp
+        # Second frame -> compute device-side elapsed time.
         self.dut.send(b"t03F0\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"z\r" + b"t03F0TTTT\r"))
-        self.assertEqual(rx_data[:len(b"z\r" + b"t03F0")], b"z\r" + b"t03F0")
         crnt_timestamp = rx_data[len(b"z\r" + b"t03F0"):len(b"z\r" + b"t03F0") + 4]
         crnt_time_ms = int(crnt_timestamp.decode(), 16)
         if crnt_time_ms > last_time_ms:
@@ -292,20 +314,18 @@ class TimestampMsTestCase(unittest.TestCase):
         else:
             diff_time_ms = (60000 + crnt_time_ms) - last_time_ms
 
-        # Tolerance is 600 ms (2% of 30 s), which accounts for USB latency and OS scheduling jitter.
-        self.assertLess(abs(sleep_time_ms - diff_time_ms), 600)
+        self.assertLess(abs(sleep_time_ms - diff_time_ms), 600,
+                        f"device elapsed {diff_time_ms} ms differs from host sleep {sleep_time_ms} ms by >=600 ms")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_timestamp_wraparound_milli(self):
-        """Z1 millisecond timestamp wraps to 0 at 0xEA60 (60000 ms).
-
-        Polls the current timestamp with Z[CR], sleeps until ~1 second before
-        the wrap point, then sends frames in loopback mode until a wrap is
-        detected.  Verifies that the pre-wrap timestamp is in [0xEA60-50,
-        0xEA60) and the post-wrap timestamp is near 0.
-        """
+        """The ms timestamp wraps to 0 at the documented boundary
+        0xEA60 (60000 ms). Polls Z[CR] for current position, sleeps until
+        just before the wrap, then loopbacks frames until the wrap is
+        observed. Asserts the pre-wrap value is just below 0xEA60 and the
+        post-wrap value is near 0."""
         WRAP_MS = 0xEA60  # 60000 ms
 
         self.dut.send(b"Z1\r")
@@ -313,27 +333,30 @@ class TimestampMsTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Find current position in the 60-second cycle
+        # Query current position in the 60-second cycle.
         self.dut.send(b"Z\r")
         rx = self.dut.receive()
-        self.assertEqual(len(rx), len(b"Z1xxxx\r"))
+        self.assertEqual(len(rx), len(b"Z1xxxx\r"),
+                         f"Z query reply has unexpected length, got: {rx!r}")
         current_ms = int(rx[2:6], 16)
 
-        # Sleep until ~1 second before the wrap so polling loop is short
+        # Sleep until ~1 second before the wrap so the polling loop is short.
         ms_until_wrap = (WRAP_MS - current_ms) % WRAP_MS
         if ms_until_wrap > 1000:
             time.sleep((ms_until_wrap - 1000) / 1000.0)
 
-        # Send frames until a wrap-around is detected
+        # Loopback frames at ~40 ms/frame until a wrap-around is detected.
         pre_wrap_ts = None
         post_wrap_ts = None
         wrap_detected = False
-        for _ in range(200):  # ~8 s of polling at ~40 ms/frame
+        for _ in range(200):  # ~8 s of polling
             self.dut.send(b"t03F0\r")
             rx = self.dut.receive()
-            self.assertEqual(len(rx), len(b"z\rt03F0TTTT\r"))
+            self.assertEqual(len(rx), len(b"z\rt03F0TTTT\r"),
+                             f"Loopback frame reply has unexpected length, got: {rx!r}")
             ts_ms = int(rx[len(b"z\rt03F0"):len(b"z\rt03F0") + 4], 16)
 
+            # A monotonic decrease across two consecutive samples is the wrap.
             if pre_wrap_ts is not None and ts_ms < pre_wrap_ts:
                 post_wrap_ts = ts_ms
                 wrap_detected = True
@@ -342,11 +365,10 @@ class TimestampMsTestCase(unittest.TestCase):
 
         self.assertTrue(wrap_detected,
                         "Millisecond timestamp wrap-around not detected within test window")
-        # The wrap must occur at the documented boundary (0xEA60 = 60000 ms)
         self.assertGreaterEqual(pre_wrap_ts, WRAP_MS - 50,
                                 f"Wrap occurred too early: last ts={pre_wrap_ts:#06x}")
         self.assertLess(pre_wrap_ts, WRAP_MS,
-                        f"Pre-wrap ts must be < WRAP_MS, got {pre_wrap_ts:#06x}")
+                        f"Pre-wrap ts must be < {WRAP_MS:#06x}, got {pre_wrap_ts:#06x}")
         self.assertLess(post_wrap_ts, 50,
                         f"Post-wrap ts should be near 0, got {post_wrap_ts:#06x}")
 
@@ -355,29 +377,26 @@ class TimestampMsTestCase(unittest.TestCase):
 
 
     def test_timestamp_invalid_when_stalled(self):
-        """Verify the ms timestamp returns the 0xFFFF sentinel when the
-        firmware's main loop is stalled beyond the Note 3 design window
-        (~20 ms).
+        """When the main loop is stalled beyond the SOF-to-report design
+        window (~20 ms), the ms timestamp must be reported as the 0xFFFF
+        sentinel while the frame data itself remains intact.
 
-        Uses the debug-only stall command ~<HHHH>[CR] to block the main
-        loop while a CAN frame arrives via internal loopback. The frame
-        data must be reported correctly; only the timestamp field is
-        expected to be the sentinel.
-        """
-        #self.dut.print_on = True
-        self.dut.send(b"S0\r")          # 10 kbps (slow enough that frame arrives during the stall)
+        Uses the DEBUG-only stall command ~<HHHH>[CR] to block the main
+        loop. CAN bitrate is set to 10 kbps so the loopback frame arrives
+        during the stall, forcing a long SOF-to-report delay."""
+        self.dut.send(b"S0\r")          # 10 kbps: frame arrives mid-stall.
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z1\r")          # ms timestamp on
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")           # internal loopback open
+        self.dut.send(b"=\r")           # open internal loopback
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Enqueue Tx frame, sleep for 2 ms, then stall for 40 ms
+        # Enqueue Tx, give it 2 ms to start, then stall the loop for 40 ms.
         self.dut.send(b"T0137FEC880011223344556677\r")
         time.sleep(0.002)
         self.dut.send(b"~0028\r")
 
-        # Keep receiving for more than 40ms
+        # Drain output for >40 ms so the post-stall report is captured.
         rx_data = self.dut.receive() + self.dut.receive() + self.dut.receive()
 
         self.assertIn(b"T0137FEC880011223344556677FFFF\r", rx_data,
@@ -388,51 +407,54 @@ class TimestampMsTestCase(unittest.TestCase):
 
 
     def test_timestamp_accuracy_milli(self):
-        #self.dut.print_on = True
-
-        # Configure a CAN bus with the slowest bitrates
+        """Send two frames back-to-back at the slowest bitrate (10k/500k)
+        and compare the reported ms timestamp delta against the expected
+        inter-frame interval computed from CAN bit timing. Tolerance is
+        1 ms (the ms-resolution rounding limit)."""
         self.dut.send(b"Z1\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"S0\r")
+        self.dut.send(b"S0\r")    # 10 kbps nominal
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"Y1\r")
+        self.dut.send(b"Y1\r")    # 500 kbps data
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check timestamp difference for two frames sent consecutively
-        tx_frame = b"t55585555555555555555" # Minimize stuffing bits
+        # Two classic frames back-to-back. Data pattern 0x55/0xAA minimises
+        # stuff-bit count for a predictable inter-frame interval.
+        tx_frame = b"t55585555555555555555"
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 2 * (len(b"z\r") + len(tx_frame) + len(b"TTTT\r")))
 
         pos = 2 * len(b"z\r") + len(tx_frame)
         timestamp_1st = rx_data[pos : pos + 4]
-
         pos = 2 * len(b"z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 4]
 
-        time_exp_us = (int(timestamp_1st, 16) * 1000 + (47 + 8 * 8 + 1) * 100) % 60000000   # 1 stuff bit?
-        self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
+        # Classic frame: 47 header bits + 64 data bits + 1 stuff bit, each at 100us @10kbps.
+        time_exp_us = (int(timestamp_1st, 16) * 1000 + (47 + 8 * 8 + 1) * 100) % 60000000
+        self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000,
+                        f"Classic frame inter-frame interval mismatch: expected {time_exp_us} us, "
+                        f"got {int(timestamp_2nd, 16) * 1000} us")
 
-        # Check timestamp difference for two frames with BRS sent consecutively
-        tx_frame = b"B1555555585555555555555555" # Minimize stuffing bits
+        # Two BRS FD frames back-to-back. Same intent: stuff-bit-minimal payload.
+        tx_frame = b"B1555555585555555555555555"
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 2 * (len(b"Z\r") + len(tx_frame) + len(b"TTTT\r")))
 
         pos = 2 * len(b"Z\r") + len(tx_frame)
         timestamp_1st = rx_data[pos : pos + 4]
-
         pos = 2 * len(b"Z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 4]
 
-        time_exp_us = (int(timestamp_1st, 16) * 1000 + 49 * 100 + 8 * 8 + 26 + 7) % 60000000   # 7 stuff bits?
-        self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000)
+        # BRS FD frame: 49 nominal bits @100us + (8*8 data bits + 26 fd overhead + 7 stuff) at the data rate.
+        time_exp_us = (int(timestamp_1st, 16) * 1000 + 49 * 100 + 8 * 8 + 26 + 7) % 60000000
+        self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000,
+                        f"BRS frame inter-frame interval mismatch: expected {time_exp_us} us, "
+                        f"got {int(timestamp_2nd, 16) * 1000} us")
 
-        # Close port
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -451,24 +473,31 @@ class TimestampUsTestCase(unittest.TestCase):
         self.dut.close()
 
 
-    def test_timestamp_micro(self):
-        #self.dut.print_on = True
+    def test_format_when_off(self):
+        """When timestamp mode is off (default), Tx event reports for all
+        frame types carry no timestamp suffix."""
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        # Check no timestamp when timestamp is off
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
+                             f"Frame {cmd!r} should be echoed without timestamp")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
+                             f"Frame {cmd!r} should be echoed without timestamp")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check microsec timestamp when timestamp is on
+
+    def test_format_when_on(self):
+        """With Z2, every Tx event report appends an 8-hex-digit us timestamp."""
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -476,53 +505,68 @@ class TimestampUsTestCase(unittest.TestCase):
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
             rx_data = self.dut.receive()
-            self.assertEqual(len(rx_data), len(b"z\r" + cmd + b"03F0TTTTTTTT\r"))
-            self.assertEqual(rx_data[:len(b"z\r" + cmd + b"03F0")], b"z\r" + cmd + b"03F0")
+            self.assertEqual(len(rx_data), len(b"z\r" + cmd + b"03F0TTTTTTTT\r"),
+                             f"Frame {cmd!r}: expected 8-char timestamp suffix, got {rx_data!r}")
+            self.assertEqual(rx_data[:len(b"z\r" + cmd + b"03F0")], b"z\r" + cmd + b"03F0",
+                             f"Frame {cmd!r}: body mismatch, got {rx_data!r}")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
             rx_data = self.dut.receive()
-            self.assertEqual(len(rx_data), len(b"Z\r" + cmd + b"0137FEC80TTTTTTTT\r"))
-            self.assertEqual(rx_data[:len(b"Z\r" + cmd + b"0137FEC80")], b"Z\r" + cmd + b"0137FEC80")
+            self.assertEqual(len(rx_data), len(b"Z\r" + cmd + b"0137FEC80TTTTTTTT\r"),
+                             f"Frame {cmd!r}: expected 8-char timestamp suffix, got {rx_data!r}")
+            self.assertEqual(rx_data[:len(b"Z\r" + cmd + b"0137FEC80")], b"Z\r" + cmd + b"0137FEC80",
+                             f"Frame {cmd!r}: body mismatch, got {rx_data!r}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check no timestamp when timestamp is back to off
+
+    def test_mode_toggle(self):
+        """Switching Z2 -> Z0 restores the no-timestamp format, confirming
+        the mode setter is not sticky."""
+        cmd_send_std = (b"r", b"t", b"d", b"b")
+        cmd_send_ext = (b"R", b"T", b"D", b"B")
+
+        # Turn on, then off.
+        self.dut.send(b"Z2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z0\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
+                             f"Frame {cmd!r} should be echoed without timestamp after Z2->Z0")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
+                             f"Frame {cmd!r} should be echoed without timestamp after Z2->Z0")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check timestamp accuracy
+
+    def test_basic_accuracy_30s(self):
+        """Send two frames 30 s apart and confirm the reported us timestamp
+        difference matches the host-side sleep within 600 ms (2% of 30 s).
+        The tolerance absorbs USB latency and OS scheduling jitter."""
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        #  send first frame and get timestamp
+        # First frame -> grab baseline timestamp.
         self.dut.send(b"t03F0\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"z\r" + b"t03F0TTTTTTTT\r"))
-        self.assertEqual(rx_data[:len(b"z\r" + b"t03F0")], b"z\r" + b"t03F0")
         last_timestamp = rx_data[len(b"z\r" + b"t03F0"):len(b"z\r" + b"t03F0") + 8]
         last_time_us = int(last_timestamp.decode(), 16)
 
-        #  sleep for a while
+        # Sleep across the gap we want to measure.
         sleep_time_us = 30 * 1000 * 1000
         time.sleep(sleep_time_us / 1000.0 / 1000.0)
 
-        #  send second frame and get timestamp
+        # Second frame -> compute device-side elapsed time.
         self.dut.send(b"t03F0\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"z\r" + b"t03F0TTTTTTTT\r"))
-        self.assertEqual(rx_data[:len(b"z\r" + b"t03F0")], b"z\r" + b"t03F0")
         crnt_timestamp = rx_data[len(b"z\r" + b"t03F0"):len(b"z\r" + b"t03F0") + 8]
         crnt_time_us = int(crnt_timestamp.decode(), 16)
         if crnt_time_us > last_time_us:
@@ -530,8 +574,8 @@ class TimestampUsTestCase(unittest.TestCase):
         else:
             diff_time_us = (3600000000 + crnt_time_us) - last_time_us
 
-        # Tolerance is 600 ms (2% of 30 s), which accounts for USB latency and OS scheduling jitter.
-        self.assertLess(abs(sleep_time_us - diff_time_us), 600 * 1000)
+        self.assertLess(abs(sleep_time_us - diff_time_us), 600 * 1000,
+                        f"device elapsed {diff_time_us} us differs from host sleep {sleep_time_us} us by >=600 ms")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -542,43 +586,46 @@ class TimestampUsTestCase(unittest.TestCase):
 
 
     def test_timestamp_same_stamp(self):
-        #self.dut.print_on = True
-
-        # Check Rx frame and Tx event have the same timestamp in CAN loopback mode
+        """In internal-loopback mode a single transmitted frame produces both
+        a Tx event report and an Rx frame report. Both share the same SOF
+        moment, so their us timestamps must be byte-identical."""
+        # z2003: us timestamp + Tx event + Rx frame reporting all enabled.
         self.dut.send(b"z2003\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"t03F0\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), len(b"\r" + b"zt03F0TTTTTTTT\r" + b"t03F0TTTTTTTT\r"))
+
+        # The order of Tx event and Rx frame reports is not guaranteed; pick
+        # the timestamps based on which one came first.
         if rx_data[1] == b"z"[0]:
             tx_timestamp = rx_data[len(b"\rzt03F0"):len(b"\rzt03F0") + 8]
-        else:
-            tx_timestamp = rx_data[len(b"\rt03F0TTTTTTTT\rzt03F0"):len(b"\rt03F0TTTTTTTT\rzt03F0") + 8]
-        if rx_data[1] == b"z"[0]:
             rx_timestamp = rx_data[len(b"\rzt03F0TTTTTTTT\rt03F0"):len(b"\rzt03F0TTTTTTTT\rt03F0") + 8]
         else:
+            tx_timestamp = rx_data[len(b"\rt03F0TTTTTTTT\rzt03F0"):len(b"\rt03F0TTTTTTTT\rzt03F0") + 8]
             rx_timestamp = rx_data[len(b"\rt03F0"):len(b"\rt03F0") + 8]
-        self.assertEqual(tx_timestamp, rx_timestamp)
+        self.assertEqual(tx_timestamp, rx_timestamp,
+                         f"Tx event and Rx frame share one SOF, so timestamps must match. "
+                         f"tx={tx_timestamp!r}, rx={rx_timestamp!r}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_timestamp_consistency(self):
-        #self.dut.print_on = True
-
-        # Compare timestamp for a Z[CR] command and for a received CAN frame
-        self.dut.send(b"S8\r")
+        """The us timestamp returned by the Z[CR] query and the one attached
+        to a frame report must come from the same internal source. Sends
+        both back-to-back at 1 Mbps and checks the gap stays within a
+        plausible budget (frame TX ~50 us + one main-loop cycle ~100 us)."""
+        self.dut.send(b"S8\r")           # 1 Mbps nominal: minimise frame TX time.
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"z2001\r")
+        self.dut.send(b"z2001\r")        # us timestamp + Rx frame reporting.
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        # Both commands are sent together to minimize the interval between them
-        # so their timestamps are captured in a short time range on the device.
-        # Both responses typically arrive in the first receive(); the second
-        # receive() collects any remaining data. rx_data is their concatenation.
+        # The two commands are sent in one write to minimise the gap between
+        # them on the device side. Responses can arrive across two receive()
+        # calls due to USB buffering; concatenate to be safe.
         self.dut.send(b"Z\rt03F0\r")
         rx_data = self.dut.receive() + self.dut.receive()
         last_timestamp = rx_data[len(b"Z2"):len(b"Z2") + 8]
@@ -590,36 +637,34 @@ class TimestampUsTestCase(unittest.TestCase):
         else:
             diff_time_us = (3600000000 + crnt_time_us) - last_time_us
 
-        # Difference should be less than the length of the frame (~50us) + device main loop cycle (~100us)
-        self.assertLess(diff_time_us, 200)
+        self.assertLess(diff_time_us, 200,
+                        f"Z query and frame timestamp must share one source; "
+                        f"diff={diff_time_us} us exceeds budget (~150 us)")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_timestamp_invalid_when_stalled(self):
-        """Verify the us timestamp returns the 0xFFFFFFFF sentinel when the
-        firmware's main loop is stalled beyond the Note 3 design window
-        (~20 ms).
+        """When the main loop is stalled beyond the SOF-to-report design
+        window (~20 ms), the us timestamp must be reported as the
+        0xFFFFFFFF sentinel while the frame data itself remains intact.
 
-        Uses the debug-only stall command ~<HHHH>[CR] to block the main
-        loop while a CAN frame arrives via internal loopback. The frame
-        data must be reported correctly; only the timestamp field is
-        expected to be the sentinel.
-        """
-        #self.dut.print_on = True
-        self.dut.send(b"S0\r")          # 10 kbps (slow enough that frame arrives during the stall)
+        Uses the DEBUG-only stall command ~<HHHH>[CR] to block the main
+        loop. CAN bitrate is set to 10 kbps so the loopback frame arrives
+        during the stall, forcing a long SOF-to-report delay."""
+        self.dut.send(b"S0\r")          # 10 kbps: frame arrives mid-stall.
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z2\r")          # us timestamp on
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")           # internal loopback open
+        self.dut.send(b"=\r")           # open internal loopback
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Enqueue Tx frame, sleep for 2 ms, then stall for 40 ms
+        # Enqueue Tx, give it 2 ms to start, then stall the loop for 40 ms.
         self.dut.send(b"T0137FEC880011223344556677\r")
         time.sleep(0.002)
         self.dut.send(b"~0028\r")
 
-        # Keep receiving for more than 40ms
+        # Drain output for >40 ms so the post-stall report is captured.
         rx_data = self.dut.receive() + self.dut.receive() + self.dut.receive()
 
         self.assertIn(b"T0137FEC880011223344556677FFFFFFFF\r", rx_data,
@@ -630,93 +675,92 @@ class TimestampUsTestCase(unittest.TestCase):
 
 
     def test_timestamp_accuracy_micro(self):
-        #self.dut.print_on = True
-
-        # Configure a CAN bus with the slowest bitrates
+        """Send 2 and 20 consecutive frames at the slowest bitrate (10k/500k)
+        and compare the reported us timestamp delta against the expected
+        inter-frame interval computed from CAN bit timing, for both classic
+        and BRS FD frames. Tolerance is +/-1 us, which accounts for the
+        TIM2/TIM3 independent-clock phase quantisation."""
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"S0\r")
+        self.dut.send(b"S0\r")    # 10 kbps nominal
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"Y1\r")
+        self.dut.send(b"Y1\r")    # 500 kbps data
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check timestamp difference for two frames sent consecutively
-        tx_frame = b"t55585555555555555555" # Minimize stuffing bits
+        # --- 2 classic frames ---
+        # Data pattern 0x55/0xAA minimises stuff bits for a predictable interval.
+        tx_frame = b"t55585555555555555555"
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 2 * (len(b"z\r") + len(tx_frame) + len(b"TTTTTTTT\r")))
 
         pos = 2 * len(b"z\r") + len(tx_frame)
         timestamp_1st = rx_data[pos : pos + 8]
-
         pos = 2 * len(b"z\r") + len(tx_frame) + len(b"TTTTTTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bit?
-        # Allow +/-1 us jitter from TIM2/TIM3 independent-clock phase quantisation.
-        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1)
+        # Classic frame: 47 header bits + 64 data bits + 1 stuff bit, each at 100us @10kbps.
+        time_exp_us = (int(timestamp_1st, 16) + (47 + 8 * 8 + 1) * 100) % 3600000000
+        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
+                               msg=f"2-classic interval mismatch: expected {time_exp_us}, "
+                                   f"got {int(timestamp_2nd, 16)}")
 
-        # Check timestamp difference for two frames with BRS sent consecutively
-        tx_frame = b"B1555555585555555555555555" # Minimize stuffing bits
+        # --- 2 BRS FD frames ---
+        tx_frame = b"B1555555585555555555555555"
         self.dut.send(tx_frame + b"\r" + tx_frame + b"\r")
         time.sleep(0.1)
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 2 * (len(b"Z\r") + len(tx_frame) + len(b"TTTTTTTT\r")))
 
         pos = 2 * len(b"Z\r") + len(tx_frame)
         timestamp_1st = rx_data[pos : pos + 8]
-
         pos = 2 * len(b"Z\r") + len(tx_frame) + len(b"TTTTTTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + 8 * 8 + 26 + 5 + 2) % 3600000000   # 2 stuff bits?
-        # Allow +/-1 us jitter from TIM2/TIM3 independent-clock phase quantisation.
-        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1)
+        # BRS FD frame: 49 nominal bits @100us + (64 data + 26 fd overhead + 5 stuff + 2) at data rate.
+        time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + 8 * 8 + 26 + 5 + 2) % 3600000000
+        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
+                               msg=f"2-BRS interval mismatch: expected {time_exp_us}, "
+                                   f"got {int(timestamp_2nd, 16)}")
 
-        # Check timestamp difference for 20 frames sent consecutively
+        # --- 20 classic frames: 1us jitter averages out over 19 intervals ---
         tx_frame = b"t55585555555555555555"
         for _ in range(0, 20):
             self.dut.send(tx_frame + b"\r")
         time.sleep(0.5)
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 20 * (len(b"z\r") + len(tx_frame) + len(b"TTTTTTTT\r")))
-
+        # All Tx-event ACK prefixes arrive first; strip them to walk frames cleanly.
         rx_data = rx_data.replace(b"z\r", b"")
 
         pos = len(tx_frame)
         timestamp_1st = rx_data[pos : pos + 8]
-
         pos = 19 * (len(tx_frame) + len(b"TTTTTTTT\r")) + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + 19 * (47 + 8 * 8 + 1) * 100) % 3600000000   # 1 stuff bit?
-        # Allow +/-1 us jitter from TIM2/TIM3 independent-clock phase quantisation.
-        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1)
+        time_exp_us = (int(timestamp_1st, 16) + 19 * (47 + 8 * 8 + 1) * 100) % 3600000000
+        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
+                               msg=f"20-classic accumulated interval mismatch: expected {time_exp_us}, "
+                                   f"got {int(timestamp_2nd, 16)}")
 
-        # Check timestamp difference for 20 frames with BRS sent consecutively
+        # --- 20 BRS FD frames ---
         tx_frame = b"B1555555585555555555555555"
         for _ in range(0, 20):
             self.dut.send(tx_frame + b"\r")
         time.sleep(0.5)
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 20 * (len(b"Z\r") + len(tx_frame) + len(b"TTTTTTTT\r")))
-
         rx_data = rx_data.replace(b"Z\r", b"")
 
         pos = len(tx_frame)
         timestamp_1st = rx_data[pos : pos + 8]
-
         pos = 19 * (len(tx_frame) + len(b"TTTTTTTT\r")) + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + 8 * 8 + 26 + 5 + 2)) % 3600000000   # 2 stuff bits?
-        # Allow +/-1 us jitter from TIM2/TIM3 independent-clock phase quantisation.
-        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1)
+        time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + 8 * 8 + 26 + 5 + 2)) % 3600000000
+        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
+                               msg=f"20-BRS accumulated interval mismatch: expected {time_exp_us}, "
+                                   f"got {int(timestamp_2nd, 16)}")
 
-        # Close port
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
