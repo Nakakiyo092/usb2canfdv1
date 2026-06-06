@@ -199,7 +199,7 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-class InLoopbackTimestampMsTestCase(unittest.TestCase):
+class TimestampMsTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
 
@@ -440,7 +440,7 @@ class InLoopbackTimestampMsTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-class InLoopbackTimestampUsTestCase(unittest.TestCase):
+class TimestampUsTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
 
