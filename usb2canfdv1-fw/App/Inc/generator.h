@@ -76,8 +76,8 @@ enum SlcanReportFlag
 // Maximum slcan message length
 #define SLCAN_MTU           (1 + 138 + 8 + 1 + 1 + 16)
                             /* z/Z for tx event 1 plus frame 138 plus timestamp 8 plus ESI 1 plus \r 1 plus some padding */
-#define SLCAN_STD_ID_LEN    (3)
-#define SLCAN_EXT_ID_LEN    (8)
+#define SLCAN_STD_ID_LEN    3U
+#define SLCAN_EXT_ID_LEN    8U
 
 // Public variables
 extern const uint8_t gen_nibble_to_ascii[];

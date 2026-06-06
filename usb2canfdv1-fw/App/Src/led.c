@@ -22,11 +22,11 @@
 #include "generator.h"
 
 // Duration in ms
-#define LED_BLINK_DURATION          (25)
+#define LED_BLINK_DURATION          25U
 
 // Opening animation: 5 blinks, each half-period 100 ms (matches the old blocking sequence)
-#define LED_ANIM_BLINKS             (5)
-#define LED_ANIM_HALF_PERIOD_MS     (100)
+#define LED_ANIM_BLINKS             5U
+#define LED_ANIM_HALF_PERIOD_MS     100U
 #define LED_ANIM_TOTAL_MS           (LED_ANIM_BLINKS * 2 * LED_ANIM_HALF_PERIOD_MS)
 
 // Private variables

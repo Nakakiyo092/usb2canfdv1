@@ -29,9 +29,9 @@ enum NvmMemoryStatus
     NVM_MEMORY_CLEARED = 0xF    /* Flash memory store 0xFF when cleared */
 };
 
-#define NVM_PAGE_NUMBER_DATA      (62)                          /* Page number of data area (see RM0444-3.3.1) */
-#define NVM_ERASE_OK              (0xFFFFFFFF)
-#define NVM_ADDR_ORIGIN           (0x0801F000)                  /* Start address of data area in flash */
+#define NVM_PAGE_NUMBER_DATA      62U                           /* Page number of data area (see RM0444-3.3.1) */
+#define NVM_ERASE_OK              0xFFFFFFFFU
+#define NVM_ADDR_ORIGIN           0x0801F000U                   /* Start address of data area in flash */
 #define NVM_ADDR_SERIAL_NUMBER    (NVM_ADDR_ORIGIN + 0x000UL)
 #define NVM_ADDR_STP_CONFIG       (NVM_ADDR_ORIGIN + 0x008UL)   /* Auto startup configuration */
 #define NVM_ADDR_STP_NOM_BITRATE  (NVM_ADDR_ORIGIN + 0x010UL)   /* Nominal bitrate at STartuP */
