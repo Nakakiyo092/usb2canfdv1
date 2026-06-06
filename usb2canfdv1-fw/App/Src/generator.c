@@ -22,9 +22,9 @@
 #include "generator.h"
 
 // Constants used in gen_get_timestamp_us_from_tim3
-#define GEN_TS_SKEW_TOLERANCE_US   1U            // Target: 1 us accuracy (see Note 2)
+#define GEN_TS_SKEW_TOLERANCE_US   0U            // Target: 1 us accuracy (see Note 2)
 #define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay (Note 3): DLC8 classic @10kbps ~16ms + margin
-#define GEN_TS_SANDWICH_MAX_RETRY  8U            // Cap on sandwiched-read retries before giving up
+#define GEN_TS_SANDWICH_MAX_RETRY  16U           // Cap on sandwiched-read retries before giving up
 #define GEN_TS_RING_MS             60000U        // spec wrap
 #define GEN_TS_RING_US             3600000000U   // spec wrap; also TIM2 ARR + 1
 #define GEN_TS_INVALID_MS          0xFFFFU       // Out-of-spec sentinel: ms timestamp is unreliable
