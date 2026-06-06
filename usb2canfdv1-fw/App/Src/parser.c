@@ -502,7 +502,7 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
         {
         	uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             if (tmsstr == NULL) return;
-        	uint16_t timestamp_ms = gen_get_timestamp_ms();
+        	uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(TIM3->CNT);
 
         	tmsstr[0] = 'Z';
         	tmsstr[1] = gen_nibble_to_ascii[SLCAN_TIMESTAMP_MILLI];
@@ -548,7 +548,7 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
 
         buf_enqueue_cdc((uint8_t *)"z: time_ms=0x", 13);
 
-        uint16_t timestamp_ms = gen_get_timestamp_ms();
+        uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(TIM3->CNT);
         uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
 
         timstr = buf_reserve_cdc_dest(SLCAN_MTU);
