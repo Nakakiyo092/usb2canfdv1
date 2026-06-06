@@ -199,7 +199,6 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-
 class InLoopbackTimestampMsTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
@@ -355,6 +354,42 @@ class InLoopbackTimestampMsTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_timestamp_invalid_when_stalled(self):
+        """Verify the ms timestamp returns the 0xFFFF sentinel when the
+        firmware's main loop is stalled beyond the Note 3 design window
+        (~10 ms).
+
+        Uses the debug-only stall command ~<HHHH>[CR] to block the main
+        loop while a CAN frame arrives via internal loopback. The frame
+        data must be reported correctly; only the timestamp field is
+        expected to be the sentinel.
+        """
+        #self.dut.print_on = True
+        self.dut.send(b"S3\r")          # 100 kbps (slow enough that frame arrives during the stall)
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Z1\r")          # ms timestamp on
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")           # internal loopback open
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Atomic packet: enqueue Tx frame, then immediately stall for 20 ms
+        # (above the ~10 ms detection window). The frame loops back during
+        # the stall; the main loop only picks it up after HAL_Delay returns.
+        self.dut.send(b"t12340000\r~0014\r")
+
+        rx_data = b""
+        for _ in range(3):
+            rx_data += self.dut.receive()
+            if b"t12340000FFFF\r" in rx_data:
+                break
+
+        self.assertIn(b"t12340000FFFF\r", rx_data,
+                      f"Expected ms sentinel FFFF in timestamp position, got: {rx_data!r}")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
     def test_timestamp_accuracy_milli(self):
         #self.dut.print_on = True
 
@@ -403,7 +438,6 @@ class InLoopbackTimestampMsTestCase(unittest.TestCase):
         # Close port
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
-
 
 
 class InLoopbackTimestampUsTestCase(unittest.TestCase):
@@ -561,6 +595,40 @@ class InLoopbackTimestampUsTestCase(unittest.TestCase):
 
         # Difference should be less than the length of the frame (~50us) + device main loop cycle (~100us)
         self.assertLess(diff_time_us, 200)
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_timestamp_invalid_when_stalled(self):
+        """Verify the us timestamp returns the 0xFFFFFFFF sentinel when the
+        firmware's main loop is stalled beyond the Note 3 design window
+        (~10 ms).
+
+        Uses the debug-only stall command ~<HHHH>[CR] to block the main
+        loop while a CAN frame arrives via internal loopback. The frame
+        data must be reported correctly; only the timestamp field is
+        expected to be the sentinel.
+        """
+        #self.dut.print_on = True
+        self.dut.send(b"S3\r")          # 100 kbps
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Z2\r")          # us timestamp on
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")           # internal loopback open
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Atomic packet: enqueue Tx frame, then immediately stall for 20 ms.
+        self.dut.send(b"t12340000\r~0014\r")
+
+        rx_data = b""
+        for _ in range(3):
+            rx_data += self.dut.receive()
+            if b"t12340000FFFFFFFF\r" in rx_data:
+                break
+
+        self.assertIn(b"t12340000FFFFFFFF\r", rx_data,
+                      f"Expected us sentinel FFFFFFFF in timestamp position, got: {rx_data!r}")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 

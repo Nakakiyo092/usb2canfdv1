@@ -63,6 +63,7 @@ static void psr_parse_str_auto_startup(uint8_t *buf, uint8_t len);
 static void psr_parse_str_open_test_mode(uint8_t *buf, uint8_t len);
 static void psr_parse_str_extended(uint8_t *buf, uint8_t len);
 static void psr_parse_str_debug(uint8_t *buf, uint8_t len);
+static void psr_parse_str_stall(uint8_t *buf, uint8_t len);
 #endif
 
 // Parse an incoming slcan command from the USB CDC port
@@ -159,6 +160,10 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // Parse debug command
     case '?':
         psr_parse_str_debug(buf, len);
+        return;
+    // Parse stall command (stall main loop for N ms; test aid for timing-sensitive tests)
+    case '~':
+        psr_parse_str_stall(buf, len);
         return;
 #endif
     default:
@@ -1006,6 +1011,47 @@ void psr_parse_str_debug(uint8_t *buf, uint8_t len)
     dbgstr[1] = '\r';
     dbgstr[2] = '\0';
     buf_enqueue_cdc(dbgstr, strlen((char *)dbgstr));
+
+    return;
+}
+#endif
+
+#ifdef DEBUG
+// Parse stall command: blocks the main loop for the given number of milliseconds.
+// Format: ~<HHHH>[CR]
+//   HHHH: 4-digit hex (0..65535 ms)
+// Response: [CR] on success, [BELL] on length error.
+//
+// ISRs (CAN, USB) continue to run during the stall - the intent is to delay
+// the main-loop pickup of pending events, not to halt the device. Used by
+// tests that need to reproduce timing-sensitive scenarios (e.g. the
+// timestamp sentinel that fires when the main loop exceeds the Note 3
+// design window).
+//
+// ACK is enqueued before HAL_Delay so the host sees the command accepted
+// promptly and any later Rx reports are guaranteed to be enqueued after it.
+void psr_parse_str_stall(uint8_t *buf, uint8_t len)
+{
+    // 1 prefix char + 4 hex digits
+    if (len != 5)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    // buf[1..4] have already been converted from ASCII hex to nibbles
+    // (0..15) by psr_convert_str_to_number; invalid characters were
+    // rejected there.
+    uint16_t ms = (uint16_t)(
+        (buf[1] << 12) |
+        (buf[2] <<  8) |
+        (buf[3] <<  4) |
+         buf[4]
+    );
+
+    buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+
+    HAL_Delay(ms);
 
     return;
 }
