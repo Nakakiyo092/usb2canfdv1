@@ -26,20 +26,20 @@
 #include "generator.h"
 
 // Bit number for each frame type WithOut Data bytes (from SOF to ITM)
-#define CAN_BIT_NBR_WOD_CBFF            47
-#define CAN_BIT_NBR_WOD_CEFF            67
-#define CAN_BIT_NBR_WOD_FBFF_ARBIT      30          // Bit number in arbitration phase
-#define CAN_BIT_NBR_WOD_FEFF_ARBIT      49
+#define CAN_BIT_NBR_WOD_CBFF            47U
+#define CAN_BIT_NBR_WOD_CEFF            67U
+#define CAN_BIT_NBR_WOD_FBFF_ARBIT      30U         // Bit number in arbitration phase
+#define CAN_BIT_NBR_WOD_FEFF_ARBIT      49U
 #define CAN_BIT_NBR_WOD_FXFF_DATA_S     (26 + 5)    // Bit number in data phase with shorter crc (Including fixed stuff bits in CRC field)
 #define CAN_BIT_NBR_WOD_FXFF_DATA_L     (30 + 6)    // Bit number in data phase with longer crc (Including fixed stuff bits in CRC field)
 
 // Parameter to calculate bus load
-#define CAN_ROOT_CLOCK_MHZ              80
-#define CAN_BUS_LOAD_CYCLE_MS           100
+#define CAN_ROOT_CLOCK_MHZ              80U
+#define CAN_BUS_LOAD_CYCLE_MS           100U
 
 // Threshold for enabling Tx delay compensation
 // The offset value 0x28 corresponds to bitrate ~ 1Mbps @ 50% sampling point or ~ 2Mbps @ 100%.
-#define CAN_TDC_ENABLE_THRESHOLD        0x28
+#define CAN_TDC_ENABLE_THRESHOLD        0x28U
 
 // Public variable
 uint8_t can_dlc_to_bytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};

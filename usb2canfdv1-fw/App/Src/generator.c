@@ -21,6 +21,21 @@
 #include "can.h"
 #include "generator.h"
 
+// Constants used in gen_get_timestamp_us_from_tim3
+#define GEN_TS_SKEW_TOLERANCE_US   0U            // Target: 1 us accuracy (see Note 2)
+#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay (Note 3): DLC8 classic @10kbps ~16ms + margin
+#define GEN_TS_SANDWICH_MAX_RETRY  16U           // Cap on sandwiched-read retries before giving up
+#define GEN_TS_RING_MS             60000U        // spec wrap
+#define GEN_TS_RING_US             3600000000U   // spec wrap; also TIM2 ARR + 1
+#define GEN_TS_INVALID_MS          0xFFFFU       // Out-of-spec sentinel: ms timestamp is unreliable
+#define GEN_TS_INVALID_US          0xFFFFFFFFU   // Out-of-spec sentinel: us timestamp is unreliable
+
+// Subtraction in the 3.6e9 (TIM2 ring) modulo space.
+static inline uint32_t gen_ring_sub(uint32_t a, uint32_t b)
+{
+    return (a >= b) ? (a - b) : (a + GEN_TS_RING_US - b);
+}
+
 // Public variables
 const uint8_t gen_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
@@ -29,8 +44,8 @@ static enum SlcanFilterMode gen_filter_mode = SLCAN_FILTER_DUAL_MODE;
 static uint32_t gen_filter_code = 0x00000000;
 static uint32_t gen_filter_mask = 0xFFFFFFFF;
 static enum SlcanTimestampMode gen_timestamp_mode = 0;
-static uint16_t gen_report_reg = 1;   // Default: no timestamp, no ESI, no Tx, but with Rx
-static uint8_t gen_status_flags = 0;  // Owned by main loop only; MUST NOT be modified from ISR context.
+static uint16_t gen_report_reg = 0x0001;    // Default: no timestamp, no ESI, no Tx, but with Rx
+static uint8_t gen_status_flags = 0x00;     // Owned by main loop only; MUST NOT be modified from ISR context.
 
 // Private methods
 static uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
@@ -110,10 +125,7 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
     // Add time stamp
     if (gen_timestamp_mode == SLCAN_TIMESTAMP_MILLI)
     {
-        // Use current time instead of frame timestamp
-        // By this way the complex compensation for TIM3 overflow is not needed
-        // and the main loop delay at most ~300us will not greatly affect the timestamp correctness.
-        uint16_t timestamp_ms = gen_get_timestamp_ms();
+        uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(frame_header->RxTimestamp);
 
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
@@ -215,8 +227,86 @@ uint16_t gen_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event,
 }
 
 
-// Gets milli second timestamp for the current time (2bytes, Resets at 60,000ms)
-// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49.7 days).
+// Gets milli second timestamp for the time `latched_tim3` was sampled
+// (2 bytes, resets at 60,000 ms per spec).
+//
+// Derives the value from gen_get_timestamp_us_from_tim3 by scaling to
+// 1 ms resolution and folding into the 0..59,999 ms spec range. The us
+// and ms timestamps therefore share the same time origin and sample
+// moment.
+//
+// Returns GEN_TS_INVALID_MS if the underlying us value is unreliable
+// (see gen_get_timestamp_us_from_tim3 for the call frequency constraint).
+uint16_t gen_get_timestamp_ms_from_tim3(uint16_t latched_tim3)
+{
+    uint32_t us = gen_get_timestamp_us_from_tim3(latched_tim3);
+    if (us == GEN_TS_INVALID_US) return GEN_TS_INVALID_MS;
+    return (uint16_t)((us / 1000U) % GEN_TS_RING_MS);
+}
+
+// Gets micro second timestamp for the time `latched_tim3` was sampled
+// (4 bytes, resets at 3,600,000,000us = 0xD693A400 per spec).
+//
+// TIM2 free-runs at 1 us with ARR = GEN_TS_RING_US - 1, so TIM2->CNT already
+// IS the spec timestamp. This function only steps it back to the moment
+// `latched_tim3` was captured. It is STATELESS, so every call pattern is
+// safe: the first call, idle/low-rate queries, and the two calls inside z[CR].
+//
+// Note 1 (startup phase):
+//   TIM2 and TIM3 start independently, so their phase may differ by a few
+//   cycles -> a constant offset on the up-time origin only. `back` is a
+//   difference, so the offset cancels; relative timestamps are unaffected.
+//
+// Note 2 (non-atomic read):
+//   (TIM2->CNT, TIM3->CNT) cannot be read atomically. We sandwich the TIM3
+//   read between two TIM2 reads and retry while the gap exceeds the
+//   tolerance. Retries are capped (GEN_TS_SANDWICH_MAX_RETRY); on exhaustion
+//   the timestamp is reported unreliable (GEN_TS_INVALID_US).
+//
+// Note 3 (latch->report window -- a CALLER requirement):
+//   The caller MUST report within GEN_TS_LATCH_LIMIT_US (~20 ms) of the SOF
+//   latch. `back` = now_tim3 - latched_tim3 (lower 16 bits). If it exceeds the
+//   limit, the latch may have wrapped TIM3, so the result is reported as
+//   GEN_TS_INVALID_US. This is an out-of-spec input (an extremely slow bitrate
+//   and/or a stalled main loop), not a normal operating point. The underlying
+//   frame data is unaffected.
+uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
+{
+    uint32_t t2_before, t2_after;
+    uint16_t now_tim3;
+
+    // Note 2: sandwiched read with a capped retry count.
+    uint8_t retry = 0;
+    do {
+        if (retry++ >= GEN_TS_SANDWICH_MAX_RETRY) return GEN_TS_INVALID_US;
+        t2_before = TIM2->CNT;
+        now_tim3  = (uint16_t)TIM3->CNT;
+        t2_after  = TIM2->CNT;
+    } while (gen_ring_sub(t2_after, t2_before) > GEN_TS_SKEW_TOLERANCE_US);
+
+    // Note 3: distance from the latch moment to now. Too large -> unreliable.
+    uint16_t back = (uint16_t)(now_tim3 - latched_tim3);
+    if (back > GEN_TS_LATCH_LIMIT_US) return GEN_TS_INVALID_US;
+
+    // t2_after is TIM2 (the spec timestamp) at now_tim3; step back to the
+    // latch moment, correcting a ring underflow when back > t2_after.
+    return gen_ring_sub(t2_after, (uint32_t)back);
+}
+
+#if 0  /* legacy: kept for reference */
+// Legacy ms-timestamp implementation, kept as a reference path.
+// The active implementation is gen_get_timestamp_ms_from_tim3.
+//
+// Implementation:
+//   Returns a free-running millisecond counter derived from HAL_GetTick,
+//   folded into the 0..59,999 ms spec range. Represents the time at the
+//   call site rather than a specific frame's sample moment.
+//
+// Limitations:
+//   - The reported time corresponds to the moment the function is called,
+//     not the moment of frame arrival; main-loop delay between the two
+//     appears as a positive offset on the timestamp.
+//   - Breaks after HAL_GetTick wraps (~49.7 days of uptime).
 uint16_t gen_get_timestamp_ms(void)
 {
     static uint16_t gen_last_timestamp_ms = 0;
@@ -232,15 +322,28 @@ uint16_t gen_get_timestamp_ms(void)
 
     return gen_last_timestamp_ms;
 }
+#endif
 
-// Gets micro second timestamp for the time tim3_us was taken (4bytes, Resets at 3600,000,000us)
-// This implementation will break if the timestamp is not calculated for more than HAL_GetTick overflow (~49.7 days).
-// The calculation is based on the combination of tim3 clock and the ms tick.
-// The tim3_us does not have to be the current value but supposed to be close to it (like ~1ms).
-// The difference between the current tim3 value and tim3_us should never be more than UINT16_MAX us / 2 ~ 30ms.
-// This is supported by the fact the observed maximum loop cycle time is about 300us.
-// TODO: Implement check for the main loop and raise error if it is too large?
-// TODO: The logic in the function uses expensive 64bits calculation. Rewrite this using 32bits tim2.
+#if 0  /* legacy: kept for reference */
+// Legacy us-timestamp implementation, kept as a reference path.
+// The active implementation is gen_get_timestamp_us_from_tim3.
+//
+// Implementation:
+//   Reconstructs a microsecond timestamp from HAL_GetTick (ms) combined
+//   with TIM3 (16bit, microseconds). Uses 64bit arithmetic.
+//   The tim3_us argument does not have to be the current TIM3 value,
+//   but is expected to be close to it (within ~1 ms typically).
+//   Resets at 3,600,000,000 us per spec.
+//
+// Limitations:
+//   - The gap between the current TIM3 value and tim3_us must stay
+//     below UINT16_MAX / 2 ~ 30 ms; longer gaps silently produce
+//     incorrect timestamps (no error is raised).
+//     The observed worst-case main-loop cycle is ~300 us, well within
+//     this bound under normal conditions.
+//   - Breaks after HAL_GetTick wraps (~49.7 days of uptime).
+//   - 64bit arithmetic is significantly more expensive than the active
+//     implementation, which uses the 32bit TIM2 directly.
 uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us)
 {
     static uint32_t gen_last_timestamp_us = 0;
@@ -289,6 +392,7 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us)
 
     return gen_last_timestamp_us;
 }
+#endif
 
 // Setter and getter for the filter settings
 HAL_StatusTypeDef gen_set_filter_mode(enum SlcanFilterMode mode)

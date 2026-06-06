@@ -4,7 +4,9 @@
 Collection of tests which take long time to complete.
 
 - CAN bus error and buffer error rate (loopback as default or with receiver option)
-- Verify the us timestamp against the rounding compensation result (~66ms)
+- Demonstrate that the timestamp sentinel (firmware's last-resort defence) does
+  not appear under normal operation across many samples, including long idle
+  periods that cross TIM3 16-bit wrap (~65.5 ms) and the 1-hour TIM2 wrap
 - Compare clock accuracy between host and device
 
 License:
@@ -22,6 +24,9 @@ import serial
 ROUND_TRIP_TIME_SAMPLES = 10
 STATS_INTERVAL_MS = 60_000
 TIMESTAMP_PERIOD_US = 3600_000_000
+# UINT16_MAX / 2: half of the TIM3 period (~32.7 ms). Beyond this the
+# host/device timestamp diff cannot be uniquely reconstructed against
+# TIM3's 16-bit wrap, so the comparison loses meaning.
 TIMESTAMP_DIFF_THRESHOLD_US = 0xFFFF // 2
 RTT_SAFETY_MARGIN = 6   # Six sigma
 
@@ -139,16 +144,19 @@ def make_data_to_write() -> bytes:
     return data_write
 
 
+SENTINEL_US = 0xFFFFFFFF
+
+
 def extract_timestamp_from_tx_event(msg: bytes) -> int:
     """Extract 4-byte us timestamp from TX event message.
-    
+
     TX Event format: b'Z' + frame_data + timestamp_hex(8 chars) + b'\r'
-    Returns timestamp in us (0-3,600,000,000).
-    Returns -1 on error.
+    Returns timestamp in us (0-3,599,999,999).
+    Returns -1 on parse error, SENTINEL_US if device reported the out-of-spec sentinel.
     """
     if len(msg) < len(b"ZTTTTTTTT\r") or msg[0:1] != b"Z":
         return -1
-    
+
     try:
         timestamp_hex = msg[-9:-1].decode()     # Last 8 chars before '\r'
         return int(timestamp_hex, 16)
@@ -192,10 +200,12 @@ def print_timestamp_verification(stats: dict):
     max_error = stats["ts_error_max"]
     failure_count = stats["ts_failure_count"]
     
-    print(f"timestamp verification: {stats['ts_verified']} samples")
+    print(f"timestamp comparison (host - device): {stats['ts_verified']} samples")
     print(f"  average error: {avg_error:.1f} us")
     print(f"  max error: {max_error} us")
-    print(f"  failures (>{TIMESTAMP_DIFF_THRESHOLD_US} us): {failure_count}")
+    print(f"  failures: {failure_count}")
+    print(f"    of which >{TIMESTAMP_DIFF_THRESHOLD_US} us: {failure_count - stats['ts_sentinel_count']}")
+    print(f"    of which sentinel: {stats['ts_sentinel_count']}")
     print("")
 
 
@@ -249,6 +259,7 @@ def main():
         "ts_error_sum": 0,
         "ts_error_max": 0,
         "ts_failure_count": 0,
+        "ts_sentinel_count": 0,
         "clock_samples": 0,
         "clock_offset": 0,
         "clock_duration": 0,
@@ -311,8 +322,21 @@ def main():
                         print("The script is aborting.")
                         return
 
+                    # The sentinel is the firmware's last-resort defence and is expected
+                    # NOT to occur in normal operation. If it appears, treat it as a test
+                    # failure (counted in both ts_failure_count and ts_sentinel_count).
+                    # The numeric comparison itself is skipped because device_ts is invalid.
+                    if device_ts == SENTINEL_US:
+                        stats["ts_sentinel_count"] += 1
+                        stats["ts_failure_count"] += 1
+                        print(f"WARNING: device reported timestamp sentinel for message {msg.strip()}")
+                        if host_tx_time_us_list:
+                            host_tx_time_us_prev = host_tx_time_us_list.pop(0)
+                        device_ts_prev = device_ts
+                        continue
+
                     # Perform timestamp verification if we have previous values
-                    if host_tx_time_us_prev >= 0 and device_ts_prev >= 0 and host_tx_time_us_list:
+                    if host_tx_time_us_prev >= 0 and device_ts_prev >= 0 and device_ts_prev != SENTINEL_US and host_tx_time_us_list:
                         # Compare with the last timestamp
                         host_diff_us = host_tx_time_us_list[0] - host_tx_time_us_prev
                         device_diff_us = calc_timestamp_diff(device_ts, device_ts_prev)
@@ -323,7 +347,8 @@ def main():
                         stats["ts_error_max"] = max(stats["ts_error_max"], error_us)
                         
                         if error_us > TIMESTAMP_DIFF_THRESHOLD_US:
-                            print(f"WARNING: Timestamp verification failed for message {msg.strip()}: device_ts={device_ts}, device_ts_prev={device_ts_prev}")
+                            print(f"WARNING: host/device timestamp diff mismatch for message {msg.strip()}:")
+                            print(f"  host_diff={host_diff_us}us, device_diff={device_diff_us}us, error={error_us}us")
                             stats["ts_failure_count"] += 1
 
                         # Compare with the initial timestamp
@@ -362,14 +387,19 @@ def main():
         if ms >= tick_tx:
             rnd = random.randint(1, 1000)
             if rnd <= 20:
-                # Short delay to check max 2 compensation as a most likely case (66ms * 2 = 132ms)
+                # Short delay (0-150 ms) covers idle that crosses up to 2 TIM3
+                # 16-bit wraps (~65.5 ms each); verifies the sentinel does not
+                # fire across wrap boundaries.
                 tick_tx = ms + random.randint(0, 150)
             elif rnd <= 999:
-                # No delay to stress the buffer and increase the number of frames as an extreme case
+                # No delay maximises sample count for the sentinel-never-fires
+                # assertion and exercises the buffer under sustained pressure.
                 tick_tx = ms + 0
             else:
-                # Long delay to check max ~100 compensation as another extreme case (66ms * 100 = 6600ms)
-                # The rough device clock accuracy (0.5%) limits the max duration to around 66ms / 2 / 0.005 = 6600ms.
+                # Long delay (0-6600 ms) covers idle far beyond the design
+                # window so that the sentinel-never-fires assertion holds even
+                # after prolonged inactivity. Upper bound is the host/device
+                # drift budget: 65.5 ms / 2 / 0.5% ~= 6.6 s.
                 tick_tx = ms + random.randint(0, 6600)
 
             # Record host TX timestamp in us (perf_counter returns seconds, convert to us)

@@ -76,8 +76,8 @@ enum SlcanReportFlag
 // Maximum slcan message length
 #define SLCAN_MTU           (1 + 138 + 8 + 1 + 1 + 16)
                             /* z/Z for tx event 1 plus frame 138 plus timestamp 8 plus ESI 1 plus \r 1 plus some padding */
-#define SLCAN_STD_ID_LEN    (3)
-#define SLCAN_EXT_ID_LEN    (8)
+#define SLCAN_STD_ID_LEN    3U
+#define SLCAN_EXT_ID_LEN    8U
 
 // Public variables
 extern const uint8_t gen_nibble_to_ascii[];
@@ -85,8 +85,8 @@ extern const uint8_t gen_nibble_to_ascii[];
 // Prototypes
 uint16_t gen_generate_rx_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, const uint8_t *frame_data);
 uint16_t gen_generate_tx_event(uint8_t *buf, FDCAN_TxEventFifoTypeDef *tx_event, const uint8_t *frame_data);
-uint16_t gen_get_timestamp_ms(void);
-uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us);
+uint16_t gen_get_timestamp_ms_from_tim3(uint16_t latched_tim3);
+uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3);
 
 HAL_StatusTypeDef gen_set_filter_mode(enum SlcanFilterMode mode);
 HAL_StatusTypeDef gen_set_filter_code(uint32_t code);
