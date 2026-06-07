@@ -51,7 +51,6 @@ class TxEventTestCase(unittest.TestCase):
             if i % 180 == 0:
                 # the buffer can store as least 180 messages (4096 / 22)
                 rx_data += self.dut.receive()
-            time.sleep(0.001)
 
         # check all reply
         rx_data += self.dut.receive()
@@ -92,7 +91,6 @@ class TxEventTestCase(unittest.TestCase):
             if i % 180 == 0:
                 # the buffer can store as least 180 messages (4096 / 22)
                 rx_data += self.dut.receive()
-            time.sleep(0.001)
 
         # check all reply
         rx_data += self.dut.receive()
@@ -135,7 +133,6 @@ class TxEventTestCase(unittest.TestCase):
             if i % 180 == 0:
                 # the buffer can store as least 180 messages (4096 / 22)
                 rx_data += self.dut.receive()
-            time.sleep(0.001)
 
         # check all reply
         rx_data += self.dut.receive()

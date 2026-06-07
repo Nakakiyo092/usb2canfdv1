@@ -160,7 +160,6 @@ class ErrorTestCase(unittest.TestCase):
         #  send a lot of command without receiving data (amount depends on PC env.)
         for _ in range(0, 400):
             self.dut.send(b"v\r")
-            time.sleep(0.001)
 
         #  recieve all reply
         self.dut.receive()
@@ -191,7 +190,6 @@ class ErrorTestCase(unittest.TestCase):
         #  the buffer can store as least 180 messages (4096 / 24)
         for _ in range(0, 180):
             self.dut.send(b"t03F80011223344556677\r")
-            time.sleep(0.001)
 
         #  recieve all reply
         self.dut.receive()
@@ -205,7 +203,6 @@ class ErrorTestCase(unittest.TestCase):
         #  the buffer can not store 2000 messages (The amount depends on PC env due to OS buffer.)
         for _ in range(0, 2000):
             self.dut.send(b"t03F80011223344556677\r")
-            time.sleep(0.001)
 
         #  recieve all reply
         self.dut.receive()
