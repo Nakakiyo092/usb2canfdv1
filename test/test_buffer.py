@@ -20,14 +20,23 @@ class BufferTestCase(unittest.TestCase):
         self.dut.close()
 
 
-    # Check response to a command longer than the cdc rx buffer itself
     def test_too_long_data_in_cdc_rx_buffer(self):
-        # CDC Rx buffer size: 64 * 8 = 512
+        """Verify that a command longer than the CDC Rx buffer is rejected
+        with [BELL].
+
+        Sends 999 bytes of 'F' without a terminating [CR] (well above the
+        512-byte CDC Rx buffer = 8 packets x 64 bytes, and the LNBUF /
+        SLCAN_MTU limit). On the following [CR], the firmware must reject
+        the assembled command with [BELL] instead of treating it as a
+        valid F command.
+        """
         for i in range(999):
             self.dut.send(b"F")
-        self.assertEqual(self.dut.receive(), b"")
+        self.assertEqual(self.dut.receive(), b"",
+                         "Device should not respond before a terminating [CR] is received")
         self.dut.send(b"\r")
-        self.assertEqual(self.dut.receive(), b"\a")
+        self.assertEqual(self.dut.receive(), b"\a",
+                         "Over-length command should be rejected with [BELL]")
 
 
     @unittest.skip("This test occasionally fails probably due to host performance limit")
@@ -155,14 +164,21 @@ class BufferTestCase(unittest.TestCase):
 
 
     def test_rx_frame_in_cdc_tx_buffer(self):
-        """Check stored frames in CDC Tx buffer are not altered in order or content"""
+        """Verify CDC Tx buffer preserves order and content of stored Rx
+        frame reports under sustained load.
+
+        Internal-loopback mode: sends 180 short data frames (sized to
+        fit in the 4096-byte CDC Tx slot at ~22 bytes per reply). Expects
+        all `z[CR]` acks and looped-back Rx frame reports in order, with
+        no loss reported via the F command.
+        """
         #self.dut.print_on = True
         rx_data_exp = b""
 
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # the buffer can store as least 180 messages (4096 / 22)
+        # The buffer can store at least 180 messages (4096 / 22)
         for i in range(0, 180):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
@@ -171,17 +187,26 @@ class BufferTestCase(unittest.TestCase):
 
         # Check all reply
         rx_data = self.dut.receive()
-        self.assertEqual(rx_data, rx_data_exp)
+        self.assertEqual(rx_data, rx_data_exp,
+                         "CDC Tx buffer altered the order or content of stored Rx frame reports")
 
         # Check no message loss
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00 (no loss) after 180-frame Rx burst within CDC Tx capacity")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_tx_frame_in_cdc_tx_buffer(self):
-        """Check stored frames in CDC Tx buffer are not altered in order or content"""
+        """Verify CDC Tx buffer preserves order and content of stored Tx
+        event reports under sustained load.
+
+        Reporting mode z0002 (Tx event ON, Rx OFF). Sends 180 short data
+        frames over internal loopback (sized to fit in the 4096-byte CDC
+        Tx slot at ~22 bytes per Tx event) and confirms each Tx event
+        report is delivered in order with no loss.
+        """
         #self.dut.print_on = True
         rx_data_exp = b""
 
@@ -190,7 +215,7 @@ class BufferTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # The buffer can store as least 180 messages (4096 / 22)
+        # The buffer can store at least 180 messages (4096 / 22)
         for i in range(0, 180):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
@@ -199,11 +224,13 @@ class BufferTestCase(unittest.TestCase):
 
         # Check all reply
         rx_data = self.dut.receive()
-        self.assertEqual(rx_data, rx_data_exp)
+        self.assertEqual(rx_data, rx_data_exp,
+                         "CDC Tx buffer altered the order or content of stored Tx event reports")
 
         # Check no message loss
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00 (no loss) after 180-frame Tx-event burst within CDC Tx capacity")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -250,9 +277,15 @@ class BufferTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"F03\r")  # Or F02
 
 
-    # Check stored frames in CAN Rx buffer are not altered in order or content
     def test_can_rx_buffer(self):
-        """Check stored frames in CAN Rx buffer are not altered in order or content"""
+        """Verify CAN Rx buffer preserves order of frames received in bursts.
+
+        Sends frames in chunks of 30 (well above the HAL Rx FIFO depth of
+        3) at S8/Y5 (1 Mbps / 5 Mbps) to force frame loss. Verifies that
+        the frames that DO reach the host are in the correct order, and
+        that the F command reports F08 (DATA_OVERRUN) indicating the
+        dropped frames (HAL Rx FIFO message lost).
+        """
         #self.dut.print_on = True
 
         chunk = 30  # "stun" the device by sending too many frames at once
@@ -281,7 +314,8 @@ class BufferTestCase(unittest.TestCase):
 
         # Check number of acks (this is not mandatory)
         rx_msgs = rx_data.split(b"\r")
-        self.assertEqual(rx_msgs.count(b"z"), int(180 / chunk) * chunk)
+        self.assertEqual(rx_msgs.count(b"z"), int(180 / chunk) * chunk,
+                         "Unexpected number of z[CR] acks for the sent Tx commands")
         rx_msgs = [msg for msg in rx_msgs if msg != b"z"]   # remove acks
 
         # Check rx frames are as expected (except frame loss)
@@ -291,17 +325,26 @@ class BufferTestCase(unittest.TestCase):
                 break
             if msg == rx_msgs[0]:
                 rx_msgs.remove(rx_msgs[0])
-        self.assertEqual(rx_msgs, [])
+        self.assertEqual(rx_msgs, [],
+                         "Received Rx frames are out of order (some leftovers did not match the expected sequence)")
 
-        # Check message loss in the HAL buffer to confrim a frame stack
+        # Check message loss in the HAL buffer to confirm a frame stack
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F08\r")
+        self.assertEqual(self.dut.receive(), b"F08\r",
+                         "Expected F08 (DATA_OVERRUN) from HAL Rx FIFO loss after burst beyond FIFO depth")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_can_tx_buffer(self):
-        """Check stored frames in CAN Tx buffer are not altered in order or content"""
+        """Verify CAN Tx buffer preserves order and content of frames
+        within its capacity (APP Tx FIFO = 64 slots).
+
+        Sends exactly 64 short data frames at S0 (10 kbps, ~10 ms per
+        frame) so the APP Tx FIFO fills but does not overflow. Internal
+        loopback then echoes each frame back; expects all 64 to arrive
+        in order with no loss (F00) at the end.
+        """
         #self.dut.print_on = True
         rx_data_exp = b""
 
@@ -310,7 +353,7 @@ class BufferTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # The buffer can store as least 64 messages
+        # The buffer can store at least 64 messages
         # TODO: Cause buffer overflow and prove that no swapping happens?
         for i in range(0, 64):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
@@ -321,17 +364,28 @@ class BufferTestCase(unittest.TestCase):
         rx_data = self.dut.receive()
         rx_data += self.dut.receive()    # just to make sure (need time to tx all)
         rx_data = rx_data.replace(b"z\r", b"")
-        self.assertEqual(rx_data, rx_data_exp)
+        self.assertEqual(rx_data, rx_data_exp,
+                         "CAN Tx buffer altered the order or content of stored frames within capacity")
 
         # Check no buffer overflow
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00 (no loss) after sending exactly the APP Tx FIFO capacity (64 frames)")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_can_tx_event_buffer(self):
-        """Check stored frames in Tx event buffer are not altered in order or content"""
+        """Verify HAL Tx Event FIFO preserves order of events during burst
+        transmission, and that overflow is reported via F08.
+
+        Sends frames in chunks of 30 (well above the HAL Tx Event FIFO
+        depth of 3) at S8/Y5 (1 Mbps / 5 Mbps) with z0002 (Tx event ON,
+        Rx OFF) to force event drops. Verifies that the events that DO
+        reach the host are in the correct order, and that the F command
+        reports F08 (DATA_OVERRUN). See the inline comment below for
+        why F08 specifically proves Tx Event FIFO loss here.
+        """
         #self.dut.print_on = True
 
         chunk = 30  # "stun" the device by sending too many frames at once
@@ -361,7 +415,8 @@ class BufferTestCase(unittest.TestCase):
 
         # Check number of acks (this is not mandatory)
         rx_msgs = rx_data.split(b"\r")
-        self.assertEqual(rx_msgs.count(b""), int(180 / chunk) * chunk + 1)  # +1 by the last tx event
+        self.assertEqual(rx_msgs.count(b""), int(180 / chunk) * chunk + 1,
+                         "Unexpected number of bare [CR] acks for the sent Tx commands (z0002 mode)")  # +1 by the last tx event
         rx_msgs = [msg for msg in rx_msgs if msg != b""]   # remove acks
 
         # Check rx frames are as expected (except frame loss)
@@ -371,7 +426,8 @@ class BufferTestCase(unittest.TestCase):
                 break
             if msg == rx_msgs[0]:
                 rx_msgs.remove(rx_msgs[0])
-        self.assertEqual(rx_msgs, [])
+        self.assertEqual(rx_msgs, [],
+                         "Received Tx events are out of order (some leftovers did not match the expected sequence)")
 
         # Check F bit 3 (DATA_OVERRUN) is raised.
         # F bit 3 has three possible sources (HAL Rx FIFO lost, HAL Tx Frame FIFO write fail,
@@ -382,16 +438,24 @@ class BufferTestCase(unittest.TestCase):
         # Therefore F bit 3 here specifically proves HAL Tx Event FIFO element loss (frame stack).
         # See also: https://github.com/Nakakiyo092/usb2canfdv1/issues/49
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F08\r")
+        self.assertEqual(self.dut.receive(), b"F08\r",
+                         "Expected F08 (DATA_OVERRUN) from HAL Tx Event FIFO loss; see comment above for why this is specific")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_high_rx_frame_rate(self):
+        """Verify Rx-side buffers preserve order and content at the
+        maximum sustainable frame rate.
+
+        S8/Y5 (1 Mbps / 5 Mbps) with z0001 (Rx ON, Tx event OFF). Sends
+        180 short frames back-to-back over internal loopback (sized to
+        fit in the 4096-byte CDC Tx slot at ~22 bytes per reply) and
+        checks that every frame arrives in order with no loss (F00).
+        """
         #self.dut.print_on = True
         rx_data_exp = b""
 
-        # Check stored frames in buffer are not altered in order or content in high rx frame rate
         self.dut.send(b"S8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Y5\r")
@@ -401,7 +465,7 @@ class BufferTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        #  the buffer can store as least 180 messages (4096 / 22)
+        # The buffer can store at least 180 messages (4096 / 22)
         for i in range(0, 180):
             tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
@@ -409,20 +473,29 @@ class BufferTestCase(unittest.TestCase):
             #time.sleep(0.001)   # TODO ? Prevent stuck on host side
 
         rx_data = self.dut.receive()
-        self.assertEqual(rx_data, rx_data_exp)
+        self.assertEqual(rx_data, rx_data_exp,
+                         "Rx buffer altered the order or content of frames under high Rx frame rate")
 
         # Check no buffer overflow
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00 (no loss) after 180-frame burst at high Rx rate")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_high_tx_frame_rate(self):
+        """Verify Tx-side buffers preserve order and content at the
+        maximum sustainable Tx event rate.
+
+        S8/Y5 (1 Mbps / 5 Mbps) with z0002 (Tx event ON, Rx OFF). Sends
+        180 short frames back-to-back over internal loopback (sized to
+        fit in the 4096-byte CDC Tx slot at ~22 bytes per Tx event) and
+        checks that every Tx event arrives in order with no loss (F00).
+        """
         #self.dut.print_on = True
         rx_data_exp = b""
 
-        # Check stored frames in buffer are not altered in order or content in high tx frame rate
         self.dut.send(b"S8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Y5\r")
@@ -432,7 +505,7 @@ class BufferTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        #  the buffer can store as least 180 messages (4096 / 22)
+        # The buffer can store at least 180 messages (4096 / 22)
         for i in range(0, 180):
             tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
@@ -440,11 +513,13 @@ class BufferTestCase(unittest.TestCase):
             #time.sleep(0.001)   # TODO ? Prevent stuck on host side
 
         rx_data = self.dut.receive()
-        self.assertEqual(rx_data, rx_data_exp)
+        self.assertEqual(rx_data, rx_data_exp,
+                         "Tx buffer altered the order or content of events under high Tx frame rate")
 
         # Check no buffer overflow
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00 (no loss) after 180-frame burst at high Tx rate")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
