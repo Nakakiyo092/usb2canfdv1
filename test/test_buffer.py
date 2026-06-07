@@ -39,128 +39,80 @@ class BufferTestCase(unittest.TestCase):
                          "Over-length command should be rejected with [BELL]")
 
 
-    @unittest.skip("This test occasionally fails probably due to host performance limit")
     def test_message_loss_in_cdc_rx_buffer(self):
-        """
-        Check no corruption of data in cdc rx buffer when it is full
+        """Verify the firmware's CDC Rx buffer overflow defence:
+        - the torn-prefix dropping in buf_process() prevents data loss from
+          producing a fabricated valid command, AND
+        - the overflow is reported via F bit 1 (SLCAN_STS_CAN_TX_FIFO_FULL,
+          mapped to CDC Rx side per doc/2.-Command-List.md).
 
         Method:
-        Send data within which all message is valid command
-        but turns into an invalid command if some of the data is lost.
-        Send such data repeatedly until the rx buffer of the device is full.
+        Probe the device once with `I\\r` to capture this hardware's
+        expected reply (it varies by chip / clock_mhz, so we cannot
+        hard-code `I3050\\r`). Then stall the main loop with
+        ~<HHHH>[CR] (DEBUG-only) and flood the device with `II\\r` during
+        the stall. `II\\r` is a 3-byte invalid command whose length is
+        coprime with the 64-byte USB CDC packet size, so any non-trivial
+        byte loss (single byte, packet-aligned, or multi-packet) shifts
+        the command boundary. If the torn-prefix logic fails to discard
+        the garbled bytes, a stray `I\\r` slice would produce an I reply
+        or a bare `\\r` OK reply.
 
-        Criteria:
-        The device should not respond to the false invalid command
-        which is created by data loss.
+        Expected:
+        rx contains only the deferred stall ACK (`\\r`) and a sequence of
+        `\\a` (BEL) replies. F bit 1 is set.
         """
-        #self.dut.print_on = True
-        version = b""
-        tx_data = b""
-        rx_data = b""
-
-        self.dut.send(b"V\r")
-        version = self.dut.receive()
-
-        self.dut.send(b"O\r")   # Need to use F
+        # Open internal loopback so the F command is available afterwards.
+        self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Rx buffer size: 8 * 64
-        for _ in range(2500):
-            tx_data += b"V\r\r" # 2 char loss will create VV\r. V\r version is in the tx test.
-        for _ in range(10):
-            if self.dut.ser.write(tx_data) != len(tx_data):
-                print("Failed to write all data to the device")
-            rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data = rx_data.replace(version, b"")
-        rx_data = rx_data.replace(b"\r", b"")
-        self.assertEqual(rx_data, b"")  # Confirm no \a
-        time.sleep(0.1)
-        self.dut.send(b"\r")    # Flush the buffer
+        # Capture this hardware's I reply for the corruption check.
+        self.dut.send(b"I\r")
+        expected_reply = self.dut.receive()
+        self.assertTrue(expected_reply.startswith(b"I") and expected_reply.endswith(b"\r"),
+                        f"Unexpected shape for the I reply: {expected_reply!r}")
+
+        # Stall 1000 ms (0x03E8) and flood `II\r` during the stall.
+        # 1500 * 3 = 4500 bytes >> CDC Rx ring (BUF_CDC_RX_NUM_BUFS * 64 ~= 512 B).
+        self.dut.send(b"~03E8\r")
+        self.dut.ser.write(b"II\r" * 1500)
+        time.sleep(1.5)
+
+        rx_data = b""
+        for _ in range(20):
+            chunk = self.dut.receive()
+            if not chunk:
+                break
+            rx_data += chunk
+
+        # The deferred stall ACK arrives as a single leading `\r`. Strip it,
+        # then every remaining byte must be `\a` (BEL). Any I reply leakage
+        # or extra `\r` indicates the torn-prefix defence failed.
+        self.assertTrue(rx_data.startswith(b"\r"),
+                        f"Expected the stall ACK as the first byte, got: {rx_data[:16]!r}")
+        residue = rx_data[1:]
+        self.assertNotIn(expected_reply, residue,
+                         f"I reply leaked: torn data parsed as a valid I command, got: {rx_data!r}")
+        self.assertEqual(residue.replace(b"\a", b""), b"",
+                         f"Non-BEL bytes detected after the stall ACK, got: {rx_data!r}")
+
+        # Send a bare [CR] (empty command) before F. Without this nudge the
+        # F reply is delayed until the device has fully digested the flooded
+        # buffers; the empty command flushes that pending state and lets the
+        # subsequent F return immediately.
+        self.dut.send(b"\r")
         self.dut.receive()
+
         self.dut.send(b"F\r")
-        self.assertIn(self.dut.receive(), [b"F03\r", b"F01\r"])
+        f_reply = self.dut.receive()
+        self.assertEqual(len(f_reply), len(b"Fxx\r"),
+                         f"Unexpected F reply length: {f_reply!r}")
+        flags = int(f_reply[1:3], 16)
+        self.assertTrue(flags & 0x02,
+                        f"F bit 1 (CDC Rx overflow) is not raised, F={f_reply!r}")
 
-
-    @unittest.skip("This test does not create rx buffer overflow")
-    def test_message_loss_in_cdc_rx_buffer_fail(self):
-        """
-        Check no corruption of data in cdc rx buffer when it is full
-
-        Method:
-        Send data within which all message is invalid command
-        but turns into a valid command if some of the data is lost.
-        Send such data repeatedly until the rx buffer of the device is full.
-
-        Criteria:
-        The device should not respond to the false valid command
-        which is created by data loss.
-        """
-        #self.dut.print_on = True
-
-        self.dut.send(b"O\r")   # Need to use F
+        self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
-
-        # Catch char-level loss: 1, 4, 7, 10, 13, 16, 19 ...
-        tx_data = b""
-        rx_data = b""
-        for _ in range(900):
-            tx_data += b"VV\r"
-        for _ in range(10):
-            if self.dut.ser.write(tx_data) != len(tx_data):
-                print("Failed to write all data to the device")
-            rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data = rx_data.replace(b"\a", b"")
-        rx_data = rx_data.replace(b"\r", b"")
-        self.assertEqual(rx_data, b"")
-        time.sleep(0.1)
-        self.dut.send(b"\r")    # Flush the buffer
-        self.dut.receive()
-        self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F03\r")  # Or F01
-
-        # Catch char-level loss: 1, 2, 5, 6, 9, 10, 13, 14, 17, 18 ...
-        tx_data = b""
-        rx_data = b""
-        for _ in range(800):
-            tx_data += b"VV\r\r"
-        for _ in range(10):
-            if self.dut.ser.write(tx_data) != len(tx_data):
-                print("Failed to write all data to the device")
-            rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data = rx_data.replace(b"\a", b"")
-        rx_data = rx_data.replace(b"\r", b"")
-        self.assertEqual(rx_data, b"")
-        time.sleep(0.1)
-        self.dut.send(b"\r")    # Flush the buffer
-        self.dut.receive()
-        self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F03\r")
-
-        # Catch dchar-level loss: 1, 2, 3, 6, 7, 8, 11, 12, 13, 16, 17, 18 ...
-        tx_data = b""
-        rx_data = b""
-        for _ in range(700):
-            tx_data += b"VV\r\r\r"
-        for _ in range(10):
-            if self.dut.ser.write(tx_data) != len(tx_data):
-                print("Failed to write all data to the device")
-            rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data = rx_data.replace(b"\a", b"")
-        rx_data = rx_data.replace(b"\r", b"")
-        self.assertEqual(rx_data, b"")
-        time.sleep(0.1)
-        self.dut.send(b"\r")    # Flush the buffer
-        self.dut.receive()
-        self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F03\r")
 
 
     def test_rx_frame_in_cdc_tx_buffer(self):
@@ -233,46 +185,87 @@ class BufferTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    @unittest.skip("This test occasionally fails probably due to host performance limit")
     def test_message_loss_in_cdc_tx_buffer(self):
-        """
-        Check no corruption of data in cdc tx buffer when it is full
+        """Verify the firmware's CDC Tx buffer overflow behaviour:
+        - whole replies may be lost when the buffer fills, BUT
+        - no reply is partially written (truncated / corrupted), AND
+        - the overflow is reported via F bit 0 (SLCAN_STS_CAN_RX_FIFO_FULL,
+          mapped to CDC Tx side per doc/2.-Command-List.md).
 
         Method:
-        Send many commands to the device and occasionally receive responses
-        until the tx buffer of the device is full.
+        Probe the device once with `I\\r` to capture this hardware's
+        expected reply (the reply varies by chip / clock_mhz, so we cannot
+        hard-code `I3050\\r`). Then flood the device with `I\\r` in
+        small bursts separated by short sleeps. The bursts are sized so
+        the CDC Rx buffer never overflows (which would corrupt the
+        request stream and skew the test). The host does NOT drain the
+        Tx buffer during the bursts, so replies accumulate on the device
+        side until the CDC Tx buffer (BUF_CDC_TX_NUM_BUFS * 4096 B ~= 12 kB
+        => ~2k replies) overflows.
 
-        Criteria:
-        Data loss is acceptable if the whole message is lost,
-        but the device should not send any corrupted data.
+        Expected:
+        - The drained stream consists solely of intact expected_reply
+          repeats - no truncated or corrupted fragments.
+        - The number of received replies is strictly less than the number
+          of commands sent (proves the CDC Tx buffer actually overflowed).
+        - F bit 0 is set.
         """
-        #self.dut.print_on = True
-        version = b""
-        tx_data = b""
-        rx_data = b""
-
-        self.dut.send(b"V\r")
-        version = self.dut.receive()
-
-        self.dut.send(b"O\r")   # Need to use F
+        # Open internal loopback so the F command is available afterwards.
+        self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Tx buffer size: 3 * 4096
-        for _ in range(2500):   # * 6 bytes of reply
-            tx_data += b"V\r"
-        for _ in range(10):
-            if self.dut.ser.write(tx_data) != len(tx_data):
-                print("Failed to write all data to the device")
-            rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data += self.dut.receive()
-        rx_data = rx_data.replace(version, b"")
-        self.assertEqual(rx_data, b"")  # Confirm no \a as a rx test
-        time.sleep(0.1)
-        self.dut.send(b"\r")    # Flush the buffer
+        # Capture this hardware's I reply (e.g. b"I3050\r" on STM32G0B1,
+        # b"I30A0\r" on STM32G431). The test is then hardware-agnostic.
+        self.dut.send(b"I\r")
+        expected_reply = self.dut.receive()
+        self.assertTrue(expected_reply.startswith(b"I") and expected_reply.endswith(b"\r"),
+                        f"Unexpected shape for the I reply: {expected_reply!r}")
+
+        # Burst flood, throttled to keep the CDC Rx buffer below overflow
+        # so the request stream is not torn (which would skew the Tx test).
+        # 50 requests * 2 B = 100 B per burst, well under the ~512 B Rx ring.
+        # Burst-to-burst sleep lets the main loop drain Rx faster than we
+        # write while replies pile up in Tx since the host does not read.
+        BURST = 50
+        BURST_DELAY = 0.05      # 50 ms between bursts
+        N_REPLIES = 3000        # > 2k slots in CDC Tx ring -> guaranteed overflow
+        for _ in range(N_REPLIES // BURST):
+            self.dut.ser.write(b"I\r" * BURST)
+            time.sleep(BURST_DELAY)
+
+        # Drain the Tx buffer.
+        time.sleep(0.5)
+        rx_data = b""
+        for _ in range(30):
+            chunk = self.dut.receive()
+            if not chunk:
+                break
+            rx_data += chunk
+
+        # Every byte received must belong to a complete reply (no truncation).
+        self.assertEqual(rx_data.replace(expected_reply, b""), b"",
+                         f"Non-{expected_reply!r} residue detected (truncated/corrupt reply): {rx_data!r}")
+
+        # Replies are lost as whole units; received count must be < N_REPLIES.
+        received = rx_data.count(expected_reply)
+        self.assertLess(received, N_REPLIES,
+                        f"Expected reply loss but received all {received}/{N_REPLIES}; no overflow pressure")
+
+        # Flush any pending device-side state with a bare [CR] before F
+        # (same rationale as the Rx test).
+        self.dut.send(b"\r")
         self.dut.receive()
+
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F03\r")  # Or F02
+        f_reply = self.dut.receive()
+        self.assertEqual(len(f_reply), len(b"Fxx\r"),
+                         f"Unexpected F reply length: {f_reply!r}")
+        flags = int(f_reply[1:3], 16)
+        self.assertTrue(flags & 0x01,
+                        f"F bit 0 (CDC Tx overflow) is not raised, F={f_reply!r}")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_can_rx_buffer(self):
