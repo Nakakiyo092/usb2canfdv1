@@ -201,8 +201,8 @@ def print_timestamp_verification(stats: dict):
     failure_count = stats["ts_failure_count"]
     
     print(f"timestamp comparison (host - device): {stats['ts_verified']} samples")
-    print(f"  average error: {avg_error:.1f} us")
-    print(f"  max error: {max_error} us")
+    print(f"  ave abs error: {avg_error:.1f} us")
+    print(f"  max abs error: {max_error} us")
     print(f"  failures: {failure_count}")
     print(f"    of which >{TIMESTAMP_DIFF_THRESHOLD_US} us: {failure_count - stats['ts_sentinel_count']}")
     print(f"    of which sentinel: {stats['ts_sentinel_count']}")
@@ -210,20 +210,42 @@ def print_timestamp_verification(stats: dict):
 
 
 def print_clock_accuracy(stats: dict):
-    """Print clock drift statistics."""
+    """Print clock drift statistics.
+
+    Primary numbers use time.perf_counter() (monotonic, RTT-jitter-bounded).
+    Reference numbers based on time.time() are also printed; on systems with
+    active NTP sync these track wall clock and the device's drift vs NTP
+    becomes visible. On systems without NTP sync the two numbers agree
+    within the host's free-running clock drift."""
     if stats["clock_samples"] == 0:
         print("clock accuracy: 0 samples (need at least 1)")
         print("")
         return
 
     print(f"clock accuracy: {stats['clock_duration'] // 1000_000} sec")
-    print(f"  clock offset: {stats['clock_offset'] / 1000:.3f} ms")
+    print(f"  clock offset: {stats['clock_offset'] / 1000:.1f} ms")
     if stats['clock_duration'] > 0:
-        print(f"  drift upper bound: {stats['clock_offset_upper_bound'] / stats['clock_duration'] * 1000_000:.3f} ppm")
-        print(f"  drift lower bound: {stats['clock_offset_lower_bound'] / stats['clock_duration'] * 1000_000:.3f} ppm")
+        print(f"  drift upper bound: {stats['clock_offset_upper_bound'] / stats['clock_duration'] * 1000_000:.1f} ppm")
+        print(f"  drift lower bound: {stats['clock_offset_lower_bound'] / stats['clock_duration'] * 1000_000:.1f} ppm")
     else:
         print(f"  drift upper bound: N/A ppm")
         print(f"  drift lower bound: N/A ppm")
+
+    # Reference value via time.time() (NTP-aware when NTP sync is active).
+    # host_perf_vs_wall_ppm = how much perf_counter ran faster than the wall
+    # clock since test start. Adding it to the perf_counter-based device drift
+    # gives the device drift against the wall clock.
+    wall_us = stats.get("host_walltime_elapsed_us", 0)
+    perf_us = stats.get("host_perfcounter_elapsed_us", 0)
+    if wall_us > 0:
+        host_perf_vs_wall_ppm = (perf_us - wall_us) / wall_us * 1_000_000
+        print(f"  (reference, time.time() based):")
+        print(f"    host perf_counter vs wall clock: {host_perf_vs_wall_ppm:+.1f} ppm")
+        if stats['clock_duration'] > 0:
+            drift_us_perf = stats['clock_offset']
+            drift_us_wall = drift_us_perf - (perf_us - wall_us)
+            wall_ppm = drift_us_wall / wall_us * 1_000_000
+            print(f"    device drift vs wall clock:      {wall_ppm:+.1f} ppm")
     print("")
 
 
@@ -265,7 +287,15 @@ def main():
         "clock_duration": 0,
         "clock_offset_upper_bound": 0,
         "clock_offset_lower_bound": 0,
+        # Wall clock vs perf_counter reference. Refreshed before each stats
+        # print so the snapshot is consistent with the rest of `stats`.
+        "host_walltime_elapsed_us": 0,
+        "host_perfcounter_elapsed_us": 0,
     }
+
+    # Reference points for the time.time() vs perf_counter comparison.
+    host_walltime_start_us = int(round(time.time() * 1_000_000))
+    host_perfcounter_start_us = int(round(time.perf_counter() * 1_000_000))
 
     # Timestamp tracking
     host_tx_time_us_list = []
@@ -411,6 +441,16 @@ def main():
 
         if ms >= tick_stats:
             tick_stats = ms + STATS_INTERVAL_MS
+
+            # Refresh the wall-clock / perf_counter reference pair before
+            # printing so print_clock_accuracy() can compute the NTP-aware
+            # reference drift consistently with the rest of `stats`.
+            stats["host_walltime_elapsed_us"] = (
+                int(round(time.time() * 1_000_000)) - host_walltime_start_us
+            )
+            stats["host_perfcounter_elapsed_us"] = (
+                int(round(time.perf_counter() * 1_000_000)) - host_perfcounter_start_us
+            )
 
             print("")
             print(f"--- Stats at {(ms - tick_start) / 3600 / 1000:.3f} hours ---")
