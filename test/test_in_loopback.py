@@ -644,6 +644,80 @@ class TimestampUsTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_min_bitrate_classic(self):
+        """The us timestamp must hold for a classic DLC8 frame at the
+        documented lower bound (10 kbps, ~11 ms on the wire) and must
+        report the 0xFFFFFFFF sentinel for any bitrate slower than that
+        (here: 5 kbps, ~22 ms, exceeds the ~20 ms SOF-to-report window).
+        Internal-loopback isolates the test from any external bus."""
+        FRAME = b"T0137FEC880011223344556677"  # classic, ext ID, DLC8
+
+        # === OK case: 10 kbps nominal (prescaler=100, presets match S0) ===
+        self.dut.send(b"s64450A05\r")    # 10 kbps via sddxxyyzz raw form
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Z2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(FRAME + b"\r")
+        time.sleep(0.1)
+        rx_data = self.dut.receive()
+        self.assertNotIn(b"FFFFFFFF\r", rx_data,
+                         f"At 10 kbps the classic timestamp must NOT be sentinel, got: {rx_data!r}")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # === NG case: 5 kbps (prescaler=200, twice as slow) ===
+        self.dut.send(b"sC8450A05\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(FRAME + b"\r")
+        time.sleep(0.2)
+        rx_data = self.dut.receive()
+        self.assertIn(FRAME + b"FFFFFFFF\r", rx_data,
+                      f"At 5 kbps the classic timestamp must be sentinel FFFFFFFF, got: {rx_data!r}")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_min_bitrate_fd(self):
+        """The us timestamp must hold for a CAN FD DLC=15 (64-byte) frame
+        with BRS off at the documented lower bound (50 kbps nominal,
+        ~12 ms on the wire) and must report the 0xFFFFFFFF sentinel for
+        any bitrate slower than that (here: 25 kbps, ~24 ms, exceeds the
+        ~20 ms SOF-to-report window)."""
+        FRAME_BODY = b"D0137FEC8F" + b"00112233445566778899AABBCCDDEEFF" * 4
+
+        # === OK case: 50 kbps nominal (prescaler=20), BRS off ===
+        self.dut.send(b"s14450A05\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Z2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(FRAME_BODY + b"\r")
+        time.sleep(0.1)
+        rx_data = self.dut.receive()
+        self.assertNotIn(b"FFFFFFFF\r", rx_data,
+                         f"At 50 kbps FD the timestamp must NOT be sentinel, got: {rx_data!r}")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # === NG case: 25 kbps nominal (prescaler=40), BRS off ===
+        self.dut.send(b"s28450A05\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(FRAME_BODY + b"\r")
+        time.sleep(0.2)
+        rx_data = self.dut.receive()
+        self.assertIn(FRAME_BODY + b"FFFFFFFF\r", rx_data,
+                      f"At 25 kbps FD the timestamp must be sentinel FFFFFFFF, got: {rx_data!r}")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
     def test_timestamp_invalid_when_stalled(self):
         """When the main loop is stalled beyond the SOF-to-report design
         window (~20 ms), the us timestamp must be reported as the
