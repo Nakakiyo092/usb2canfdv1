@@ -51,6 +51,8 @@ class TxEventTestCase(unittest.TestCase):
             if i % 180 == 0:
                 # the buffer can store as least 180 messages (4096 / 22)
                 rx_data += self.dut.receive()
+            # Avoid main-loop starvation (STUN).
+            # See https://github.com/Nakakiyo092/usb2canfdv1/discussions/152
             time.sleep(0.001)
 
         # check all reply
@@ -92,6 +94,8 @@ class TxEventTestCase(unittest.TestCase):
             if i % 180 == 0:
                 # the buffer can store as least 180 messages (4096 / 22)
                 rx_data += self.dut.receive()
+            # Avoid main-loop starvation (STUN).
+            # See https://github.com/Nakakiyo092/usb2canfdv1/discussions/152
             time.sleep(0.001)
 
         # check all reply
@@ -135,6 +139,8 @@ class TxEventTestCase(unittest.TestCase):
             if i % 180 == 0:
                 # the buffer can store as least 180 messages (4096 / 22)
                 rx_data += self.dut.receive()
+            # Avoid main-loop starvation (STUN).
+            # See https://github.com/Nakakiyo092/usb2canfdv1/discussions/152
             time.sleep(0.001)
 
         # check all reply
