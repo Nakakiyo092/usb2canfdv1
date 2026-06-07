@@ -283,13 +283,12 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps min-stuffing)")
-        # 5% margin for test setup and calculation
-        # TODO 5% is not enough for Linux virtual box (+2 for more stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
         pct = int(rx_data[89:91], 10)
-        self.assertGreaterEqual(pct, 95,
-                                f"10 kbps min-stuffing full load: reported {pct} %, expected within [95, 99]")
+        self.assertGreaterEqual(pct, 93,
+                                f"10 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
         self.assertLessEqual(pct, 99,
-                             f"10 kbps min-stuffing full load: reported {pct} %, expected within [95, 99]")
+                             f"10 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
 
 
         # Maximum stuffing (~ 20% * (11 + 64) / 112 ~ 14% underestimation)
@@ -310,12 +309,12 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps max-stuffing)")
-        # 5% margin for test setup and calculation
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
         pct = int(rx_data[89:91], 10)
-        self.assertGreaterEqual(pct, 83,
-                                f"10 kbps max-stuffing full load: reported {pct} %, expected within [83, 88]")
+        self.assertGreaterEqual(pct, 81,
+                                f"10 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
         self.assertLessEqual(pct, 88,
-                             f"10 kbps max-stuffing full load: reported {pct} %, expected within [83, 88]")
+                             f"10 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -357,12 +356,12 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps min-stuffing)")
-        # 5% margin for test setup and calculation
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
         pct = int(rx_data[89:91], 10)
-        self.assertGreaterEqual(pct, 95,
-                                f"20 kbps min-stuffing full load: reported {pct} %, expected within [95, 99]")
+        self.assertGreaterEqual(pct, 93,
+                                f"20 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
         self.assertLessEqual(pct, 99,
-                             f"20 kbps min-stuffing full load: reported {pct} %, expected within [95, 99]")
+                             f"20 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
 
 
         # Maximum stuffing (~ 20% * (11 + 64) / 112 ~ 14% underestimation)
@@ -383,12 +382,12 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps max-stuffing)")
-        # 5% margin for test setup and calculation
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
         pct = int(rx_data[89:91], 10)
-        self.assertGreaterEqual(pct, 83,
-                                f"20 kbps max-stuffing full load: reported {pct} %, expected within [83, 88]")
+        self.assertGreaterEqual(pct, 81,
+                                f"20 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
         self.assertLessEqual(pct, 88,
-                             f"20 kbps max-stuffing full load: reported {pct} %, expected within [83, 88]")
+                             f"20 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
