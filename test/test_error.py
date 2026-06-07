@@ -266,13 +266,32 @@ class ErrorTestCase(unittest.TestCase):
 
 
     def test_can_rx_overflow(self):
-        """Drive a sustained loopback frame burst large enough to spill the
-        CDC Tx buffer. Overflow is reported as F bit 0.
+        """Trigger a HAL CAN Rx FIFO overflow over internal loopback and
+        confirm it is reported as F bit 3 (DATA_OVERRUN -> F08).
 
-        TODO: Despite the test name, this currently exercises the CDC Tx
-        buffer overflow path, not the CAN Rx FIFO. Reworking it to actually
-        target the CAN Rx FIFO requires a faster producer than the host can
-        provide via internal loopback."""
+        Mechanism (3:1 asymmetry):
+          * buf_process drains the APP Tx queue into the HAL Tx FIFO with a
+            `while ... GetTxFifoFreeLevel() > 0` loop, sending up to 3
+            frames per main-loop iteration (HAL Tx FIFO depth).
+          * can_process pulls from the HAL Rx FIFO with a single `if
+            GetRxMessage()`, draining at most 1 frame per iteration.
+          * Under a host burst with internal loopback, +3 frames are
+            looped back per iteration while only 1 is drained -> the
+            HAL Rx FIFO (depth 3) fills within a few iterations and the
+            FDCAN hardware sets RX_FIFO0_MESSAGE_LOST, surfaced as F08.
+
+        Sister test test_can_tx_event_overflow exercises the same
+        asymmetry for the HAL Tx Event FIFO.
+
+        Note: test_buffer.test_can_rx_buffer uses the same burst pattern
+        but focuses on Rx frame ordering; this test focuses on the F08
+        flag report."""
+        self.dut.send(b"S8\r")    # 1 Mbps nominal
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Y5\r")    # 5 Mbps data
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0001\r")  # Rx frame ON, Tx event OFF
+        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -280,32 +299,30 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
-        # 180 messages fit in the CDC Tx ring (4096 / 24 bytes per reply).
-        for _ in range(0, 180):
-            self.dut.send(b"t03F80011223344556677\r")
-            # Avoid main-loop starvation (STUN).
-            # See https://github.com/Nakakiyo092/usb2canfdv1/discussions/152
-            time.sleep(0.001)
+        # Burst 180 frames in chunks of 30 - well above HAL Rx FIFO depth (3)
+        # per chunk so the asymmetry guarantees Rx FIFO overflow.
+        chunk = 30
+        n_chunks = 6
+        for i in range(0, n_chunks):
+            tx_data = b""
+            for j in range(0, chunk):
+                nbr = i * chunk + j
+                tx_data += b"t" + format(nbr, "03X").encode() + b"1" + format(nbr, "02X").encode() + b"\r"
+            self.dut.send(tx_data)
+        # Drain whatever made it through; reply ordering is not the concern here.
         self.dut.receive()
-        self.dut.receive()  # just to make sure
-
-        self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r",
-                         "180 frames should fit without overflow (CDC Tx capacity)")
-
-        # 2000 messages do not fit; the exact threshold depends on host OS
-        # buffering, so the count is generous.
-        for _ in range(0, 2000):
-            self.dut.send(b"t03F80011223344556677\r")
-            # Avoid main-loop starvation (STUN).
-            # See https://github.com/Nakakiyo092/usb2canfdv1/discussions/152
-            time.sleep(0.001)
         self.dut.receive()
-        self.dut.receive()  # just to make sure
 
+        # bit 3 (DATA_OVERRUN) is the core assertion. The APP-level Tx queue
+        # may also overflow as a side effect of the burst, so bit 1
+        # (CAN_TX_FIFO_FULL) can co-occur; only bit 3 is required.
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F01\r",
-                         "Expected F01 (CDC Tx overflow, reported via bit 0) after 2000-frame burst")
+        f_reply = self.dut.receive()
+        self.assertEqual(len(f_reply), len(b"Fxx\r"),
+                         f"Unexpected F reply length: {f_reply!r}")
+        flags = int(f_reply[1:3], 16)
+        self.assertTrue(flags & 0x08,
+                        f"F bit 3 (DATA_OVERRUN) not raised from HAL Rx FIFO loss, F={f_reply!r}")
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r",
                          "F bits should clear after read")
@@ -356,6 +373,71 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F02\r",
                          "F02 should be raised again by the rejection burst")
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "F bits should clear after read")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_can_tx_event_overflow(self):
+        """Trigger a HAL Tx Event FIFO overflow over internal loopback and
+        confirm it is reported as F bit 3 (DATA_OVERRUN -> F08).
+
+        Mechanism (3:1 asymmetry):
+          * buf_process drains the APP Tx queue into the HAL Tx FIFO with a
+            `while ... GetTxFifoFreeLevel() > 0` loop, sending up to 3
+            frames per main-loop iteration. Each transmission produces a
+            Tx Event entry once the frame completes on the bus.
+          * can_process pulls from the HAL Tx Event FIFO with a single
+            `if GetTxEvent()`, draining at most 1 event per iteration.
+          * Under a host burst with Tx event reporting enabled, +3
+            events are queued per iteration while only 1 is drained ->
+            the HAL Tx Event FIFO (depth 3) fills and TX_EVT_FIFO_ELT_LOST
+            is raised, surfaced as F08.
+
+        Sister test test_can_rx_overflow exercises the same asymmetry
+        for the HAL Rx FIFO.
+
+        Note: test_buffer.test_can_tx_event_buffer uses the same burst
+        pattern but focuses on Tx event ordering; this test focuses on
+        the F08 flag report."""
+        self.dut.send(b"S8\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Y5\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0002\r")  # Rx frame OFF, Tx event ON
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Sanity check at idle.
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r")
+
+        # Same chunked-burst pattern as the Rx overflow test.
+        chunk = 30
+        n_chunks = 6
+        for i in range(0, n_chunks):
+            tx_data = b""
+            for j in range(0, chunk):
+                nbr = i * chunk + j
+                tx_data += b"t" + format(nbr, "03X").encode() + b"1" + format(nbr, "02X").encode() + b"\r"
+            self.dut.send(tx_data)
+        self.dut.receive()
+        self.dut.receive()
+
+        # bit 3 (DATA_OVERRUN) is the core assertion. The APP-level Tx queue
+        # may also overflow as a side effect of the burst, so bit 1
+        # (CAN_TX_FIFO_FULL) can co-occur; only bit 3 is required.
+        self.dut.send(b"F\r")
+        f_reply = self.dut.receive()
+        self.assertEqual(len(f_reply), len(b"Fxx\r"),
+                         f"Unexpected F reply length: {f_reply!r}")
+        flags = int(f_reply[1:3], 16)
+        self.assertTrue(flags & 0x08,
+                        f"F bit 3 (DATA_OVERRUN) not raised from HAL Tx Event FIFO loss, F={f_reply!r}")
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r",
                          "F bits should clear after read")
