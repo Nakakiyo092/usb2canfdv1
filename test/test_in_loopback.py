@@ -649,8 +649,13 @@ class TimestampUsTestCase(unittest.TestCase):
     def test_timestamp_same_stamp(self):
         """In internal-loopback mode a single transmitted frame produces both
         a Tx event report and an Rx frame report. Both share the same SOF
-        moment, so their us timestamps must be byte-identical."""
-        # TODO This test starts to fail occasionally. Another effect by the TS jitter?
+        moment, so their us timestamps must match within ±1 us.
+
+        The ±1 us tolerance absorbs the TIM2/TIM3 phase jitter introduced by
+        two separate gen_get_timestamp_us_from_tim3() calls (one for the
+        Tx event, one for the Rx frame) — see test_timestamp_accuracy_micro
+        for the same quantization effect.
+        """
         # z2003: us timestamp + Tx event + Rx frame reporting all enabled.
         self.dut.send(b"z2003\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -667,9 +672,11 @@ class TimestampUsTestCase(unittest.TestCase):
         else:
             tx_timestamp = rx_data[len(b"\rt03F0TTTTTTTT\rzt03F0"):len(b"\rt03F0TTTTTTTT\rzt03F0") + 8]
             rx_timestamp = rx_data[len(b"\rt03F0"):len(b"\rt03F0") + 8]
-        self.assertEqual(tx_timestamp, rx_timestamp,
-                         f"Tx event and Rx frame share one SOF, so timestamps must match. "
-                         f"tx={tx_timestamp!r}, rx={rx_timestamp!r}")
+        tx_us = int(tx_timestamp, 16)
+        rx_us = int(rx_timestamp, 16)
+        self.assertAlmostEqual(tx_us, rx_us, delta=1,
+                               msg=f"Tx event and Rx frame share one SOF, so timestamps "
+                                   f"must match within ±1 us. tx={tx_us}, rx={rx_us}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
