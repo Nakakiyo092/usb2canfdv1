@@ -1022,14 +1022,23 @@ void psr_parse_str_debug(uint8_t *buf, uint8_t len)
 //   HHHH: 4-digit hex (0..65535 ms)
 // Response: [CR] on success, [BELL] on length error.
 //
-// ISRs (CAN, USB) continue to run during the stall - the intent is to delay
-// the main-loop pickup of pending events, not to halt the device. Used by
-// tests that need to reproduce timing-sensitive scenarios (e.g. the
-// timestamp sentinel that fires when the main loop exceeds the Note 3
-// design window).
+// Behaviour during the stall:
+//   - ISRs (CAN, USB) continue to run; only the main loop is blocked.
+//   - Data already handed to the USB HAL for transmission is sent out.
+//   - Data merely enqueued in the APP-level CDC Tx buffer is NOT pumped to
+//     the HAL, because that pump runs in the main loop. Such data, including
+//     the ACK for this command itself, becomes visible to the host only
+//     after HAL_Delay returns.
+//   - Incoming bytes on USB CDC keep filling the APP-level CDC Rx buffer
+//     via ISR. If the host sends more than that buffer holds during the
+//     stall, the overflow path in buffer.c is exercised.
+//   - The ACK is enqueued before HAL_Delay so that any Rx reports produced
+//     after the stall are guaranteed to be ordered behind it.
 //
-// ACK is enqueued before HAL_Delay so the host sees the command accepted
-// promptly and any later Rx reports are guaranteed to be enqueued after it.
+// Used by tests that need to reproduce timing-sensitive scenarios:
+//   - the us timestamp sentinel that fires when the SOF-to-report delay
+//     exceeds the Note 3 design window (~20 ms);
+//   - CDC Rx buffer overflow under host-driven flooding.
 void psr_parse_str_stall(uint8_t *buf, uint8_t len)
 {
     // 1 prefix char + 4 hex digits
