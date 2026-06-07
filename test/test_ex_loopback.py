@@ -205,6 +205,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92)
         # 5% margin for test setup and calculation
+        # TODO 5% is not enough for Linux virtual box (+2 for more stability)
         self.assertGreaterEqual(int(rx_data[89:91], 10), 95)
         self.assertLessEqual(int(rx_data[89:91], 10), 99)
 

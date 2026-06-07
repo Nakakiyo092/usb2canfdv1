@@ -214,8 +214,8 @@ class TimestampMsTestCase(unittest.TestCase):
 
 
     def test_format_when_off(self):
-        """When timestamp mode is off (default), Tx event reports for all
-        frame types carry no timestamp suffix."""
+        """When timestamp mode is off (default), reports for all frame types
+        carry no timestamp suffix."""
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
@@ -224,17 +224,17 @@ class TimestampMsTestCase(unittest.TestCase):
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
             self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
-                             f"Frame {cmd!r} should be echoed without timestamp")
+                             f"Frame {cmd!r} should be reported without timestamp")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
             self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
-                             f"Frame {cmd!r} should be echoed without timestamp")
+                             f"Frame {cmd!r} should be reported without timestamp")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_format_when_on(self):
-        """With Z1, every Tx event report appends a 4-hex-digit ms timestamp."""
+        """With Z1, every report appends a 4-hex-digit ms timestamp."""
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
@@ -276,11 +276,11 @@ class TimestampMsTestCase(unittest.TestCase):
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
             self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
-                             f"Frame {cmd!r} should be echoed without timestamp after Z1->Z0")
+                             f"Frame {cmd!r} should be reported without timestamp after Z1->Z0")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
             self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
-                             f"Frame {cmd!r} should be echoed without timestamp after Z1->Z0")
+                             f"Frame {cmd!r} should be reported without timestamp after Z1->Z0")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -415,7 +415,7 @@ class TimestampMsTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"S0\r")    # 10 kbps nominal
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"Y1\r")    # 500 kbps data
+        self.dut.send(b"Y0\r")    # 500 kbps data
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -432,7 +432,7 @@ class TimestampMsTestCase(unittest.TestCase):
         pos = 2 * len(b"z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 4]
 
-        # Classic frame: 47 header bits + 64 data bits + 1 stuff bit, each at 100us @10kbps.
+        # Classic frame: 47 header bits + 64 data bits + 1(?) stuff bit, each at 100us @10kbps.
         time_exp_us = (int(timestamp_1st, 16) * 1000 + (47 + 8 * 8 + 1) * 100) % 60000000
         self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000,
                         f"Classic frame inter-frame interval mismatch: expected {time_exp_us} us, "
@@ -449,8 +449,8 @@ class TimestampMsTestCase(unittest.TestCase):
         pos = 2 * len(b"Z\r") + len(tx_frame) + len(b"TTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 4]
 
-        # BRS FD frame: 49 nominal bits @100us + (8*8 data bits + 26 fd overhead + 7 stuff) at the data rate.
-        time_exp_us = (int(timestamp_1st, 16) * 1000 + 49 * 100 + 8 * 8 + 26 + 7) % 60000000
+        # BRS FD frame: 49 nominal bits @100us + (8*8 data bits + 26 fd overhead + 5 + 2(?) stuff) at the data rate.
+        time_exp_us = (int(timestamp_1st, 16) * 1000 + 49 * 100 + (8 * 8 + 26 + 5 + 2) * 2) % 60000000
         self.assertLess(abs(time_exp_us - int(timestamp_2nd, 16) * 1000), 1000,
                         f"BRS frame inter-frame interval mismatch: expected {time_exp_us} us, "
                         f"got {int(timestamp_2nd, 16) * 1000} us")
@@ -474,8 +474,8 @@ class TimestampUsTestCase(unittest.TestCase):
 
 
     def test_format_when_off(self):
-        """When timestamp mode is off (default), Tx event reports for all
-        frame types carry no timestamp suffix."""
+        """When timestamp mode is off (default), reports for all frame types
+        carry no timestamp suffix."""
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
@@ -484,17 +484,17 @@ class TimestampUsTestCase(unittest.TestCase):
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
             self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
-                             f"Frame {cmd!r} should be echoed without timestamp")
+                             f"Frame {cmd!r} should be reported without timestamp")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
             self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
-                             f"Frame {cmd!r} should be echoed without timestamp")
+                             f"Frame {cmd!r} should be reported without timestamp")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_format_when_on(self):
-        """With Z2, every Tx event report appends an 8-hex-digit us timestamp."""
+        """With Z2, every report appends an 8-hex-digit us timestamp."""
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
@@ -589,6 +589,7 @@ class TimestampUsTestCase(unittest.TestCase):
         """In internal-loopback mode a single transmitted frame produces both
         a Tx event report and an Rx frame report. Both share the same SOF
         moment, so their us timestamps must be byte-identical."""
+        # TODO This test starts to fail occasionally. Another effect by the TS jitter?
         # z2003: us timestamp + Tx event + Rx frame reporting all enabled.
         self.dut.send(b"z2003\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -684,7 +685,7 @@ class TimestampUsTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"S0\r")    # 10 kbps nominal
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"Y1\r")    # 500 kbps data
+        self.dut.send(b"Y0\r")    # 500 kbps data
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -701,7 +702,7 @@ class TimestampUsTestCase(unittest.TestCase):
         pos = 2 * len(b"z\r") + len(tx_frame) + len(b"TTTTTTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        # Classic frame: 47 header bits + 64 data bits + 1 stuff bit, each at 100us @10kbps.
+        # Classic frame: 47 header bits + 64 data bits + 1(?) stuff bit, each at 100us @10kbps.
         time_exp_us = (int(timestamp_1st, 16) + (47 + 8 * 8 + 1) * 100) % 3600000000
         self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
                                msg=f"2-classic interval mismatch: expected {time_exp_us}, "
@@ -718,8 +719,8 @@ class TimestampUsTestCase(unittest.TestCase):
         pos = 2 * len(b"Z\r") + len(tx_frame) + len(b"TTTTTTTT\r") + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        # BRS FD frame: 49 nominal bits @100us + (64 data + 26 fd overhead + 5 stuff + 2) at data rate.
-        time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + 8 * 8 + 26 + 5 + 2) % 3600000000
+        # BRS FD frame: 49 nominal bits @100us + (64 data + 26 fd overhead + 5 + 2(?) stuff) at data rate.
+        time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + (8 * 8 + 26 + 5 + 2) * 2) % 3600000000
         self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
                                msg=f"2-BRS interval mismatch: expected {time_exp_us}, "
                                    f"got {int(timestamp_2nd, 16)}")
@@ -756,7 +757,7 @@ class TimestampUsTestCase(unittest.TestCase):
         pos = 19 * (len(tx_frame) + len(b"TTTTTTTT\r")) + len(tx_frame)
         timestamp_2nd = rx_data[pos : pos + 8]
 
-        time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + 8 * 8 + 26 + 5 + 2)) % 3600000000
+        time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + (8 * 8 + 26 + 5 + 2) * 2)) % 3600000000
         self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
                                msg=f"20-BRS accumulated interval mismatch: expected {time_exp_us}, "
                                    f"got {int(timestamp_2nd, 16)}")
