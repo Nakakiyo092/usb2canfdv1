@@ -316,7 +316,7 @@ class BufferTestCase(unittest.TestCase):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += tx_data
-            time.sleep(0.001)
+            #time.sleep(0.001)
 
         rx_data = self.dut.receive()
         rx_data += self.dut.receive()    # just to make sure (need time to tx all)
@@ -406,7 +406,7 @@ class BufferTestCase(unittest.TestCase):
             tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"z\r" + tx_data
-            time.sleep(0.001)   # TODO ? Prevent stuck on host side
+            #time.sleep(0.001)   # TODO ? Prevent stuck on host side
 
         rx_data = self.dut.receive()
         self.assertEqual(rx_data, rx_data_exp)
@@ -437,7 +437,7 @@ class BufferTestCase(unittest.TestCase):
             tx_data = b"t" + format(i, "03X").encode() + b"1" + format(i, "02X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"\r" + b"z" + tx_data
-            time.sleep(0.001)   # TODO ? Prevent stuck on host side
+            #time.sleep(0.001)   # TODO ? Prevent stuck on host side
 
         rx_data = self.dut.receive()
         self.assertEqual(rx_data, rx_data_exp)
