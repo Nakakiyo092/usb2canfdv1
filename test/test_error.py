@@ -183,6 +183,54 @@ class ErrorTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_cdc_rx_overflow(self):
+        """Flooding the CDC Rx buffer faster than the main loop can drain it
+        raises F bit 1 (SLCAN_STS_CAN_TX_FIFO_FULL, shared by CDC Rx side
+        per doc/2). The DEBUG-only stall command ~<HHHH>[CR] is used to
+        guarantee the overflow by blocking the main loop while the host
+        floods.
+
+        Note: The corruption-defence behaviour of the same overflow path
+        is verified in test_buffer.test_message_loss_in_cdc_rx_buffer;
+        this test focuses on the error flag side."""
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Sanity check at idle.
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r")
+
+        # Stall 1000 ms (0x03E8) and flood `II\r` during the stall;
+        # 1500 * 3 = 4500 bytes >> ~512-byte CDC Rx ring.
+        self.dut.send(b"~03E8\r")
+        self.dut.ser.write(b"II\r" * 1500)
+        time.sleep(1.5)
+        for _ in range(20):
+            if not self.dut.receive():
+                break
+
+        # Empty command flushes the device's pending state so F responds
+        # promptly (see test_buffer.test_message_loss_in_cdc_rx_buffer).
+        self.dut.send(b"\r")
+        self.dut.receive()
+
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F02\r",
+                         "Expected F02 (CDC Rx overflow, reported via bit 1) after sustained host write burst")
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "F bits should clear after read")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Drain any residual output from the flood so the next test starts
+        # from a clean stream.
+        for _ in range(5):
+            if not self.dut.receive():
+                break
+
+
     def test_cdc_tx_overflow(self):
         """Sending many `v\\r` commands without draining the responses fills
         the device's CDC Tx buffer. Overflow is reported as F bit 0
