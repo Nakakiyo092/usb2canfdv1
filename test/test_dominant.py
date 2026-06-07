@@ -53,22 +53,23 @@ class DominantTestCase(unittest.TestCase):
 
 
 # NOTE: This test verifies ESI (Error State Indicator) bit values in CAN-FD
-# frames while the DUT transitions through error states.
+# frames using single-device external loopback mode — no partner node needed.
 #
 # Required hardware setup:
-# - A partner CAN node must be connected to the same bus so that it can
-#   acknowledge the DUT's transmissions.
-# - Before running, fix the CAN bus at dominant level (e.g. short CANH to GND
+# - Fix the CAN bus at dominant level before running (e.g. connect CANH to GND
 #   or use a bus-dominant forcing circuit).
 # - Release the dominant condition when the test prompts you to do so.
 #
-# Why a partner node is required:
-# - The FDCAN peripheral is fully reset (TEC/REC cleared) by the C command, so
-#   the error state cannot be carried across a channel close/reopen cycle.
-# - Tx event reports are only generated on *successful* transmissions (ACK
-#   received); failed DAR frames produce no Tx event.
-# - Therefore ESI can only be observed while the same channel session is open
-#   and a partner node provides the ACK after the bus dominant force is removed.
+# How it works:
+# - In external loopback mode (+), the dominant bus forces continuous FORM
+#   errors on the receive side, incrementing REC to 128 within ~200 ms.
+# - Once error-passive (REC >= 128), the FDCAN hardware forces ESI=1 in any
+#   CAN-FD frame the node transmits.
+# - After the dominant condition is released, the device self-acknowledges its
+#   own transmissions (external loopback), generating Tx events.
+# - The first successful frame is transmitted while REC >= 128 -> ESI=1.
+# - After that frame, REC drops from >= 128 to 127 (per CAN spec) -> error-active.
+# - The second frame is transmitted in error-active state -> ESI=0.
 class EsiTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
@@ -85,21 +86,24 @@ class EsiTestCase(unittest.TestCase):
 
     def test_esi_bit_value(self):
         """Verify ESI bit value in CAN-FD Tx event reports:
-        - ESI = 1 while the DUT is error-passive (TEC >= 128)
-        - ESI = 0 after the DUT recovers to error-active (TEC < 128)
+        - ESI = 1 while the DUT is error-passive (REC >= 128)
+        - ESI = 0 after the DUT recovers to error-active (REC < 128)
 
-        Phase 1 (bus dominant, DAR mode):
-            Each failed CAN-FD transmission on the dominant bus increments TEC.
-            The loop exits when 'f' reports ER_PSSV.
+        Phase 1 (bus dominant):
+            Open in external loopback mode (+). The dominant bus causes
+            continuous FORM errors on the receive side, incrementing REC to
+            128 (error-passive). No frames need to be sent during this phase.
 
-        Phase 2 (bus released, still error-passive):
-            The partner node acknowledges transmissions.  The FDCAN hardware
-            forces ESI = 1 in transmitted frames when TEC >= 128, regardless
-            of the descriptor's ESI field.  The Tx event report reflects this.
+        Phase 2 (bus released, error-passive):
+            The device self-ACKs its own transmissions in external loopback
+            mode. The first successful frame is transmitted while REC >= 128,
+            so the FDCAN hardware forces ESI=1 in the frame, which is
+            reflected in the Tx event report.
 
         Phase 3 (recovery to error-active):
-            Each acknowledged transmission decrements TEC by 1.  The loop
-            exits when 'f' reports ER_ACTV, and ESI = 0 is then confirmed.
+            After the first successful reception, REC drops from >= 128 to 127
+            (per CAN spec), making the node error-active. The next frame has
+            ESI=0.
         """
         #self.dut.print_on = True
 
@@ -108,69 +112,40 @@ class EsiTestCase(unittest.TestCase):
         self.dut.send(b"z0012\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Phase 1: accumulate TEC on dominant bus using DAR (no-retransmit) mode.
-        # The channel must stay open throughout so TEC is preserved.
-        self.dut.send(b"-\r")           # external CAN, DAR (no retransmit)
+        # Phase 1: open in external loopback mode.
+        # The dominant bus causes continuous FORM errors on the receive side,
+        # incrementing REC to 128 (error-passive) within ~200 ms.
+        # The channel must stay open throughout so REC is preserved.
+        self.dut.send(b"+\r")
         self.assertEqual(self.dut.receive(), b"\r")
+        time.sleep(0.5)     # wait for error passive (> 1ms * 128)
 
-        status = b""
-        for _ in range(30):
-            self.dut.send(b"d03F0\r")       # CAN-FD base frame, DLC = 0
-            self.dut.receive()              # buffer-save '\r'; no Tx event on failure
-            # Allow the FDCAN error counter to be updated before polling status.
-            time.sleep(0.05)
-            self.dut.send(b"f\r")
-            status = self.dut.receive()
-            if b"ER_PSSV" in status:
-                break
-
+        self.dut.send(b"f\r")
+        status = self.dut.receive()
         self.assertIn(b"ER_PSSV", status,
-                      "DUT must enter error-passive after DAR frames on a dominant bus")
+                      "DUT must enter error-passive on a dominant bus within 500ms")
 
-        # Phase 2: bus released; partner node will acknowledge transmissions.
-        # The channel remains open so TEC (>= 128) is preserved across this
+        # Phase 2: bus released; device self-ACKs in external loopback mode.
+        # The channel remains open so REC (>= 128) is preserved across this
         # prompt — no C command is issued here.
         input("\nRelease the dominant bus level, then press Enter...")
 
-        # Send CAN-FD frames; each acknowledged frame produces a Tx event.
-        # ESI = 1 is expected while TEC >= 128.
+        # Send one CAN-FD frame. The node is error-passive (REC >= 128) at the
+        # moment of transmission, so the hardware forces ESI=1 in the frame.
         # Tx event format (z0012, no timestamp): '\r' + 'zd03F01\r'
-        esi1_found = False
-        for _ in range(200):
-            self.dut.send(b"d03F0\r")
-            rx_data = self.dut.receive()
-            if b"zd03F01\r" in rx_data:
-                esi1_found = True
-                break
-            # Stop early if the node has already recovered unexpectedly.
-            self.dut.send(b"f\r")
-            if b"ER_ACTV" in self.dut.receive():
-                break
+        self.dut.send(b"d03F0\r")
+        rx_data = self.dut.receive()
+        self.assertIn(b"zd03F01\r", rx_data,
+                      f"Expected CAN-FD Tx event with ESI=1 while error-passive, got: {rx_data!r}")
 
-        self.assertTrue(esi1_found,
-                        "Expected at least one CAN-FD Tx event with ESI=1 "
-                        "while the DUT is in error-passive state")
-
-        # Phase 3: wait for TEC to drop below 128 (error-active recovery).
-        # Each successful DAR transmission decrements TEC by 1.
-        for _ in range(300):
-            self.dut.send(b"f\r")
-            status = self.dut.receive()
-            if b"ER_ACTV" in status:
-                break
-            self.dut.send(b"d03F0\r")
-            self.dut.receive()
-
-        self.assertIn(b"ER_ACTV", status,
-                      "DUT must recover to error-active after sufficient "
-                      "successful transmissions")
-
-        # Confirm ESI = 0 in error-active state.
+        # Phase 3: after the first successful self-ACKed frame, REC drops from
+        # >= 128 to 127 (per CAN spec), making the node error-active.
+        # Confirm ESI = 0 in the next frame.
         # Tx event format (z0012, no timestamp): '\r' + 'zd03F00\r'
         self.dut.send(b"d03F0\r")
         rx_data = self.dut.receive()
         self.assertIn(b"zd03F00\r", rx_data,
-                      f"Expected ESI=0 in error-active state, got: {rx_data!r}")
+                      f"Expected CAN-FD Tx event with ESI=0 after recovery to error-active, got: {rx_data!r}")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
