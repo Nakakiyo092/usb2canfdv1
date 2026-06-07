@@ -21,6 +21,18 @@ class InLoopbackTestCase(unittest.TestCase):
 
 
     def test_internal_loopback(self):
+        """Verify lossless loopback for all 8 frame types.
+
+        For each combination of:
+          * frame type: data (t/T/d/D/b/B) or remote (r/R)
+          * ID width: standard (lowercase) or extended (uppercase)
+          * data phase: classic, CAN-FD without BRS, CAN-FD with BRS
+
+        send both the minimum-length payload (single byte / no data)
+        and the maximum-length payload (8 bytes for classic, 64 bytes
+        for CAN-FD), and verify the looped-back frame matches
+        byte-for-byte.
+        """
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
@@ -29,10 +41,12 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
+                             f"Short std loopback mismatch for {cmd!r}")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
+                             f"Short ext loopback mismatch for {cmd!r}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -41,33 +55,47 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         tx_data = b"r03FF\r"
         self.dut.send(tx_data)
-        self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
+        self.assertEqual(self.dut.receive(), b"z\r" + tx_data,
+                         "Long remote std (r) loopback mismatch")
         tx_data = b"t03F80011223344556677\r"
         self.dut.send(tx_data)
-        self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
+        self.assertEqual(self.dut.receive(), b"z\r" + tx_data,
+                         "Long data std (t, 8 bytes) loopback mismatch")
         tx_data = b"d03FF" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
-        self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
+        self.assertEqual(self.dut.receive(), b"z\r" + tx_data,
+                         "Long CAN-FD std no-BRS (d, 64 bytes) loopback mismatch")
         tx_data = b"b03FF" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
-        self.assertEqual(self.dut.receive(), b"z\r" + tx_data)
+        self.assertEqual(self.dut.receive(), b"z\r" + tx_data,
+                         "Long CAN-FD std BRS (b, 64 bytes) loopback mismatch")
         tx_data = b"R0137FEC8F\r"
         self.dut.send(tx_data)
-        self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
+        self.assertEqual(self.dut.receive(), b"Z\r" + tx_data,
+                         "Long remote ext (R) loopback mismatch")
         tx_data = b"T0137FEC880011223344556677\r"
         self.dut.send(tx_data)
-        self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
+        self.assertEqual(self.dut.receive(), b"Z\r" + tx_data,
+                         "Long data ext (T, 8 bytes) loopback mismatch")
         tx_data = b"D0137FEC8F" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
-        self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
+        self.assertEqual(self.dut.receive(), b"Z\r" + tx_data,
+                         "Long CAN-FD ext no-BRS (D, 64 bytes) loopback mismatch")
         tx_data = b"B0137FEC8F" + b"00112233445566778899AABBCCDDEEFF" * 4 + b"\r"
         self.dut.send(tx_data)
-        self.assertEqual(self.dut.receive(), b"Z\r" + tx_data)
+        self.assertEqual(self.dut.receive(), b"Z\r" + tx_data,
+                         "Long CAN-FD ext BRS (B, 64 bytes) loopback mismatch")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_tx_off_rx_on(self):
+        """Verify reporting mode z0001: Tx event OFF, Rx frame ON.
+
+        Each Tx command should ack with z[CR] (LAWICEL buffer-save
+        response) and the looped-back frame should be reported as a
+        standard Rx frame report.
+        """
         #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
@@ -79,15 +107,23 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r",
+                             f"z0001: expected Rx report for std {cmd!r}")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
+                             f"z0001: expected Rx report for ext {cmd!r}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_tx_on_rx_off(self):
+        """Verify reporting mode z0002: Tx event ON, Rx frame OFF.
+
+        Each Tx command should ack with [CR] (bare carriage return)
+        and emit a Tx event report (z<frame> / Z<frame>) without a
+        separate Rx frame report.
+        """
         #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
@@ -99,21 +135,34 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
         for cmd in cmd_send_std:
             self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"\r" + b"z" + cmd + b"03F0\r")
+            self.assertEqual(self.dut.receive(), b"\r" + b"z" + cmd + b"03F0\r",
+                             f"z0002: expected Tx event for std {cmd!r}")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"\r" + b"Z" + cmd + b"0137FEC80\r")
+            self.assertEqual(self.dut.receive(), b"\r" + b"Z" + cmd + b"0137FEC80\r",
+                             f"z0002: expected Tx event for ext {cmd!r}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
     def test_esi_on(self):
+        """Verify reporting mode z0013: ESI field included for CAN-FD only.
+
+        Classic CAN frames (r/R/t/T) report without ESI; CAN-FD
+        frames (d/D/b/B) report with ESI in both the Rx frame and
+        the Tx event report. The relative order of Tx event and Rx
+        frame is not guaranteed, so both orderings are accepted.
+
+        ESI bit value verification (0 = error-active, 1 = error-passive)
+        is out of scope here: internal loopback cannot drive the DUT
+        into error-passive. That coverage is planned in test_dominant.py.
+        """
         #self.dut.print_on = True
         cmd_send_std = (b"r", b"t", b"d", b"b")
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
-        # Check CC frames are reported without ESI and FD frames with ESI (Rx frame and Tx event)
-        # TODO: check ESI bit 0 for error active and 1 for error passive
+        # Check CC frames are reported without ESI and FD frames with ESI (Rx frame and Tx event).
+        # ESI bit value verification is tracked elsewhere; see method docstring.
         self.dut.send(b"z0013\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
@@ -122,79 +171,46 @@ class InLoopbackTestCase(unittest.TestCase):
             self.dut.send(cmd + b"03F0\r")
             if cmd in (b"r", b"t"):
                 rx_data = self.dut.receive()
-                self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r"))
+                self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r"),
+                                 f"z0013 CC std {cmd!r}: response length mismatch (ESI must be absent)")
                 if rx_data[1] == b"z"[0]:
-                    self.assertEqual(rx_data, b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r")
+                    self.assertEqual(rx_data, b"\r" + b"z" + cmd + b"03F0\r" + cmd + b"03F0\r",
+                                     f"z0013 CC std {cmd!r}: Tx-first order content mismatch")
                 else:
-                    self.assertEqual(rx_data, b"\r" + cmd + b"03F0\r" + b"z" + cmd + b"03F0\r")
+                    self.assertEqual(rx_data, b"\r" + cmd + b"03F0\r" + b"z" + cmd + b"03F0\r",
+                                     f"z0013 CC std {cmd!r}: Rx-first order content mismatch")
             else:
                 rx_data = self.dut.receive()
-                self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F00\r" + cmd + b"03F00\r"))
+                self.assertEqual(len(rx_data), len(b"\r" + b"z" + cmd + b"03F00\r" + cmd + b"03F00\r"),
+                                 f"z0013 FD std {cmd!r}: response length mismatch (ESI must be present)")
                 if rx_data[1] == b"z"[0]:
-                    self.assertEqual(rx_data, b"\r" + b"z" + cmd + b"03F00\r" + cmd + b"03F00\r")
+                    self.assertEqual(rx_data, b"\r" + b"z" + cmd + b"03F00\r" + cmd + b"03F00\r",
+                                     f"z0013 FD std {cmd!r}: Tx-first order content mismatch")
                 else:
-                    self.assertEqual(rx_data, b"\r" + cmd + b"03F00\r" + b"z" + cmd + b"03F00\r")
+                    self.assertEqual(rx_data, b"\r" + cmd + b"03F00\r" + b"z" + cmd + b"03F00\r",
+                                     f"z0013 FD std {cmd!r}: Rx-first order content mismatch")
         for cmd in cmd_send_ext:
             self.dut.send(cmd + b"0137FEC80\r")
             if cmd in (b"R", b"T"):
                 rx_data = self.dut.receive()
-                self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r"))
+                self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r"),
+                                 f"z0013 CC ext {cmd!r}: response length mismatch (ESI must be absent)")
                 if rx_data[1] == b"Z"[0]:
-                    self.assertEqual(rx_data, b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r")
+                    self.assertEqual(rx_data, b"\r" + b"Z" + cmd + b"0137FEC80\r" + cmd + b"0137FEC80\r",
+                                     f"z0013 CC ext {cmd!r}: Tx-first order content mismatch")
                 else:
-                    self.assertEqual(rx_data, b"\r" + cmd + b"0137FEC80\r" + b"Z" + cmd + b"0137FEC80\r")
+                    self.assertEqual(rx_data, b"\r" + cmd + b"0137FEC80\r" + b"Z" + cmd + b"0137FEC80\r",
+                                     f"z0013 CC ext {cmd!r}: Rx-first order content mismatch")
             else:
                 rx_data = self.dut.receive()
-                self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC800\r" + cmd + b"0137FEC800\r"))
+                self.assertEqual(len(rx_data), len(b"\r" + b"Z" + cmd + b"0137FEC800\r" + cmd + b"0137FEC800\r"),
+                                 f"z0013 FD ext {cmd!r}: response length mismatch (ESI must be present)")
                 if rx_data[1] == b"Z"[0]:
-                    self.assertEqual(rx_data, b"\r" + b"Z" + cmd + b"0137FEC800\r" + cmd + b"0137FEC800\r")
+                    self.assertEqual(rx_data, b"\r" + b"Z" + cmd + b"0137FEC800\r" + cmd + b"0137FEC800\r",
+                                     f"z0013 FD ext {cmd!r}: Tx-first order content mismatch")
                 else:
-                    self.assertEqual(rx_data, b"\r" + cmd + b"0137FEC800\r" + b"Z" + cmd + b"0137FEC800\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-    def test_z_Z_mutual_exclusivity(self):
-        """Issuing Z resets all z-command settings to their defaults.
-
-        The z command note states: "settings made by z will be overwritten by
-        the Z command or reset to default."
-
-        Procedure:
-        1. Configure with z2003 (microsecond timestamp, tx event on, rx on).
-        2. Issue Z1 (millisecond timestamp).
-        3. Open internal loopback and send a frame.
-
-        Expected after Z1 (default reporting + ms timestamp):
-        - Tx event disabled  -> buffer save response is z[CR]
-        - Rx frame enabled   -> loopback frame is reported
-        - Millisecond timestamp (4 hex chars), no microsecond (8 chars)
-
-        Wrong if z2003 persisted:
-        - Tx event on -> buffer save response is [CR]
-        - Response would include separate tx event and rx frame reports
-        - 8-char microsecond timestamps
-        """
-        #self.dut.print_on = True
-        # Configure z2003: us timestamp, rx on, tx event on, ESI off
-        self.dut.send(b"z2003\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Z1 must overwrite z settings and reset reporting to default
-        self.dut.send(b"Z1\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        self.dut.send(b"t03F0\r")
-        rx_data = self.dut.receive() + self.dut.receive()
-
-        # With Z1 + defaults: z[CR] (tx event off) + t03F0TTTT[CR] (ms ts, rx on)
-        self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
-                         "Z1 must override z2003: expected tx-event-off and ms timestamp (4 chars)")
-        self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
-
+                    self.assertEqual(rx_data, b"\r" + cmd + b"0137FEC800\r" + b"Z" + cmd + b"0137FEC800\r",
+                                     f"z0013 FD ext {cmd!r}: Rx-first order content mismatch")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -281,6 +297,51 @@ class TimestampMsTestCase(unittest.TestCase):
             self.dut.send(cmd + b"0137FEC80\r")
             self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r",
                              f"Frame {cmd!r} should be reported without timestamp after Z1->Z0")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_z_Z_mutual_exclusivity(self):
+        """Issuing Z resets all z-command settings to their defaults.
+
+        The z command note states: "settings made by z will be overwritten by
+        the Z command or reset to default."
+
+        Procedure:
+        1. Configure with z2003 (microsecond timestamp, tx event on, rx on).
+        2. Issue Z1 (millisecond timestamp).
+        3. Open internal loopback and send a frame.
+
+        Expected after Z1 (default reporting + ms timestamp):
+        - Tx event disabled  -> buffer save response is z[CR]
+        - Rx frame enabled   -> loopback frame is reported
+        - Millisecond timestamp (4 hex chars), no microsecond (8 chars)
+
+        Wrong if z2003 persisted:
+        - Tx event on -> buffer save response is [CR]
+        - Response would include separate tx event and rx frame reports
+        - 8-char microsecond timestamps
+        """
+        #self.dut.print_on = True
+        # Configure z2003: us timestamp, rx on, tx event on, ESI off
+        self.dut.send(b"z2003\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Z1 must overwrite z settings and reset reporting to default
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        self.dut.send(b"t03F0\r")
+        rx_data = self.dut.receive() + self.dut.receive()
+
+        # With Z1 + defaults: z[CR] (tx event off) + t03F0TTTT[CR] (ms ts, rx on)
+        self.assertEqual(len(rx_data), len(b"z\rt03F0TTTT\r"),
+                         "Z1 must override z2003: expected tx-event-off and ms timestamp (4 chars)")
+        self.assertEqual(rx_data[:len(b"z\rt03F0")], b"z\rt03F0")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
