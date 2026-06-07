@@ -135,6 +135,7 @@ class BufferTestCase(unittest.TestCase):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"z\r" + tx_data
+            time.sleep(0.001)
 
         # Check all reply
         rx_data = self.dut.receive()
@@ -171,6 +172,7 @@ class BufferTestCase(unittest.TestCase):
             tx_data = b"t" + format(i, "03X").encode() + b"8" + format(i, "016X").encode() + b"\r"
             self.dut.send(tx_data)
             rx_data_exp += b"\r" + b"z" + tx_data
+            time.sleep(0.001)
 
         # Check all reply
         rx_data = self.dut.receive()
@@ -299,6 +301,7 @@ class BufferTestCase(unittest.TestCase):
                 tx_data += frame
                 rx_data_exp += frame    # except ack
             self.dut.send(tx_data)
+            time.sleep(0.001)
 
         rx_data = self.dut.receive()
 
@@ -399,6 +402,7 @@ class BufferTestCase(unittest.TestCase):
                 tx_data += frame
                 rx_data_exp += b"z" + frame    # except ack
             self.dut.send(tx_data)
+            time.sleep(0.001)
 
         rx_data = self.dut.receive()
 
