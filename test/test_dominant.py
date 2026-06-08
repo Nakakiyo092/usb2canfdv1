@@ -9,9 +9,14 @@ from device_under_test import DeviceUnderTest
 # NOTE: This test must be run with the CAN bus clamped at the dominant level.
 #
 # Required hardware setup:
-# - Fix the CAN bus at the dominant level before running (e.g. short CANH
-#   to GND, or use a bus-dominant forcing circuit).
-# - Optionally a short between CANH and CANL can be used instead.
+# - Force the bus to the dominant level, i.e. drive CANH high (toward VCC)
+#   AND CANL low (toward GND) so the differential (CANH - CANL) stays above
+#   the receiver's dominant threshold (~0.9 V). A bus-dominant forcing
+#   circuit, or grounding a transceiver's TXD pin, achieves this.
+#
+# Do NOT use these as a dominant clamp (they do NOT produce a dominant level):
+# - A short between CANH and CANL gives a differential of ~0 V, which the
+#   transceiver reads as RECESSIVE, not dominant.
 class DominantTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
@@ -109,11 +114,17 @@ class DominantTestCase(unittest.TestCase):
 # NOTE: This test needs to be done with CAN bus fixed at dominant level.
 #
 # Required hardware setup:
-# - Fix the CAN bus at dominant level before running (e.g. connect CANH to GND
-#   or use a bus-dominant forcing circuit).
+# - Force the bus to the dominant level, i.e. drive CANH high (toward VCC)
+#   AND CANL low (toward GND) so the differential (CANH - CANL) stays above
+#   the receiver's dominant threshold (~0.9 V). A bus-dominant forcing
+#   circuit, or grounding a transceiver's TXD pin, achieves this.
 # - Release the dominant condition when the test prompts you to do so.
-# - Optionally short circuit between CANH and CANL can be used instead of
-#   fixing to dominat level.
+#
+# Do NOT use these as a dominant clamp (they do NOT produce a dominant level):
+# - A short between CANH and CANL gives a differential of ~0 V, which the
+#   transceiver reads as RECESSIVE, not dominant.
+# - Shorting CANH to GND gives a negative differential and is ambiguous on
+#   most transceivers.
 #
 # How it works:
 # - In external loopback mode (+), the dominant bus forces continuous FORM
