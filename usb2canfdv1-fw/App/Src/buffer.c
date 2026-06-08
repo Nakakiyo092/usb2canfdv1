@@ -112,6 +112,10 @@ void buf_process(void)
         uint8_t is_dropped = buf_cdc_rx.data_drop[buf_cdc_rx.tail];
         if (is_dropped)
         {
+            // CDC Rx buffer overflow is intentionally reported through the
+            // SLCAN status flag named SLCAN_STS_CAN_TX_FIFO_FULL (F bit 1).
+            // The bit-to-source mapping (CAN and CDC share the same bits) is
+            // defined in doc/2.-Command-List.md as the protocol contract.
             gen_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
             cmd_line_buf_idx = 0;
             for (idx_start = 0; idx_start < buf_cdc_rx.msglen[buf_cdc_rx.tail]; idx_start++)
@@ -223,11 +227,15 @@ void buf_process(void)
 }
 
 // Enqueue data for transmission over USB CDC to host (copy and commit = slower)
+//
+// Note on the overflow flag: CDC Tx buffer overflow is reported through
+// SLCAN_STS_CAN_RX_FIFO_FULL (F bit 0). The flag name refers to CAN Rx but the
+// same bit is shared by the CDC Tx side, as documented in doc/2.-Command-List.md.
 void buf_enqueue_cdc(uint8_t* buf, uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
-        gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);  // The data does not fit in the buffer
+        gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);  // CDC Tx overflow -> F bit 0; see doc/2
         return;
     }
 
@@ -239,12 +247,13 @@ void buf_enqueue_cdc(uint8_t* buf, uint16_t len)
 // Get destination pointer of cdc buffer for len bytes data (Start position of write access)
 // This function combined with buf_commit_cdc_dest will provide a faster access compared to buf_enqueue_cdc.
 // Return NULL if the data does not fit in the buffer.
+// See buf_enqueue_cdc above for the CDC Tx overflow / F bit 0 mapping rationale.
 uint8_t *buf_reserve_cdc_dest(uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
         // Raise error since the caller will not call commit after they fail to reserve buffer.
-		gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);
+		gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);  // CDC Tx overflow -> F bit 0; see doc/2
         return NULL;
     }
 
@@ -252,12 +261,13 @@ uint8_t *buf_reserve_cdc_dest(uint16_t len)
 }
 
 // Send the data bytes in destination area over USB CDC to host
+// See buf_enqueue_cdc above for the CDC Tx overflow / F bit 0 mapping rationale.
 void buf_commit_cdc_dest(uint16_t len)
 {
     if (BUF_CDC_TX_BUF_SIZE < buf_cdc_tx.msglen[buf_cdc_tx.head] + len)
     {
         // The data will not fit in the buffer.
-		gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);
+		gen_raise_error(SLCAN_STS_CAN_RX_FIFO_FULL);  // CDC Tx overflow -> F bit 0; see doc/2
         return;
     }
 
