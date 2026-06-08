@@ -7,8 +7,13 @@ import random
 from device_under_test import DeviceUnderTest
 
 
-# NOTE: This test requires another device (aux) with the default setup on CAN bus.
-#       The test_single_tx_event_after_retries requires the channel of the aux device becoming open and closed repeatedly.
+# NOTE: All tests in this file require another device (aux) wired to the DUT
+#       on the same CAN bus, with the default firmware setup.
+#       - TxEventTestCase: aux acts as a normal ACK provider.
+#       - EsiTestCase: aux receives but cannot ACK frames whose data phase
+#         is faster than its own configuration, allowing controlled NACKs.
+#       The test_single_tx_event_after_retries requires the channel of the
+#       aux device becoming open and closed repeatedly.
 class TxEventTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
@@ -227,6 +232,88 @@ class TxEventTestCase(unittest.TestCase):
 
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA4\r")  # This will not be true
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+
+
+class EsiTestCase(unittest.TestCase):
+
+    dut: DeviceUnderTest
+
+    def setUp(self):
+        self.dut = DeviceUnderTest()
+        self.dut.open()
+        self.dut.setup()
+
+
+    def tearDown(self):
+        self.dut.close()
+
+
+    def test_esi_bit_in_tx_event(self):
+        """Verify Tx event report carries ESI=1 while DUT is error-passive,
+        and ESI=0 after recovery to error-active.
+
+        Setup:
+            DUT runs at Y5 (5 Mbps data) while the aux stays at Y2 (default).
+            DAR mode (open with -); auto-retransmission disabled prevents
+            bus-off when TEC grows. Reporting: z0012 (Tx event + ESI).
+
+        Phases:
+            1. Send N BRS frames; each is NACKed by the aux (data-phase
+               mismatch). TEC += 8 per failure, no retry under DAR.
+               After ~16 failures TEC >= 128 -> error-passive.
+            2. Send d (CAN-FD no-BRS) frame; aux ACKs (nominal phase
+               matched), DUT emits Tx event with ESI=1.
+            3. Send d frames repeatedly; each ACK decrements TEC. After
+               ~128 ACKs TEC drops below 128 -> error-active.
+            4. Send d frame; Tx event with ESI=0.
+        """
+        #self.dut.print_on = True
+        self.dut.send(b"Y5\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0012\r")  # Tx event ON + ESI ON, Rx OFF
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"-\r")      # Normal + DAR (bus-off safe)
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Phase 1: drive into error-passive via BRS NACKs.
+        for i in range(0, 20):
+            tx_data = b"b" + format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r"
+            self.dut.send(tx_data)
+            self.dut.receive()
+
+        # Confirm error-passive
+        self.dut.send(b"f\r")
+        status = self.dut.receive()
+        self.assertIn(b"ER_PSSV", status,
+                      f"DUT should be error-passive after BRS NACK burst, got: {status!r}")
+
+        # Phase 2: error-passive -> ESI=1 in Tx event
+        self.dut.send(b"d03F0\r")
+        rx_data = self.dut.receive()
+        self.assertIn(b"zd03F01\r", rx_data,
+                      f"Expected Tx event with ESI=1 while error-passive, got: {rx_data!r}")
+
+        # Phase 3: recover by accumulating successful ACKs
+        for i in range(0, 200):
+            self.dut.send(b"d03F0\r")
+            self.dut.receive()
+
+        # Confirm error-active
+        self.dut.send(b"f\r")
+        status = self.dut.receive()
+        self.assertIn(b"ER_ACTV", status,
+                      f"DUT should be back to error-active after successful ACKs, got: {status!r}")
+
+        # Phase 4: error-active -> ESI=0 in Tx event
+        self.dut.send(b"d03F0\r")
+        rx_data = self.dut.receive()
+        self.assertIn(b"zd03F00\r", rx_data,
+                      f"Expected Tx event with ESI=0 in error-active, got: {rx_data!r}")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
