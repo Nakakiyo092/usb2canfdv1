@@ -26,7 +26,7 @@ class LedTestCase(unittest.TestCase):
         self.dut.close()
 
 
-    def test_led_on(self):
+    def test_rx_and_tx_leds_on(self):
         """Send 16 short frames over internal loopback so the operator can
         confirm each frame produces a single Rx/Tx LED blink.
 
