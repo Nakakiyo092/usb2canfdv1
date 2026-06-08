@@ -8,7 +8,7 @@ from device_under_test import DeviceUnderTest
 
 
 # NOTE: This test requires another device (aux) with the default setup on CAN bus.
-#       The test_single_event_after_retries requires the channel of the aux device becoming open and closed repeatedly.
+#       The test_single_tx_event_after_retries requires the channel of the aux device becoming open and closed repeatedly.
 class TxEventTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
@@ -24,7 +24,7 @@ class TxEventTestCase(unittest.TestCase):
         self.dut.close()
 
 
-    def test_all_events_normal_mode(self):
+    def test_tx_events_in_normal_mode(self):
         """Verify that every transmitted frame produces a Tx event
         report in Normal mode (open with O), where every frame is
         ACKed by the aux device.
@@ -43,9 +43,7 @@ class TxEventTestCase(unittest.TestCase):
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # TEC: b NACK -> +8, t ACK -> -1.
-        # 10% b / 90% t -> net = +8 - 9 per 10 frames; TEC stays bounded
-        # even when every b fails (see test_only_acked_events).
+        # 10% b / 90% t
         for i in range(0x000, 0x800):
             if random.random() < 0.1:
                 tx_data = b"b"
@@ -63,7 +61,7 @@ class TxEventTestCase(unittest.TestCase):
 
         # check all reply
         rx_data += self.dut.receive()
-        rx_data = rx_data.replace(b"\r", b"")   # [CR] and tx event may swap
+        rx_data = rx_data.replace(b"\r", b"")   # [CR] and tx event may swap so remove all [CR] before analysis
         rx_data_exp = rx_data_exp.replace(b"\r", b"")
         self.assertEqual(rx_data, rx_data_exp,
                          "Tx event sequence mismatch in Normal mode (every frame should produce one Tx event)")
@@ -75,12 +73,12 @@ class TxEventTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_all_events_no_retransmit_mode(self):
+    def test_tx_events_in_no_retransmit_mode(self):
         """Verify that every transmitted frame produces a Tx event
         report in no-retransmit (DAR) mode (open with -), where
         every frame is ACKed by the aux device on the first try.
 
-        Same frame pattern as test_all_events_normal_mode (10% BRS
+        Same frame pattern as test_tx_events_in_normal_mode (10% BRS
         / 90% classic, all succeeding). DAR has no effect on the Tx
         event sequence when no frame fails — the test confirms this
         equivalence.
@@ -94,9 +92,7 @@ class TxEventTestCase(unittest.TestCase):
         self.dut.send(b"-\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # TEC: b NACK -> +8, t ACK -> -1.
-        # 10% b / 90% t -> net = +8 - 9 per 10 frames; TEC stays bounded
-        # even when every b fails (see test_only_acked_events).
+        # 10% b / 90% t
         for i in range(0x000, 0x800):
             if random.random() < 0.1:
                 tx_data = b"b"
@@ -114,7 +110,7 @@ class TxEventTestCase(unittest.TestCase):
 
         # check all reply
         rx_data += self.dut.receive()
-        rx_data = rx_data.replace(b"\r", b"")   # [CR] and tx event may swap
+        rx_data = rx_data.replace(b"\r", b"")   # [CR] and tx event may swap so remove all [CR] before analysis
         rx_data_exp = rx_data_exp.replace(b"\r", b"")
         self.assertEqual(rx_data, rx_data_exp,
                          "Tx event sequence mismatch in no-retransmit mode (every frame should produce one Tx event)")
@@ -126,7 +122,7 @@ class TxEventTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_only_acked_events(self):
+    def test_only_acked_tx_events(self):
         """Verify that failed (NACKed) frames do NOT produce Tx
         event reports, while ACKed frames do.
 
@@ -157,7 +153,7 @@ class TxEventTestCase(unittest.TestCase):
 
         # TEC: b NACK -> +8, t ACK -> -1.
         # 10% b / 90% t -> net = +8 - 9 per 10 frames; TEC stays bounded
-        # even when every b fails (see test_only_acked_events).
+        # even when every b fails (see test_only_acked_tx_events).
         for i in range(0x000, 0x800):
             if random.random() < 0.1:
                 tx_data = b"b"
@@ -174,7 +170,7 @@ class TxEventTestCase(unittest.TestCase):
 
         # check all reply
         rx_data += self.dut.receive()
-        rx_data = rx_data.replace(b"\r", b"")   # [CR] and tx event may swap
+        rx_data = rx_data.replace(b"\r", b"")   # [CR] and tx event may swap so remove all [CR] before analysis
         rx_data_exp = rx_data_exp.replace(b"\r", b"")
         self.assertEqual(rx_data, rx_data_exp,
                          "Tx event sequence mismatch: only ACKed (t) frames should emit Tx events; failed (b) frames must not")
@@ -186,14 +182,14 @@ class TxEventTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # NOTE: test_single_event_after_retries verifies that exactly one Tx event is reported after the hardware retransmits
+    # NOTE: test_single_tx_event_after_retries verifies that exactly one Tx event is reported after the hardware retransmits
     #       a failed frame multiple times before finally getting an ACK. Although not directly tested
     #       (special setup required), this is effectively covered by composition:
     #       - Retransmit-on-NACK: test_error.py::test_error_passive (TEC reaches 128 via repeated retries)
     #       - Single-Tx-event-on-final-success: test_all_events_normal_mode above
     #       The STM32 FDCAN auto-retry is transparent to firmware (one TXOK interrupt fires only on final ACK).
     @unittest.skip("Skip this test due to a special setup requirement")
-    def test_single_event_after_retries(self):
+    def test_single_tx_event_after_retries(self):
         """Verify that hardware retransmission is transparent to
         the firmware: a frame that gets NACKed multiple times then
         finally ACKed produces exactly ONE Tx event report.
