@@ -113,7 +113,8 @@ class InLoopbackTestCase(unittest.TestCase):
         cmd_send_ext = (b"R", b"T", b"D", b"B")
 
         # Check CC frames are reported without ESI and FD frames with ESI (Rx frame and Tx event)
-        # TODO: check ESI bit 0 for error active and 1 for error passive
+        # ESI bit value (0 = error-active, 1 = error-passive) is verified in
+        # test_dominant.py::EsiTestCase::test_esi_bit_value.
         self.dut.send(b"z0013\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
