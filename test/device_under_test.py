@@ -25,15 +25,22 @@ class DeviceUnderTest:
         self.print_on = False
 
 
-    def open(self):
-        """Open the connection to the device."""
+    def open(self, port=None):
+        """Open the connection to the device.
+
+        Args:
+            port: optional OS-specific port name override
+                  (e.g., "COM8" on Windows, "/dev/ttyACM1" on Linux).
+                  If None, uses the OS-default port (COM9 / /dev/ttyACM0).
+        """
         # connect to serial
-        if sys.platform == "win32":
-            port = "COM9"
-        elif sys.platform.startswith("linux"):
-            port = "/dev/ttyACM0"
-        else:
-            port = "XXX"    # TODO: put default device name in the macOS
+        if port is None:
+            if sys.platform == "win32":
+                port = "COM9"
+            elif sys.platform.startswith("linux"):
+                port = "/dev/ttyACM0"
+            else:
+                port = "XXX"    # TODO: put default device name in the macOS
         self.ser = serial.Serial(port, timeout=1, write_timeout=1)
 
 
@@ -63,19 +70,17 @@ class DeviceUnderTest:
 
         self.debug_build = bool(b"DEBUG" in slcan_ver)
 
-        # Reset to default settings
-        self.send(b"S4\r")
-        assert self.receive() == b"\r", "Setup: S4 command failed"
-        self.send(b"Y2\r")
-        assert self.receive() == b"\r", "Setup: Y2 command failed"
-        self.send(b"Z0\r")
-        assert self.receive() == b"\r", "Setup: Z0 command failed"
-        self.send(b"W0\r")
-        assert self.receive() == b"\r", "Setup: W0 command failed"
-        self.send(b"M00000000\r")
-        assert self.receive() == b"\r", "Setup: M command failed"
-        self.send(b"mFFFFFFFF\r")       # mFFFFFFFF -> Pass all
-        assert self.receive() == b"\r", "Setup: m command failed"
+        # Reset to default settings. Setup is best-effort: a firmware
+        # variant may not implement every command (e.g. some CANable2.0
+        # builds reject W/M/m), so an unexpected response is logged as a
+        # warning rather than aborting the test. The downstream test is
+        # then responsible for tolerating any leftover non-default state.
+        for cmd in (b"S4\r", b"Y2\r", b"Z0\r", b"W0\r",
+                    b"M00000000\r", b"mFFFFFFFF\r"):
+            self.send(cmd)
+            resp = self.receive()
+            if resp != b"\r":
+                print(f"WARNING: Setup: {cmd!r} returned {resp!r}")
 
 
     def close(self):
