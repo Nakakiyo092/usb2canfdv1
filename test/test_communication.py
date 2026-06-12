@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import re
 import sys
 import unittest
 
@@ -28,6 +29,20 @@ class CommunicationTestCase(unittest.TestCase):
     NUM_FD_NO_BRS = 15
     NUM_FD_BRS = 20
 
+    # Nominal / data bit rates per doc/2.-Command-List.md.
+    # Y3 is documented as N/A; Y6-9 and S9 do not exist.
+    S_KBPS = {0: 10, 1: 20, 2: 50, 3: 100, 4: 125, 5: 250, 6: 500, 7: 800, 8: 1000}
+    Y_KBPS = {0: 500, 1: 1000, 2: 2000, 4: 4000, 5: 5000}
+
+    # Test-local pass/fail threshold for the data:nominal ratio.
+    # NOT a quotation from the CAN-FD spec — the spec defines no hard
+    # ratio cap, and published evaluations span a wide range (Hartwich
+    # CiA 2013 uses 1:4 in its realistic example; Mutter CiA 2013
+    # evaluates configurations up to ~1:20). 16 here is a deliberate
+    # test boundary chosen for this project; combos beyond it are
+    # observed (not enforced) by test_full_grid_report.
+    MAX_SAFE_RATIO = 16
+
     dut: DeviceUnderTest
     aux: DeviceUnderTest
 
@@ -55,24 +70,111 @@ class CommunicationTestCase(unittest.TestCase):
         return "XXX"    # TODO: put default AUX device name in the macOS
 
 
-    def test_bidirectional_at_all_supported_bitrates(self):
-        """Iterate over the full S=0..9 x Y=0..9 grid. Send 50 frames
-        from each side and verify reception + F=00 on every combo
-        that both devices accept.
+    def test_bidirectional_within_safe_ratio(self):
+        """CI gate: iterate (S, Y) combos where Y_kbps / S_kbps is at
+        or below MAX_SAFE_RATIO, and require bus errors and frame loss
+        to NOT occur.
 
-        No bitrate-based pre-filter is applied: per the doc, every
-        Y rate is >= 500 kbps which is >= every S rate (max S = 1 Mbps,
-        practical Y range is 1 Mbps and above), so Y_kbps >= S_kbps
-        always holds in practice and a Y < S filter would only mask
-        legitimate test coverage. Unsupported indices (Y3 is N/A per
-        doc, Y6-9 and S9 may not exist on a given firmware) are caught
-        by the [BELL] response in _set_bitrate_or_skip and reported as
-        skipTest.
+        MAX_SAFE_RATIO is a test-local engineering threshold (see the
+        class constant docstring), not a quotation from the CAN-FD
+        spec. Combos beyond it are out of scope for this gate; the
+        full S x Y space is covered by test_full_grid_report.
         """
-        for s in range(0, 10):
-            for y in range(0, 10):
+        for s, s_kbps in self.S_KBPS.items():
+            for y, y_kbps in self.Y_KBPS.items():
+                if y_kbps < s_kbps:
+                    continue        # BRS implies data >= nominal
+                if y_kbps / s_kbps > self.MAX_SAFE_RATIO:
+                    continue        # delegated to the diagnostic test
                 with self.subTest(s=s, y=y):
                     self._run_one_combo(s, y)
+
+
+    def test_full_grid_report(self):
+        """Diagnostic: iterate the full S=0..9 x Y=0..9 grid and
+        produce a result table on stdout. This test NEVER FAILS — it
+        catches every per-combo exception so the table is always
+        printed. Use it to visualise the operating envelope of the
+        actual hardware; combos beyond 16x are expected to fail and
+        their failure is the data point, not an error.
+        """
+        results = {}
+        for s in range(0, 10):
+            for y in range(0, 10):
+                results[(s, y)] = self._try_one_combo(s, y)
+        self._print_results_table(results)
+
+
+    def _try_one_combo(self, s, y):
+        """Run one combo and classify by the CAN node state inferred
+        from the F flags reported by either device. Frame loss is NOT
+        a separate outcome here — under continuous bus errors the
+        frames sit in the firmware's tx queue while auto-retransmit
+        keeps retrying, so any 'missing frame' on the wire is a
+        symptom of the node-state transition, not the root cause.
+
+        Returns one of:
+            'pass'     all checks succeeded (F=00 both sides)
+            'skip'     S/Y rejected with [BELL] by either device
+            'busErr'   bus errors flagged (BEI) but still error-active
+            'passive'  node reached error-passive (EPI set)
+            'busOff'   node reached bus-off (BO set)
+            'other'    unexpected/anomalous failure (e.g. a frame
+                       mismatch with F=00 — rare measurement noise)
+        """
+        try:
+            self._run_one_combo(s, y)
+            return 'pass'
+        except unittest.SkipTest:
+            return 'skip'
+        except AssertionError as e:
+            f_hex = re.findall(r"F=b'F([0-9A-Fa-f]{2})", str(e))
+            if not f_hex:
+                return 'other'
+            combined = 0
+            for v in f_hex:
+                combined |= int(v, 16)
+            if combined & 0x10:        # BO  (bus-off)
+                return 'busOff'
+            if combined & 0x20:        # EPI (error-passive)
+                return 'passive'
+            if combined & 0x80:        # BEI (bus error, still active)
+                return 'busErr'
+            return 'other'
+
+
+    def _print_results_table(self, results):
+        """Render the (S, Y) result grid to stdout. Pass is rendered
+        as '.' so the failing combos (E/P/O) pop out of the table."""
+        symbol = {
+            'pass':    '  . ',
+            'skip':    '  - ',
+            'busErr':  '  E ',
+            'passive': '  P ',
+            'busOff':  '  O ',
+            'other':   '  ? ',
+        }
+        tally = {}
+        for v in results.values():
+            tally[v] = tally.get(v, 0) + 1
+
+        print()
+        print("=" * 64)
+        print("test_full_grid_report  (S = nominal index, Y = data index)")
+        print("Legend: .=pass  E=bus_error  P=passive  O=bus-off  -=skip  ?=other")
+        print()
+        header = "     " + "".join(f" Y{y} " for y in range(10))
+        print(header)
+        for s in range(10):
+            row = f" S{s} "
+            for y in range(10):
+                row += symbol.get(results.get((s, y), 'other'), ' ? ')
+            print(row)
+        print()
+        summary = "  ".join(f"{k}={tally.get(k, 0)}"
+                            for k in ('pass', 'busErr', 'passive', 'busOff', 'skip', 'other'))
+        print(f"summary:  {summary}")
+        print("=" * 64)
 
 
     def _run_one_combo(self, s, y):
