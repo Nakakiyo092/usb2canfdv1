@@ -7,20 +7,39 @@ import unittest
 from device_under_test import DeviceUnderTest
 
 
-# NOTE: This test requires TWO SLCAN devices wired on the same CAN bus.
+# Characterization test for end-to-end two-device communication across
+# the full S x Y bit-rate grid. Categorised with the other *_test.py
+# benchmarks (cdc_speed_test.py, long_time_test.py) rather than the
+# test_*.py unittest CI suite: it requires special hardware setup and
+# takes a few minutes to run, so it is intended to be invoked manually
+# rather than picked up by `python -m unittest discover`.
+#
+# Hardware setup:
 # - DUT: default port (COM9 on Windows, /dev/ttyACM0 on Linux)
 # - AUX: second device (COM8 on Windows, /dev/ttyACM1 on Linux)
-# Both devices must be physically connected to each other via the CAN bus
-# (CAN-H to CAN-H, CAN-L to CAN-L, with proper termination).
+# - Both devices wired together on a single CAN bus (CAN-H to CAN-H,
+#   CAN-L to CAN-L, with proper termination).
+#
+# Built on unittest so individual combos appear as subTests, but invoke
+# the file directly:
+#     python -m unittest communication_test
+# (or run the module directly via `python communication_test.py`).
 class CommunicationTestCase(unittest.TestCase):
-    """End-to-end two-device communication test.
+    """End-to-end two-device communication characterization.
 
-    DUT (default port: COM9 on Windows / /dev/ttyACM0 on Linux) and AUX
-    (COM8 / /dev/ttyACM1) are wired on the same CAN bus.
+    Provides two methods with distinct roles:
 
-    For every supported (S, Y) bitrate combination where Y >= S and both
-    devices accept the setup, sends 50 frames from each side and verifies
-    each side receives all expected frames in order with no bus errors.
+    - test_bidirectional_within_safe_ratio is a hard pass/fail gate
+      over (S, Y) combos whose data:nominal ratio is at or below
+      MAX_SAFE_RATIO. Use it to confirm the hardware operates
+      correctly in the chosen safe envelope.
+
+    - test_full_grid_report iterates the full 10x10 (S, Y) grid and
+      prints a table classifying each combo by the CAN node state
+      inferred from the F flags. It NEVER fails — the table is the
+      artefact, useful for visualising the operating envelope of a
+      given hardware/firmware combination (e.g. crystal-precision
+      vs ceramic-resonator devices show very different boundaries).
     """
 
     FRAMES_PER_SIDE = 50
