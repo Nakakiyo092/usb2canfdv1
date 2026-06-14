@@ -16,6 +16,8 @@ PS C:\Users\kiyomaro> function prompt { "> " }
 Microsoft Windows 11 Home
 > (Get-CimInstance Win32_OperatingSystem).Version
 10.0.26200
+> Get-CimInstance Win32_USBController | Select-Object Name, Status, DeviceID
+
 > $PSVersionTable.PSVersion.ToString()
 7.6.1
 > python --version
