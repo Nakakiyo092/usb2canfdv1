@@ -344,24 +344,32 @@ uint16_t gen_get_timestamp_ms(void)
 // Implementation:
 //   Reconstructs the timestamp from HAL_GetTick (ms) combined with the
 //   FDCAN-latched TIM3 value (16 bit, us). Uses 64 bit arithmetic.
-//   The latched_tim3 argument does not have to be the current TIM3 value,
-//   but is expected to be close to it (within ~1 ms typically).
 //   Built directly from the latched TIM3 (the FDCAN external timestamp
 //   source) -- no jitter from non-atomic timer reads.
 //
+// Note (latch->call window -- a CALLER requirement):
+//   `latched_tim3` MUST have been sampled within GEN_TS_LATCH_LIMIT_US
+//   (~20 ms) of this call. `back` = (TIM3 now) - latched_tim3 on the
+//   lower 16 bits. If it exceeds the limit, the latch may have wrapped
+//   TIM3 and the timestamp is reported unreliable as GEN_TS_INVALID_US.
+//   The caller must also report `back` < ~UINT16_MAX/2 (~30 ms) for the
+//   ms/us wrap-count math to stay correct.
+//
 // Limitations:
-//   - The gap between the current TIM3 value and latched_tim3 must stay
-//     below UINT16_MAX / 2 ~ 30 ms; longer gaps silently produce
-//     incorrect timestamps (no error is raised).
-//     The observed worst-case main-loop cycle is ~300 us, well within
-//     this bound under normal conditions.
 //   - Breaks after HAL_GetTick wraps (~49.7 days of uptime) if the
-//     function is not called in the meantime.
+//     function is not called in the meantime. The heartbeat tick
+//     (gen_timestamp_tick) guards against that.
 uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
 {
     static uint32_t gen_last_timestamp_us = 0;
     static uint32_t gen_last_time_ms = 0;
     static uint16_t gen_last_time_us = 0;
+
+    // D guard: latch->call delay window. Bail out before touching state so
+    // an out-of-spec call cannot corrupt the running accumulator.
+    uint16_t now_tim3 = (uint16_t)TIM3->CNT;
+    uint16_t back = (uint16_t)(now_tim3 - latched_tim3);
+    if (back > GEN_TS_LATCH_LIMIT_US) return GEN_TS_INVALID_US;
 
     // Note: HAL_GetTick() and TIM3 share the same clock source
     // but the moment of reading is not aligned. Small sample-time mismatch
