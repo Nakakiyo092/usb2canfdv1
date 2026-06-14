@@ -250,6 +250,15 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     if (frame_header->IdType == FDCAN_EXTENDED_ID)
         id_len = SLCAN_EXT_ID_LEN;
 
+    // Check command length
+    // Reject early when the input is too short to hold the command byte +
+    // ID nibbles + DLC nibble.
+    if (len < 1 + id_len + 1)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
     // Iterate through ID bytes
     while (parse_loc <= id_len)
     {

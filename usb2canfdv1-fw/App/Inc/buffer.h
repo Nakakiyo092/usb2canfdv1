@@ -65,7 +65,6 @@ uint8_t *buf_reserve_cdc_dest(uint16_t len);
 void buf_commit_cdc_dest(uint16_t len);
 
 FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void);
-FDCAN_TxHeaderTypeDef *buf_get_can_sent_header(uint8_t marker);
 uint8_t *buf_get_can_head_data(void);
 uint8_t *buf_get_can_sent_data(uint8_t marker);
 HAL_StatusTypeDef buf_commit_can_head(void);
