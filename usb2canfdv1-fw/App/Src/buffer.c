@@ -194,34 +194,44 @@ void buf_process(void)
     buf_enable_irq();
 
 
-    // Process can transmit buffer
-    while ((buf_can_tx.send != buf_can_tx.head) && (HAL_FDCAN_GetTxFifoFreeLevel(can_get_handle()) > 0))
+    // Process can transmit buffer.
+    // Guarded by BUS_OPENED: without this gate, frames still queued in
+    // buf_can_tx after a C (channel close) are pushed at the HAL with no
+    // controller available, fail, and route through gen_raise_error(
+    // SLCAN_STS_DATA_OVERRUN). The next O clears the flag so there is no
+    // host-visible misbehaviour today, but the gate makes the intent
+    // explicit and stops the spurious DATA_OVERRUN flag from being raised
+    // in the first place.
+    if (can_get_bus_state() == BUS_OPENED)
     {
-        HAL_StatusTypeDef status;
-
-        // Transmit can frame
-        status = HAL_FDCAN_AddMessageToTxFifoQ(can_get_handle(), 
-                                               &buf_can_tx.header[buf_can_tx.send], 
-                                               buf_can_tx.data[buf_can_tx.send]);
-
-        // send is advanced unconditionally (drop-on-fail): advancing only on success risks
-        // an infinite loop if the frame is permanently invalid (e.g., bad DLC). Frame loss
-        // is detected as a marker mismatch and surfaced to the host via the F command.
-        buf_can_tx.send = (buf_can_tx.send + 1) % BUF_CAN_TXQUEUE_LEN;
-
-        uint16_t nbr_sent_frames;   // Number of frames in HAL waiting for being sent
-        nbr_sent_frames = (BUF_CAN_TXQUEUE_LEN + buf_can_tx.send - buf_can_tx.tail) % BUF_CAN_TXQUEUE_LEN;
-        if (BUF_MAX_NBR_SENT_FRAMES < nbr_sent_frames)
+        while ((buf_can_tx.send != buf_can_tx.head) && (HAL_FDCAN_GetTxFifoFreeLevel(can_get_handle()) > 0))
         {
-            buf_release_can_tail();  // Assume the frame is deleted in HAL (Disabled retransmission or overflow)
-            // Do not raise error here because it shold not be for disabled retransmission.
-            // Overflow can be catched by checking the error flags, which is done in can.c.
-        }
+            HAL_StatusTypeDef status;
 
-        if (status != HAL_OK)
-        {
-            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
-            // TODO Would it be better to try again later than dropping the frame?
+            // Transmit can frame
+            status = HAL_FDCAN_AddMessageToTxFifoQ(can_get_handle(),
+                                                   &buf_can_tx.header[buf_can_tx.send],
+                                                   buf_can_tx.data[buf_can_tx.send]);
+
+            // send is advanced unconditionally (drop-on-fail): advancing only on success risks
+            // an infinite loop if the frame is permanently invalid (e.g., bad DLC). Frame loss
+            // is detected as a marker mismatch and surfaced to the host via the F command.
+            buf_can_tx.send = (buf_can_tx.send + 1) % BUF_CAN_TXQUEUE_LEN;
+
+            uint16_t nbr_sent_frames;   // Number of frames in HAL waiting for being sent
+            nbr_sent_frames = (BUF_CAN_TXQUEUE_LEN + buf_can_tx.send - buf_can_tx.tail) % BUF_CAN_TXQUEUE_LEN;
+            if (BUF_MAX_NBR_SENT_FRAMES < nbr_sent_frames)
+            {
+                buf_release_can_tail();  // Assume the frame is deleted in HAL (Disabled retransmission or overflow)
+                // Do not raise error here because it shold not be for disabled retransmission.
+                // Overflow can be catched by checking the error flags, which is done in can.c.
+            }
+
+            if (status != HAL_OK)
+            {
+                gen_raise_error(SLCAN_STS_DATA_OVERRUN);
+                // TODO Would it be better to try again later than dropping the frame?
+            }
         }
     }
 }
