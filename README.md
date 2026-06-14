@@ -48,7 +48,7 @@ Use the packager tool and the upgrade tool in the [root repository](https://gith
 > There would be no command to enter firmware upgrade mode.
 
 
-## Credit
+## Credits
 
 ### Related work
 
