@@ -22,19 +22,23 @@
 #include "generator.h"
 
 // Constants used in gen_get_timestamp_us_from_tim3
-#define GEN_TS_SKEW_TOLERANCE_US   0U            // Target: 1 us accuracy (see Note 2)
-#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay (Note 3): DLC8 classic @10kbps ~16ms + margin
-#define GEN_TS_SANDWICH_MAX_RETRY  16U           // Cap on sandwiched-read retries before giving up
+#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay: DLC8 classic @10kbps ~16ms + margin
 #define GEN_TS_RING_MS             60000U        // spec wrap
-#define GEN_TS_RING_US             3600000000U   // spec wrap; also TIM2 ARR + 1
+#define GEN_TS_RING_US             3600000000U   // spec wrap
 #define GEN_TS_INVALID_MS          0xFFFFU       // Out-of-spec sentinel: ms timestamp is unreliable
 #define GEN_TS_INVALID_US          0xFFFFFFFFU   // Out-of-spec sentinel: us timestamp is unreliable
+
+#if 0  /* deprecated: kept for reference */
+// Constants used by the deprecated sandwich-based us-timestamp implementation.
+#define GEN_TS_SKEW_TOLERANCE_US   0U            // Target: 1 us accuracy (see Note 2)
+#define GEN_TS_SANDWICH_MAX_RETRY  16U           // Cap on sandwiched-read retries before giving up
 
 // Subtraction in the 3.6e9 (TIM2 ring) modulo space.
 static inline uint32_t gen_ring_sub(uint32_t a, uint32_t b)
 {
     return (a >= b) ? (a - b) : (a + GEN_TS_RING_US - b);
 }
+#endif
 
 // Public variables
 const uint8_t gen_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -244,6 +248,15 @@ uint16_t gen_get_timestamp_ms_from_tim3(uint16_t latched_tim3)
     return (uint16_t)((us / 1000U) % GEN_TS_RING_MS);
 }
 
+#if 0  /* deprecated: kept for reference */
+// Deprecated us-timestamp implementation (TIM2 sandwich-read).
+//
+// Why deprecated:
+//   The non-atomic (TIM2, TIM3) read introduces ~1 us jitter on every
+//   call, visible as timestamp dither at frame boundaries. The active
+//   accumulator-based implementation below uses the FDCAN-latched TIM3
+//   value directly and is jitter-free.
+//
 // Gets micro second timestamp for the time `latched_tim3` was sampled
 // (4 bytes, resets at 3,600,000,000us = 0xD693A400 per spec).
 //
@@ -292,6 +305,7 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
     // latch moment, correcting a ring underflow when back > t2_after.
     return gen_ring_sub(t2_after, (uint32_t)back);
 }
+#endif
 
 #if 0  /* legacy: kept for reference */
 // Legacy ms-timestamp implementation, kept as a reference path.
@@ -324,27 +338,26 @@ uint16_t gen_get_timestamp_ms(void)
 }
 #endif
 
-#if 0  /* legacy: kept for reference */
-// Legacy us-timestamp implementation, kept as a reference path.
-// The active implementation is gen_get_timestamp_us_from_tim3.
+// Gets micro second timestamp for the time `latched_tim3` was sampled
+// (4 bytes, resets at GEN_TS_RING_US = 3,600,000,000 us per spec).
 //
 // Implementation:
-//   Reconstructs a microsecond timestamp from HAL_GetTick (ms) combined
-//   with TIM3 (16bit, microseconds). Uses 64bit arithmetic.
-//   The tim3_us argument does not have to be the current TIM3 value,
+//   Reconstructs the timestamp from HAL_GetTick (ms) combined with the
+//   FDCAN-latched TIM3 value (16 bit, us). Uses 64 bit arithmetic.
+//   The latched_tim3 argument does not have to be the current TIM3 value,
 //   but is expected to be close to it (within ~1 ms typically).
-//   Resets at 3,600,000,000 us per spec.
+//   Built directly from the latched TIM3 (the FDCAN external timestamp
+//   source) -- no jitter from non-atomic timer reads.
 //
 // Limitations:
-//   - The gap between the current TIM3 value and tim3_us must stay
+//   - The gap between the current TIM3 value and latched_tim3 must stay
 //     below UINT16_MAX / 2 ~ 30 ms; longer gaps silently produce
 //     incorrect timestamps (no error is raised).
 //     The observed worst-case main-loop cycle is ~300 us, well within
 //     this bound under normal conditions.
-//   - Breaks after HAL_GetTick wraps (~49.7 days of uptime).
-//   - 64bit arithmetic is significantly more expensive than the active
-//     implementation, which uses the 32bit TIM2 directly.
-uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us)
+//   - Breaks after HAL_GetTick wraps (~49.7 days of uptime) if the
+//     function is not called in the meantime.
+uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
 {
     static uint32_t gen_last_timestamp_us = 0;
     static uint32_t gen_last_time_ms = 0;
@@ -355,7 +368,7 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us)
     // (bounded by main-loop cycle, ~300us) is handled by the counter
     // mismatch branch below.
     uint32_t current_time_ms = HAL_GetTick();
-    uint16_t current_time_us = tim3_us; // MAX 0xFFFF
+    uint16_t current_time_us = latched_tim3; // MAX 0xFFFF
     uint32_t time_diff_ms;
     uint64_t time_diff_us;
     uint64_t n_comp;
@@ -376,7 +389,7 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us)
         // Since the running timestamp wraps at period (3600,000,000 us),
         // adding (period - d) is equivalent to subtracting d modulo period.
         // We use that equivalence to keep all arithmetic in unsigned space.
-        time_diff_us = (uint64_t)3600000000 - (uint16_t)(gen_last_time_us - current_time_us);
+        time_diff_us = (uint64_t)GEN_TS_RING_US - (uint16_t)(gen_last_time_us - current_time_us);
     }
     else
     {
@@ -386,13 +399,12 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t tim3_us)
         time_diff_us = time_diff_us + n_comp * ((uint64_t)UINT16_MAX + 1);          // MAX 0x10000 * 1000 * 0x10000
     }
 
-    gen_last_timestamp_us = (uint32_t)(((uint64_t)gen_last_timestamp_us + time_diff_us) % 3600000000);
+    gen_last_timestamp_us = (uint32_t)(((uint64_t)gen_last_timestamp_us + time_diff_us) % GEN_TS_RING_US);
     gen_last_time_ms = current_time_ms;
     gen_last_time_us = current_time_us;
 
     return gen_last_timestamp_us;
 }
-#endif
 
 // Setter and getter for the filter settings
 HAL_StatusTypeDef gen_set_filter_mode(enum SlcanFilterMode mode)
