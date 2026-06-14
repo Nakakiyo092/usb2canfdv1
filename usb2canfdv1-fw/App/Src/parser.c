@@ -561,8 +561,14 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
         uint8_t* p = buf_reserve_cdc_dest(SLCAN_MTU);
         if (p == NULL) return;
 
-        uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(TIM3->CNT);
-        uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
+        // Latch TIM3 once so the ms and us fields reflect the same
+        // instant. Reading TIM3->CNT twice (the previous behaviour) made
+        // the two fields disagree by a handful of timer ticks, which is
+        // small in practice but inconsistent with the doc that describes
+        // both fields as snapshots of the same "now".
+        uint16_t tim3_now = (uint16_t)TIM3->CNT;
+        uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(tim3_now);
+        uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(tim3_now);
 
         // Read and clear cycle time. The max value accumulates from device boot
         // (or since the last z[CR] query), spanning open and closed periods.
