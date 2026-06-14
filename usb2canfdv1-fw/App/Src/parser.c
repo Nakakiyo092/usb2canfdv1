@@ -547,42 +547,22 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
         // Reserve worst-case footprint up front. SLCAN_MTU is well above
         // the ~76 byte actual response, so this is a safe upper bound.
         // On failure NOTHING has been queued yet — the host therefore
-        // never sees a truncated fragment of the response (the previous
-        // ordering enqueued the preamble before this check and could
-        // leak it into the stream). F bit 0 is raised inside
-        // buf_reserve_cdc_dest itself when the reservation fails.
-        uint8_t* timstr = buf_reserve_cdc_dest(SLCAN_MTU);
-        if (timstr == NULL) return;
-
-        buf_enqueue_cdc((uint8_t *)"z: time_ms=0x", 13);
+        // never sees a truncated fragment of the response. F bit 0 is
+        // raised inside buf_reserve_cdc_dest itself when the reservation
+        // fails.
+        //
+        // The entire response is built by writing into the reserved
+        // region directly — buf_enqueue_cdc is intentionally NOT used in
+        // this handler. Interleaving the two APIs would rely on the
+        // (undocumented) guarantee that both target the same head Tx slot
+        // even when one of them advances msglen between the other's
+        // pointer capture and write; by going reserve-only here we avoid
+        // depending on that internal coupling.
+        uint8_t* p = buf_reserve_cdc_dest(SLCAN_MTU);
+        if (p == NULL) return;
 
         uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(TIM3->CNT);
         uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
-
-        // timstr was captured at the start of the reserved region; the
-        // preamble enqueue above wrote the first 13 bytes into it, so
-        // the first dynamic field (timestamp_ms) starts at +13.
-        timstr += 13;
-        timstr[0] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
-        timstr[1] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
-        timstr[2] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
-        timstr[3] = gen_nibble_to_ascii[timestamp_ms & 0xF];
-        buf_commit_cdc_dest(4);
-
-        buf_enqueue_cdc((uint8_t *)", time_us=0x", 12);
-
-        timstr += (4 + 12);
-        timstr[0] = gen_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
-        timstr[1] = gen_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
-        timstr[2] = gen_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
-        timstr[3] = gen_nibble_to_ascii[(timestamp_us >> 16) & 0xF];
-        timstr[4] = gen_nibble_to_ascii[(timestamp_us >> 12) & 0xF];
-        timstr[5] = gen_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
-        timstr[6] = gen_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
-        timstr[7] = gen_nibble_to_ascii[timestamp_us & 0xF];
-        buf_commit_cdc_dest(8);
-
-        buf_enqueue_cdc((uint8_t *)", cycle_time_us_ave_max=[0x", 27);
 
         // Read and clear cycle time. The max value accumulates from device boot
         // (or since the last z[CR] query), spanning open and closed periods.
@@ -590,22 +570,55 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
         uint16_t cycle_max = (uint16_t)(can_get_cycle_max_time_ns() >= 4095000 ? 4095 : can_get_cycle_max_time_ns() / 1000);
         can_clear_cycle_time();
 
-        timstr += (8 + 27);
-        timstr[0] = gen_nibble_to_ascii[(cycle_ave >> 8) & 0xF];
-        timstr[1] = gen_nibble_to_ascii[(cycle_ave >> 4) & 0xF];
-        timstr[2] = gen_nibble_to_ascii[cycle_ave & 0xF];
-        buf_commit_cdc_dest(3);
+        // Layout (matches the template comment above):
+        //   "z: time_ms=0x"               13 B
+        //   ms hex                         4 B
+        //   ", time_us=0x"                12 B
+        //   us hex                         8 B
+        //   ", cycle_time_us_ave_max=[0x" 27 B
+        //   cycle_ave hex                  3 B
+        //   ", 0x"                         4 B
+        //   cycle_max hex                  3 B
+        //   "]\r"                          2 B
+        //   -------------------------------------
+        //   total                         76 B
+        memcpy(p, "z: time_ms=0x", 13);
+        p += 13;
+        p[0] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
+        p[1] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
+        p[2] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
+        p[3] = gen_nibble_to_ascii[timestamp_ms & 0xF];
+        p += 4;
 
-        buf_enqueue_cdc((uint8_t *)", 0x", 4);
+        memcpy(p, ", time_us=0x", 12);
+        p += 12;
+        p[0] = gen_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
+        p[1] = gen_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
+        p[2] = gen_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
+        p[3] = gen_nibble_to_ascii[(timestamp_us >> 16) & 0xF];
+        p[4] = gen_nibble_to_ascii[(timestamp_us >> 12) & 0xF];
+        p[5] = gen_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
+        p[6] = gen_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
+        p[7] = gen_nibble_to_ascii[timestamp_us & 0xF];
+        p += 8;
 
-        timstr += (3 + 4);
-        timstr[0] = gen_nibble_to_ascii[(cycle_max >> 8) & 0xF];
-        timstr[1] = gen_nibble_to_ascii[(cycle_max >> 4) & 0xF];
-        timstr[2] = gen_nibble_to_ascii[cycle_max & 0xF];
-        buf_commit_cdc_dest(3);
+        memcpy(p, ", cycle_time_us_ave_max=[0x", 27);
+        p += 27;
+        p[0] = gen_nibble_to_ascii[(cycle_ave >> 8) & 0xF];
+        p[1] = gen_nibble_to_ascii[(cycle_ave >> 4) & 0xF];
+        p[2] = gen_nibble_to_ascii[cycle_ave & 0xF];
+        p += 3;
 
-        buf_enqueue_cdc((uint8_t *)"]\r", 2);
+        memcpy(p, ", 0x", 4);
+        p += 4;
+        p[0] = gen_nibble_to_ascii[(cycle_max >> 8) & 0xF];
+        p[1] = gen_nibble_to_ascii[(cycle_max >> 4) & 0xF];
+        p[2] = gen_nibble_to_ascii[cycle_max & 0xF];
+        p += 3;
 
+        memcpy(p, "]\r", 2);
+
+        buf_commit_cdc_dest(76);
         return;
     }
 
