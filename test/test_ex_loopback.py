@@ -279,11 +279,12 @@ class ExLoopbackTestCase(unittest.TestCase):
 
         self.dut.receive()
         # Flush any pending CDC Rx resync state with a bare [CR] before F.
-        # Bit 1 (CDC Rx overflow) is tolerated: under sustained full load the
-        # drain/inflow margin is narrow and a few commands may be dropped, but
-        # the resulting drop count is well below 1 % and does not skew the
-        # bus-load measurement. Bit 3 (DATA_OVERRUN / HAL-side frame loss) is
-        # NOT tolerated — that would invalidate the measurement.
+        # Bit 1 (CDC Rx overflow) is the ONLY tolerated flag: under sustained
+        # full load the drain/inflow margin is narrow and a few commands may
+        # be dropped, but the resulting drop count is well below 1 % and does
+        # not skew the bus-load measurement. Any other flag (DATA_OVERRUN,
+        # bus error, etc.) would invalidate the measurement and must stay
+        # clear.
         self.dut.send(b"\r")
         self.dut.receive()
         self.dut.send(b"F\r")
@@ -291,8 +292,8 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(len(f_reply), len(b"Fxx\r"),
                          f"Unexpected F reply length: {f_reply!r}")
         flags = int(f_reply[1:3], 16)
-        self.assertFalse(flags & 0x08,
-                         f"F bit 3 (HAL-side frame loss) raised in 10 kbps min-stuffing bus-load test; F={f_reply!r}")
+        self.assertEqual(flags & ~0x02, 0,
+                         f"Only F bit 1 (CDC Rx overflow) is tolerated in 10 kbps min-stuffing bus-load test; F={f_reply!r}")
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps min-stuffing)")
@@ -325,8 +326,8 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(len(f_reply), len(b"Fxx\r"),
                          f"Unexpected F reply length: {f_reply!r}")
         flags = int(f_reply[1:3], 16)
-        self.assertFalse(flags & 0x08,
-                         f"F bit 3 (HAL-side frame loss) raised in 10 kbps max-stuffing bus-load test; F={f_reply!r}")
+        self.assertEqual(flags & ~0x02, 0,
+                         f"Only F bit 1 (CDC Rx overflow) is tolerated in 10 kbps max-stuffing bus-load test; F={f_reply!r}")
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps max-stuffing)")
@@ -380,8 +381,8 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(len(f_reply), len(b"Fxx\r"),
                          f"Unexpected F reply length: {f_reply!r}")
         flags = int(f_reply[1:3], 16)
-        self.assertFalse(flags & 0x08,
-                         f"F bit 3 (HAL-side frame loss) raised in 20 kbps min-stuffing bus-load test; F={f_reply!r}")
+        self.assertEqual(flags & ~0x02, 0,
+                         f"Only F bit 1 (CDC Rx overflow) is tolerated in 20 kbps min-stuffing bus-load test; F={f_reply!r}")
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps min-stuffing)")
@@ -414,8 +415,8 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(len(f_reply), len(b"Fxx\r"),
                          f"Unexpected F reply length: {f_reply!r}")
         flags = int(f_reply[1:3], 16)
-        self.assertFalse(flags & 0x08,
-                         f"F bit 3 (HAL-side frame loss) raised in 20 kbps max-stuffing bus-load test; F={f_reply!r}")
+        self.assertEqual(flags & ~0x02, 0,
+                         f"Only F bit 1 (CDC Rx overflow) is tolerated in 20 kbps max-stuffing bus-load test; F={f_reply!r}")
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps max-stuffing)")
