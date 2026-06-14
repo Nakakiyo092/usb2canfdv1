@@ -313,6 +313,15 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.receive()
         self.dut.receive()
 
+        # Flush any pending CDC Rx resync state with a bare [CR] before F.
+        # The 180-frame burst above is fast enough to overflow the CDC Rx
+        # buffer; if the last torn slot has no following '\r' the firmware's
+        # drop-resync flag stays engaged and would otherwise consume the
+        # 'F\r' command itself. The empty-command convention (see doc/1)
+        # is the spec'd way to clear pending state.
+        self.dut.send(b"\r")
+        self.dut.receive()
+
         # bit 3 (DATA_OVERRUN) is the core assertion. The APP-level Tx queue
         # may also overflow as a side effect of the burst, so bit 1
         # (CAN_TX_FIFO_FULL) can co-occur; only bit 3 is required.
@@ -426,6 +435,11 @@ class ErrorTestCase(unittest.TestCase):
                 tx_data += b"t" + format(nbr, "03X").encode() + b"1" + format(nbr, "02X").encode() + b"\r"
             self.dut.send(tx_data)
         self.dut.receive()
+        self.dut.receive()
+
+        # Flush any pending CDC Rx resync state with a bare [CR] before F
+        # (same rationale as test_can_rx_overflow).
+        self.dut.send(b"\r")
         self.dut.receive()
 
         # bit 3 (DATA_OVERRUN) is the core assertion. The APP-level Tx queue

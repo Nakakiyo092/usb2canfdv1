@@ -278,8 +278,14 @@ class ExLoopbackTestCase(unittest.TestCase):
             time.sleep(0.25)
 
         self.dut.receive()
+        # Flush any pending CDC Rx resync state with a bare [CR] before F.
+        # This test should not trigger any buffer overflow, so the F check
+        # below also acts as a guard against an unintended overflow.
+        self.dut.send(b"\r")
+        self.dut.receive()
         self.dut.send(b"F\r")
-        rx_data = self.dut.receive()
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00; bus-load test path should not trigger any overflow (10 kbps min-stuffing)")
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps min-stuffing)")
@@ -304,8 +310,11 @@ class ExLoopbackTestCase(unittest.TestCase):
             time.sleep(0.25)
 
         self.dut.receive()
+        self.dut.send(b"\r")
+        self.dut.receive()
         self.dut.send(b"F\r")
-        rx_data = self.dut.receive()
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00; bus-load test path should not trigger any overflow (10 kbps max-stuffing)")
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps max-stuffing)")
@@ -351,8 +360,14 @@ class ExLoopbackTestCase(unittest.TestCase):
             time.sleep(0.125)
 
         self.dut.receive()
+        # Flush any pending CDC Rx resync state with a bare [CR] before F.
+        # This test should not trigger any buffer overflow, so the F check
+        # below also acts as a guard against an unintended overflow.
+        self.dut.send(b"\r")
+        self.dut.receive()
         self.dut.send(b"F\r")
-        rx_data = self.dut.receive()
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00; bus-load test path should not trigger any overflow (20 kbps min-stuffing)")
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps min-stuffing)")
@@ -377,8 +392,11 @@ class ExLoopbackTestCase(unittest.TestCase):
             time.sleep(0.125)
 
         self.dut.receive()
+        self.dut.send(b"\r")
+        self.dut.receive()
         self.dut.send(b"F\r")
-        rx_data = self.dut.receive()
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00; bus-load test path should not trigger any overflow (20 kbps max-stuffing)")
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps max-stuffing)")
