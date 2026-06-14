@@ -27,6 +27,7 @@
 #define GEN_TS_RING_US             3600000000U   // spec wrap
 #define GEN_TS_INVALID_MS          0xFFFFU       // Out-of-spec sentinel: ms timestamp is unreliable
 #define GEN_TS_INVALID_US          0xFFFFFFFFU   // Out-of-spec sentinel: us timestamp is unreliable
+#define GEN_TS_TICK_THROTTLE_MS    100U          // Min interval between heartbeat-driven accumulator updates
 
 #if 0  /* deprecated: kept for reference */
 // Constants used by the deprecated sandwich-based us-timestamp implementation.
@@ -412,6 +413,19 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
     gen_last_time_us = current_time_us;
 
     return gen_last_timestamp_us;
+}
+
+// Main-loop heartbeat. Keeps the us-timestamp accumulator fresh so that
+// HAL_GetTick wrap (49.7 days) is always captured by the running diff
+// idiom, regardless of CAN traffic. Internally throttled to
+// GEN_TS_TICK_THROTTLE_MS so the 64 bit math runs only ~10 Hz.
+void gen_process(void)
+{
+    static uint32_t last_tick_ms = 0;
+    uint32_t now_ms = HAL_GetTick();
+    if ((uint32_t)(now_ms - last_tick_ms) < GEN_TS_TICK_THROTTLE_MS) return;
+    last_tick_ms = now_ms;
+    (void)gen_get_timestamp_us_from_tim3((uint16_t)TIM3->CNT);
 }
 
 // Setter and getter for the filter settings

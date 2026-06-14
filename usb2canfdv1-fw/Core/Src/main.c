@@ -29,6 +29,7 @@
 #include "usbd_cdc_if.h"
 #include "buffer.h"
 #include "can.h"
+#include "generator.h"
 #include "led.h"
 #include "nvm.h"
 /* USER CODE END Includes */
@@ -116,6 +117,7 @@ int main(void)
     led_process();
     can_process();
     buf_process();
+    gen_process();
   }
   /* USER CODE END 3 */
 }
