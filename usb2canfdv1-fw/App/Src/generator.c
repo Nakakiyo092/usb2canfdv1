@@ -22,19 +22,20 @@
 #include "generator.h"
 
 // Constants used in gen_get_timestamp_us_from_tim3
-#define GEN_TS_SKEW_TOLERANCE_US   0U            // Target: 1 us accuracy (see Note 2)
-#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay (Note 3): DLC8 classic @10kbps ~16ms + margin
-#define GEN_TS_SANDWICH_MAX_RETRY  16U           // Cap on sandwiched-read retries before giving up
+#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay: DLC8 classic @10kbps ~16ms + margin
+#define GEN_TS_SNAPSHOT_MAX_RETRY  8U            // Cap on (gen_us_base, TIM3) snapshot retries before giving up
 #define GEN_TS_RING_MS             60000U        // spec wrap
-#define GEN_TS_RING_US             3600000000U   // spec wrap; also TIM2 ARR + 1
+#define GEN_TS_RING_US             3600000000U   // spec wrap
+#define GEN_TS_TIM3_PERIOD         65536U        // TIM3 wrap interval in microseconds (ARR + 1)
 #define GEN_TS_INVALID_MS          0xFFFFU       // Out-of-spec sentinel: ms timestamp is unreliable
 #define GEN_TS_INVALID_US          0xFFFFFFFFU   // Out-of-spec sentinel: us timestamp is unreliable
 
-// Subtraction in the 3.6e9 (TIM2 ring) modulo space.
-static inline uint32_t gen_ring_sub(uint32_t a, uint32_t b)
-{
-    return (a >= b) ? (a - b) : (a + GEN_TS_RING_US - b);
-}
+// Microsecond base, folded into the spec ring [0, GEN_TS_RING_US).
+// Incremented by GEN_TS_TIM3_PERIOD on each TIM3 update event so that
+// (gen_us_base + TIM3->CNT) represents the live spec timestamp.
+// Written only from HAL_TIM_PeriodElapsedCallback (TIM3); read with the
+// (b1, ..., b2) snapshot pattern to tolerate ISR firing mid-read.
+static volatile uint32_t gen_us_base = 0;
 
 // Public variables
 const uint8_t gen_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -242,6 +243,20 @@ uint16_t gen_get_timestamp_ms_from_tim3(uint16_t latched_tim3)
     uint32_t us = gen_get_timestamp_us_from_tim3(latched_tim3);
     if (us == GEN_TS_INVALID_US) return GEN_TS_INVALID_MS;
     return (uint16_t)((us / 1000U) % GEN_TS_RING_MS);
+}
+
+// TIM3 update-event callback: advances the microsecond base by one TIM3
+// wrap. HAL routes every TIM_PeriodElapsed event to this single weak
+// override, so the htim->Instance check is required even though only
+// TIM3 has the update interrupt enabled today.
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM3)
+    {
+        uint32_t base = gen_us_base + GEN_TS_TIM3_PERIOD;
+        if (base >= GEN_TS_RING_US) base -= GEN_TS_RING_US;
+        gen_us_base = base;
+    }
 }
 
 // Gets micro second timestamp for the time `latched_tim3` was sampled
