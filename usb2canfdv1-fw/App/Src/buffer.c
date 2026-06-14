@@ -15,7 +15,7 @@
 // See also: LICENSE.md in the root of this repository
 ///////////////////////////////////////////////////////////////////////////////
 
-// Manage cdc (rx and tx) and can (tx) buffer (including error handling related to buffer full)
+// Manage cdc (rx and tx) and can (tx) buffer (including error handling related to data loss in buffer)
 
 #include "usbd_cdc_if.h"
 #include "buffer.h"
@@ -223,7 +223,7 @@ void buf_process(void)
             if (BUF_MAX_NBR_SENT_FRAMES < nbr_sent_frames)
             {
                 buf_release_can_tail();  // Assume the frame is deleted in HAL (Disabled retransmission or overflow)
-                // Do not raise error here because it shold not be for disabled retransmission.
+                // Do not raise error here because it should not be for disabled retransmission.
                 // Overflow can be catched by checking the error flags, which is done in can.c.
             }
 
@@ -297,30 +297,6 @@ FDCAN_TxHeaderTypeDef *buf_get_can_head_header(void)
     return &buf_can_tx.header[buf_can_tx.head];
 }
 
-// Get pointer to the frame header of the sent can frame with the given marker
-// Return NULL if the buffer is empty or the frame is not found.
-FDCAN_TxHeaderTypeDef *buf_get_can_sent_header(uint8_t marker)
-{
-    if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
-    {
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
-        return NULL;
-    }
-
-    // TODO Deduplicate marker-search logic shared with buf_get_can_sent_data (e.g., static buf_find_can_marker helper)
-    uint8_t idx = buf_can_tx.tail;
-    while (idx != buf_can_tx.send)
-    {
-        if (buf_can_tx.header[idx].MessageMarker == marker)
-        {
-            return &buf_can_tx.header[idx];
-        }
-        idx = (idx + 1) % BUF_CAN_TXQUEUE_LEN;
-    }
-
-    return NULL;
-}
-
 // Get pointer to the frame data of the head can frame
 // Return NULL if the buffer is full.
 uint8_t *buf_get_can_head_data(void)
@@ -334,17 +310,14 @@ uint8_t *buf_get_can_head_data(void)
     return buf_can_tx.data[buf_can_tx.head];
 }
 
-// Get pointer to the frame data of the sent can frame with the given marker
-// Return NULL if the buffer is empty or the frame is not found.
+// Get pointer to the frame data of the sent can frame with the given marker.
+// Returns NULL if no entry matches the marker (the empty-buffer case is just
+// the special case where the marker-search loop exits without iterating).
+// Does NOT raise an error: per buffer.c's reporting policy, this query is
+// neither a buffer-full condition nor a data-loss event in the buffer's
+// processing path — interpreting a NULL return is the caller's business.
 uint8_t *buf_get_can_sent_data(uint8_t marker)
 {
-    if ((buf_can_tx.head == buf_can_tx.tail) && !buf_can_tx.full)
-    {
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);  // TODO Is this necessary?
-        return NULL;
-    }
-
-    // TODO Deduplicate marker-search logic shared with buf_get_can_sent_header (e.g., static buf_find_can_marker helper)
     uint8_t idx = buf_can_tx.tail;
     while (idx != buf_can_tx.send)
     {
