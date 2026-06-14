@@ -544,15 +544,25 @@ void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
     {
         // "z: time_ms=0x0000, time_us=0x00000000, cycle_time_us_ave_max=[0x000, 0x000]\r";
 
-        uint8_t* timstr;
+        // Reserve worst-case footprint up front. SLCAN_MTU is well above
+        // the ~76 byte actual response, so this is a safe upper bound.
+        // On failure NOTHING has been queued yet — the host therefore
+        // never sees a truncated fragment of the response (the previous
+        // ordering enqueued the preamble before this check and could
+        // leak it into the stream). F bit 0 is raised inside
+        // buf_reserve_cdc_dest itself when the reservation fails.
+        uint8_t* timstr = buf_reserve_cdc_dest(SLCAN_MTU);
+        if (timstr == NULL) return;
 
         buf_enqueue_cdc((uint8_t *)"z: time_ms=0x", 13);
 
         uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(TIM3->CNT);
         uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
 
-        timstr = buf_reserve_cdc_dest(SLCAN_MTU);
-        if (timstr == NULL) return;
+        // timstr was captured at the start of the reserved region; the
+        // preamble enqueue above wrote the first 13 bytes into it, so
+        // the first dynamic field (timestamp_ms) starts at +13.
+        timstr += 13;
         timstr[0] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
         timstr[1] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
         timstr[2] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
