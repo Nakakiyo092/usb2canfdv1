@@ -1039,33 +1039,98 @@ void psr_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
 #endif
 
 #ifdef DEBUG
-// Parse extended command (upgrade mode)
-void psr_parse_str_extended(uint8_t *buf, uint8_t len)
+// Sub-command of the extended (!) family that drives the Tx delay
+// compensation override added in can.c.
+//
+// Variants:
+//   !7DC               -- print live TDC state on the host (no state change).
+//                         Format: "!: TDCV=0xXX, TDCO=0xXX, TDCF=0xXX, EN=X\r"
+//   !7DC0              -- disable TDC; applied on next can_enable().
+//   !7DC1              -- restore auto TDC (the non-debug default).
+//   !7DC2<TDCO><TDCF>  -- manual TDC: each is one byte of hex (0..7F).
+//
+// Setters require BUS_CLOSED so the change can be applied during the next
+// FDCAN INIT pass.
+static void psr_parse_str_ext_tdc(uint8_t *buf, uint8_t len)
 {
-    if (can_get_bus_state() == BUS_CLOSED)
+    // !7DC -- live getter, works in any bus state.
+    if (len == 4)
     {
-        // Check for valid command
-        if (len != 5)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-
-        if (buf[1] == 0xB && buf[2] == 0x0 && buf[3] == 0x0 && buf[4] == 0x7)
-        {
-            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
-        	bootloader_enter_update_mode();
-        }
-        else
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-
+        struct CanTdcLiveState s = can_get_tdc_state();
+        // "!: TDCV=0xXX, TDCO=0xXX, TDCF=0xXX, EN=X\r"
+        uint8_t out[41];
+        uint8_t i = 0;
+        out[i++] = '!'; out[i++] = ':'; out[i++] = ' ';
+        out[i++] = 'T'; out[i++] = 'D'; out[i++] = 'C'; out[i++] = 'V'; out[i++] = '=';
+        out[i++] = '0'; out[i++] = 'x';
+        out[i++] = gen_nibble_to_ascii[(s.tdcv >> 4) & 0xF];
+        out[i++] = gen_nibble_to_ascii[s.tdcv & 0xF];
+        out[i++] = ','; out[i++] = ' ';
+        out[i++] = 'T'; out[i++] = 'D'; out[i++] = 'C'; out[i++] = 'O'; out[i++] = '=';
+        out[i++] = '0'; out[i++] = 'x';
+        out[i++] = gen_nibble_to_ascii[(s.tdco >> 4) & 0xF];
+        out[i++] = gen_nibble_to_ascii[s.tdco & 0xF];
+        out[i++] = ','; out[i++] = ' ';
+        out[i++] = 'T'; out[i++] = 'D'; out[i++] = 'C'; out[i++] = 'F'; out[i++] = '=';
+        out[i++] = '0'; out[i++] = 'x';
+        out[i++] = gen_nibble_to_ascii[(s.tdcf >> 4) & 0xF];
+        out[i++] = gen_nibble_to_ascii[s.tdcf & 0xF];
+        out[i++] = ','; out[i++] = ' ';
+        out[i++] = 'E'; out[i++] = 'N'; out[i++] = '=';
+        out[i++] = s.enabled ? '1' : '0';
+        out[i++] = '\r';
+        buf_enqueue_cdc(out, i);
         return;
     }
-    else
+
+    // Setters from here on -- bus must be closed.
+    if (can_get_bus_state() != BUS_CLOSED)
     {
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
+
+    HAL_StatusTypeDef rc = HAL_ERROR;
+    if (len == 5 && buf[4] == 0x0)
+        rc = can_set_tdc_disabled();
+    else if (len == 5 && buf[4] == 0x1)
+        rc = can_set_tdc_auto();
+    else if (len == 9 && buf[4] == 0x2)
+    {
+        uint8_t tdco = (uint8_t)((buf[5] << 4) | buf[6]);
+        uint8_t tdcf = (uint8_t)((buf[7] << 4) | buf[8]);
+        rc = can_set_tdc_manual(tdco, tdcf);
+    }
+
+    buf_enqueue_cdc(rc == HAL_OK ? SLCAN_RET_OK : SLCAN_RET_ERR, SLCAN_RET_LEN);
+}
+
+// Parse extended command (! family). Currently dispatches:
+//   !B007        -- enter bootloader update mode (existing).
+//   !7DC[...]    -- Tx delay compensation override (see psr_parse_str_ext_tdc).
+void psr_parse_str_extended(uint8_t *buf, uint8_t len)
+{
+    // !B007 -- enter update mode.
+    if (len == 5 && buf[1] == 0xB && buf[2] == 0x0 && buf[3] == 0x0 && buf[4] == 0x7)
+    {
+        if (can_get_bus_state() != BUS_CLOSED)
+        {
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+            return;
+        }
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+        bootloader_enter_update_mode();
+        return;
+    }
+
+    // !7DC[...] -- TDC override family.
+    if (len >= 4 && buf[1] == 0x7 && buf[2] == 0xD && buf[3] == 0xC)
+    {
+        psr_parse_str_ext_tdc(buf, len);
+        return;
+    }
+
+    buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
 }
 #endif
 
