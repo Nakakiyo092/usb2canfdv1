@@ -923,8 +923,13 @@ HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf)
 }
 
 // Read the live TDC values from the FDCAN peripheral. TDCV is the
-// hardware-measured Tx delay (updated each FD frame). When the bus is
-// closed the peripheral is in reset and every field reads back as 0.
+// hardware-measured Tx delay (updated each FD frame).
+//
+// IMPORTANT: only valid while BUS_OPENED. After can_disable() the
+// peripheral has been DeInit'd, which gates the FDCAN bus clock via
+// HAL_FDCAN_MspDeInit -> __HAL_RCC_FDCAN_CLK_DISABLE. Touching the
+// FDCAN registers in that state is undefined and can HardFault.
+// When closed we therefore return all-zero rather than reading.
 struct CanTdcLiveState can_get_tdc_state(void)
 {
     struct CanTdcLiveState s = {0};
