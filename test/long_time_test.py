@@ -395,14 +395,17 @@ def main():
                             drops_here += 1
                         if drops_here:
                             stats["tx_dropped"] += drops_here
-                            # The diff and clock-drift baselines pointed to a
-                            # frame that no longer round-tripped, so they are
-                            # invalid across the gap. Restart the chain on the
-                            # next matched Z.
+                            # The per-pair diff baseline pointed to a frame
+                            # that no longer round-tripped, so the next diff
+                            # would span the drop gap and be meaningless.
+                            # Reset prev so the next matched Z starts a fresh
+                            # diff chain. The clock-drift baseline (*_initial)
+                            # is intentionally NOT reset: drift is measured
+                            # against the very first matched frame and that
+                            # reference stays valid even when intermediate
+                            # frames drop.
                             host_tx_time_us_prev = -1
                             device_ts_prev = -1
-                            host_tx_time_us_initial = -1
-                            device_ts_initial = -1
                         if not host_tx_time_us_list or host_tx_time_us_list[0][0] != rx_seq:
                             # The matching host write is gone (or never
                             # happened). Skip this Z silently rather than
@@ -462,10 +465,14 @@ def main():
                         stats["clock_offset_upper_bound"] = drift_upper_bound_us
                         stats["clock_offset_lower_bound"] = drift_lower_bound_us
 
-                    # Store initial timestamp if we have the first values
+                    # Store initial timestamp on the very first valid frame.
+                    # Once set, the initial pair is intentionally preserved
+                    # across drop resyncs and sentinel events so the long-term
+                    # clock drift measurement keeps a stable reference.
                     elif host_tx_time_us_list:
-                        host_tx_time_us_initial = host_tx_time_us_list[0][1]
-                        device_ts_initial = device_ts
+                        if host_tx_time_us_initial < 0:
+                            host_tx_time_us_initial = host_tx_time_us_list[0][1]
+                            device_ts_initial = device_ts
 
                     else:
                         print("ERROR: Something went wrong.")
