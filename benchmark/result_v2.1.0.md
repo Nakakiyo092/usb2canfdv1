@@ -91,7 +91,7 @@ detail:
 ## Long Time Test
 
 ```powershell
-> python ./test/long_time_test.py COM9 --duration 3                                    
+> python ./test/long_time_test.py COM9 --duration 3
 usb port name: COM9
 
 serial number: NEC01
