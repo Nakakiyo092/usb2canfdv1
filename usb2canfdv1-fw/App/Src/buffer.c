@@ -61,6 +61,13 @@ volatile struct BufCdcRx buf_cdc_rx = {0};
 static struct BufCanTx buf_can_tx = {0};
 static uint8_t cmd_line_buf[SLCAN_MTU];          // Command line buffer
 static uint8_t cmd_line_buf_idx = 0;
+// Sticky CDC Rx re-sync flag. Set when a slot is observed with the producer-
+// overflow marker and cleared at the next '\r'. The flag spans slots so that
+// a long command (e.g. a B FD frame is ~139 chars and crosses ~3 USB packets)
+// whose middle packet is dropped still has its trailing fragment discarded —
+// without it, the leading random byte of the next, non-dropped slot could
+// land in the frame-command path and emit garbled CAN frames on the bus.
+static uint8_t cdc_rx_drop_resync = 0;
 
 // Private prototypes
 static HAL_StatusTypeDef buf_release_can_tail(void);
@@ -105,12 +112,12 @@ void buf_process(void)
     buf_enable_irq();
     if (buf_cdc_rx.tail != cpy_head)
     {
-        uint32_t idx_start = 0; // Start index of the data which is not corrupted
-
-        // Check if the data in this buffer is corrupted due to overflow
-        // If producer overflowed this slot, skip the torn prefix up to the first '\r'.
-        uint8_t is_dropped = buf_cdc_rx.data_drop[buf_cdc_rx.tail];
-        if (is_dropped)
+        // Engage the sticky resync if the producer overflowed this slot.
+        // The torn data must be discarded all the way to the next '\r' —
+        // which may not appear in this slot — so the flag is set here and
+        // only cleared by the '\r' check in the byte loop below. The
+        // already-buffered partial command is dropped at the same time.
+        if (buf_cdc_rx.data_drop[buf_cdc_rx.tail])
         {
             // CDC Rx buffer overflow is intentionally reported through the
             // SLCAN status flag named SLCAN_STS_CAN_TX_FIFO_FULL (F bit 1).
@@ -118,20 +125,24 @@ void buf_process(void)
             // defined in doc/2.-Command-List.md as the protocol contract.
             gen_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
             cmd_line_buf_idx = 0;
-            for (idx_start = 0; idx_start < buf_cdc_rx.msglen[buf_cdc_rx.tail]; idx_start++)
-            {
-                if (buf_cdc_rx.data[buf_cdc_rx.tail][idx_start] == '\r')    // \r = [CR] = delimiter
-                {
-                    break;
-                }
-            }
-            idx_start++;
+            cdc_rx_drop_resync = 1;
         }
 
         // Process one whole buffer
-        for (uint32_t i = idx_start; i < buf_cdc_rx.msglen[buf_cdc_rx.tail]; i++)
-	    {
-            if (buf_cdc_rx.data[buf_cdc_rx.tail][i] == '\r')    // \r = [CR] = delimiter
+        for (uint32_t i = 0; i < buf_cdc_rx.msglen[buf_cdc_rx.tail]; i++)
+        {
+            uint8_t b = buf_cdc_rx.data[buf_cdc_rx.tail][i];
+
+            // While the resync is engaged, discard every byte (including the
+            // '\r' that ends the torn command) until and including the first
+            // '\r'. The first non-resync byte after it begins a fresh command.
+            if (cdc_rx_drop_resync)
+            {
+                if (b == '\r') cdc_rx_drop_resync = 0;
+                continue;
+            }
+
+            if (b == '\r')    // \r = [CR] = delimiter
             {
                 psr_parse_str(cmd_line_buf, cmd_line_buf_idx);
                 cmd_line_buf_idx = 0;
@@ -142,7 +153,7 @@ void buf_process(void)
             else
             {
                 // Accumulate chars to reassemble them into a line of command (terminated by a [CR])
-                cmd_line_buf[cmd_line_buf_idx++] = buf_cdc_rx.data[buf_cdc_rx.tail][i];
+                cmd_line_buf[cmd_line_buf_idx++] = b;
 
                 // Check for command length
                 if (cmd_line_buf_idx == SLCAN_MTU)
