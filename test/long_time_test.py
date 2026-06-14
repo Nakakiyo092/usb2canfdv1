@@ -134,23 +134,44 @@ def print_round_trip_time(dev: serial.Serial) -> int:
     return ave_rtt
 
 
-def make_data_to_write() -> bytes:
-    """Make data to write to device.
+def make_data_to_write(seq: int) -> bytes:
+    """Make data to write to device, with the host-side sequence number
+    embedded in the 8-byte payload.
 
-    Keep the FD-BRS extended-ID frame format (`B`) so the BRS code path
-    is still exercised, but shrink the payload to 8 bytes. The test
-    verifies long-running timestamp consistency, which is independent
-    of frame size, and the previous 139-byte command (64-byte payload)
-    overran the CDC Rx ring under sustained pressure (sustained-rate
-    BRS stress is now covered by can_stress_test.py).
+    The seq round-trips through the device: it appears verbatim in the
+    matching Tx-event (`Z`) reply, so the receive side can detect dropped
+    commands (CDC Rx overrun under sustained pressure) and resync the
+    host_tx_time_us_list pairing instead of letting one drop cascade
+    into thousands of false comparison failures.
+
+    Keeps the FD-BRS extended-ID frame format (`B`) so the BRS code path
+    is still exercised; sustained-rate BRS data-phase stress is covered
+    by can_stress_test.py, so this test only needs a single representative
+    frame per iteration.
     """
-    single_msg = b"B000000008" + b"00112233445566778899AABBCCDDEEFF"[:16] + b"\r"
-    #single_msg = b"00112233445566778899AABBCCDDEEFF"
-    #single_msg = b"B00000000F" + single_msg * 4 + b"\r" # a frame with 64 bytes data
+    return b"B000000008" + f"{seq & 0xFFFFFFFFFFFFFFFF:016X}".encode() + b"\r"
 
-    data_write = single_msg
 
-    return data_write
+def extract_seq_from_tx_event(msg: bytes) -> int:
+    """Extract the 8-byte (16 hex chars) sequence number from the data
+    portion of a Z (Tx event) message. Returns -1 if the message is
+    too short to contain a seq.
+
+    Z message layout for our frame ('B' + 8 ID + 1 DLC + 16 data + 8 ts + CR):
+        msg[0]      = 'Z'
+        msg[1]      = 'B'
+        msg[2:10]   = ID (8 hex)
+        msg[10:11]  = DLC (1 hex)
+        msg[11:27]  = data (16 hex) <-- seq is here
+        msg[27:35]  = timestamp (8 hex)
+        msg[35]     = '\\r'
+    """
+    if len(msg) < 27 + 1:
+        return -1
+    try:
+        return int(msg[11:27].decode(), 16)
+    except (ValueError, UnicodeDecodeError):
+        return -1
 
 
 SENTINEL_US = 0xFFFFFFFF
@@ -276,11 +297,10 @@ def main():
     setup_device_under_test(device, args.with_receiver)
     rtt = print_round_trip_time(device)
 
-    data_write = make_data_to_write()
-
     stats = {
         "tx_requests": 0,
         "tx_complete": 0,
+        "tx_dropped": 0,
         "tx_rejected": 0,
         "st_checked": 0,
         "st_no_error_count": 0,
@@ -306,10 +326,14 @@ def main():
     host_walltime_start_us = int(round(time.time() * 1_000_000))
     host_perfcounter_start_us = int(round(time.perf_counter() * 1_000_000))
 
-    # Timestamp tracking
+    # Timestamp tracking. List entries are (seq, perf_counter_us) tuples; seq
+    # is also embedded in the sent frame and round-tripped via the device's Z
+    # reply, which is what lets the receive side detect dropped commands and
+    # resync the pairing.
     host_tx_time_us_list = []
     host_tx_time_us_initial = -1
     host_tx_time_us_prev = -1
+    tx_seq_counter = 0
     device_ts = -1
     device_ts_initial = -1
     device_ts_prev = -1
@@ -356,6 +380,35 @@ def main():
 
                 if msg.startswith(b"Z"):
                     stats["tx_complete"] += 1
+
+                    # Resync against the device-echoed seq: drop pending list
+                    # entries whose seq is older than the reply we just got.
+                    # Those frames were lost between the host write and the
+                    # firmware (e.g. CDC Rx ring overrun under sustained
+                    # pressure). Without this, every subsequent comparison
+                    # would be permanently shifted by one slot.
+                    rx_seq = extract_seq_from_tx_event(msg)
+                    if rx_seq >= 0:
+                        drops_here = 0
+                        while host_tx_time_us_list and host_tx_time_us_list[0][0] < rx_seq:
+                            host_tx_time_us_list.pop(0)
+                            drops_here += 1
+                        if drops_here:
+                            stats["tx_dropped"] += drops_here
+                            # The diff and clock-drift baselines pointed to a
+                            # frame that no longer round-tripped, so they are
+                            # invalid across the gap. Restart the chain on the
+                            # next matched Z.
+                            host_tx_time_us_prev = -1
+                            device_ts_prev = -1
+                            host_tx_time_us_initial = -1
+                            device_ts_initial = -1
+                        if not host_tx_time_us_list or host_tx_time_us_list[0][0] != rx_seq:
+                            # The matching host write is gone (or never
+                            # happened). Skip this Z silently rather than
+                            # pairing it with the wrong host time.
+                            continue
+
                     device_ts = extract_timestamp_from_tx_event(msg)
                     if device_ts < 0:
                         print("The script is aborting.")
@@ -370,28 +423,28 @@ def main():
                         stats["ts_failure_count"] += 1
                         print(f"WARNING: device reported timestamp sentinel for message {msg.strip()}")
                         if host_tx_time_us_list:
-                            host_tx_time_us_prev = host_tx_time_us_list.pop(0)
+                            host_tx_time_us_prev = host_tx_time_us_list.pop(0)[1]
                         device_ts_prev = device_ts
                         continue
 
                     # Perform timestamp verification if we have previous values
                     if host_tx_time_us_prev >= 0 and device_ts_prev >= 0 and device_ts_prev != SENTINEL_US and host_tx_time_us_list:
                         # Compare with the last timestamp
-                        host_diff_us = host_tx_time_us_list[0] - host_tx_time_us_prev
+                        host_diff_us = host_tx_time_us_list[0][1] - host_tx_time_us_prev
                         device_diff_us = calc_timestamp_diff(device_ts, device_ts_prev)
                         error_us = abs(host_diff_us - device_diff_us)
-                        
+
                         stats["ts_verified"] += 1
                         stats["ts_error_sum"] += error_us
                         stats["ts_error_max"] = max(stats["ts_error_max"], error_us)
-                        
+
                         if error_us > TIMESTAMP_DIFF_THRESHOLD_US:
                             print(f"WARNING: host/device timestamp diff mismatch for message {msg.strip()}:")
                             print(f"  host_diff={host_diff_us}us, device_diff={device_diff_us}us, error={error_us}us")
                             stats["ts_failure_count"] += 1
 
                         # Compare with the initial timestamp
-                        host_interval_us = host_tx_time_us_list[0] - host_tx_time_us_initial
+                        host_interval_us = host_tx_time_us_list[0][1] - host_tx_time_us_initial
                         device_interval_us = calc_timestamp_diff(device_ts, device_ts_initial)
                         drift_us = device_interval_us - host_interval_us
                         while drift_us < -3600_000_000 // 2:
@@ -411,7 +464,7 @@ def main():
 
                     # Store initial timestamp if we have the first values
                     elif host_tx_time_us_list:
-                        host_tx_time_us_initial = host_tx_time_us_list[0]
+                        host_tx_time_us_initial = host_tx_time_us_list[0][1]
                         device_ts_initial = device_ts
 
                     else:
@@ -419,7 +472,7 @@ def main():
                         print("The script is aborting.")
                         return
 
-                    host_tx_time_us_prev = host_tx_time_us_list.pop(0)
+                    host_tx_time_us_prev = host_tx_time_us_list.pop(0)[1]
                     device_ts_prev = device_ts
 
         ms = int(round(time.time() * 1000))
@@ -441,10 +494,13 @@ def main():
                 # drift budget: 65.5 ms / 2 / 0.5% ~= 6.6 s.
                 tick_tx = ms + random.randint(0, 6600)
 
-            # Record host TX timestamp in us (perf_counter returns seconds, convert to us)
-            host_tx_time_us_list.append(int(round(time.perf_counter() * 1000 * 1000)))
+            # Record (seq, host TX time) so the Z reply can be matched on seq.
+            host_tx_time_us_list.append(
+                (tx_seq_counter, int(round(time.perf_counter() * 1000 * 1000)))
+            )
 
-            device.write(data_write)    # Tx a frame
+            device.write(make_data_to_write(tx_seq_counter))    # Tx a frame
+            tx_seq_counter += 1
             stats["tx_requests"] += 1
             device.write(b"F\r")        # Status check
 
@@ -465,6 +521,7 @@ def main():
             print(f"--- Stats at {(ms - tick_start) / 3600 / 1000:.3f} hours ---")
             print("")
             print(f"sent frames: {stats["tx_complete"]} / {stats["tx_requests"]} (-{stats["tx_rejected"]})")
+            print(f"  resync-detected drops: {stats["tx_dropped"]}")
             print("")
             print_status_check(stats)
             print_timestamp_verification(stats)
