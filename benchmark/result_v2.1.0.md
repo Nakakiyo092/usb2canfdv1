@@ -32,7 +32,7 @@ pyserial==3.5
 > python ./test/cdc_speed_test.py COM9 --rx --chunk-size 16 --iteration 2 --duration 10
 usb port name: COM9
 
-serial number: NEC01
+serial number: N3C01
 slcan version: VW1K4-DEBUG
 detail:
     v: hardware="USB2CANFDV1", software="2.1.0", url="github.com/Nakakiyo092/usb2canfdv1"
@@ -60,7 +60,7 @@ detail:
 > python ./test/cdc_speed_test.py COM9 --tx --chunk-size 16 --iteration 2 --duration 10
 usb port name: COM9
 
-serial number: NEC01
+serial number: N3C01
 slcan version: VW1K4-DEBUG
 detail:
     v: hardware="USB2CANFDV1", software="2.1.0", url="github.com/Nakakiyo092/usb2canfdv1"
@@ -94,7 +94,7 @@ detail:
 > python ./test/long_time_test.py COM9 --duration 3
 usb port name: COM9
 
-serial number: NEC01
+serial number: N3C01
 slcan version: VW1K4-DEBUG
 detail:
     v: hardware="USB2CANFDV1", software="2.1.0", url="github.com/Nakakiyo092/usb2canfdv1"
