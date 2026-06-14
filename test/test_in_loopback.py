@@ -649,12 +649,12 @@ class TimestampUsTestCase(unittest.TestCase):
     def test_timestamp_same_stamp(self):
         """In internal-loopback mode a single transmitted frame produces both
         a Tx event report and an Rx frame report. Both share the same SOF
-        moment, so their us timestamps must match within ±1 us.
+        moment, so their us timestamps must match exactly.
 
-        The ±1 us tolerance absorbs the TIM2/TIM3 phase jitter introduced by
-        two separate gen_get_timestamp_us_from_tim3() calls (one for the
-        Tx event, one for the Rx frame) — see test_timestamp_accuracy_micro
-        for the same quantization effect.
+        The us timestamp is built from the FDCAN-latched TIM3 value alone,
+        and the latch value is the same for the Tx event and the Rx frame
+        of one loopback round-trip, so the two reports must report the
+        same value bit-for-bit.
         """
         # z2003: us timestamp + Tx event + Rx frame reporting all enabled.
         self.dut.send(b"z2003\r")
@@ -674,9 +674,9 @@ class TimestampUsTestCase(unittest.TestCase):
             rx_timestamp = rx_data[len(b"\rt03F0"):len(b"\rt03F0") + 8]
         tx_us = int(tx_timestamp, 16)
         rx_us = int(rx_timestamp, 16)
-        self.assertAlmostEqual(tx_us, rx_us, delta=1,
-                               msg=f"Tx event and Rx frame share one SOF, so timestamps "
-                                   f"must match within ±1 us. tx={tx_us}, rx={rx_us}")
+        self.assertEqual(tx_us, rx_us,
+                         msg=f"Tx event and Rx frame share one SOF, so timestamps "
+                             f"must match exactly. tx={tx_us}, rx={rx_us}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -821,8 +821,8 @@ class TimestampUsTestCase(unittest.TestCase):
         """Send 2 and 20 consecutive frames at the slowest bitrate (10k/500k)
         and compare the reported us timestamp delta against the expected
         inter-frame interval computed from CAN bit timing, for both classic
-        and BRS FD frames. Tolerance is +/-1 us, which accounts for the
-        TIM2/TIM3 independent-clock phase quantisation."""
+        and BRS FD frames. The timestamp is built from the FDCAN-latched
+        TIM3 value alone, so the delta is expected to match exactly."""
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"S0\r")    # 10 kbps nominal
@@ -846,9 +846,9 @@ class TimestampUsTestCase(unittest.TestCase):
 
         # Classic frame: 47 header bits + 64 data bits + 1(?) stuff bit, each at 100us @10kbps.
         time_exp_us = (int(timestamp_1st, 16) + (47 + 8 * 8 + 1) * 100) % 3600000000
-        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
-                               msg=f"2-classic interval mismatch: expected {time_exp_us}, "
-                                   f"got {int(timestamp_2nd, 16)}")
+        self.assertEqual(time_exp_us, int(timestamp_2nd, 16),
+                         msg=f"2-classic interval mismatch: expected {time_exp_us}, "
+                             f"got {int(timestamp_2nd, 16)}")
 
         # --- 2 BRS FD frames ---
         tx_frame = b"B1555555585555555555555555"
@@ -863,11 +863,11 @@ class TimestampUsTestCase(unittest.TestCase):
 
         # BRS FD frame: 49 nominal bits @100us + (64 data + 26 fd overhead + 5 + 2(?) stuff) at data rate.
         time_exp_us = (int(timestamp_1st, 16) + 49 * 100 + (8 * 8 + 26 + 5 + 2) * 2) % 3600000000
-        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
-                               msg=f"2-BRS interval mismatch: expected {time_exp_us}, "
-                                   f"got {int(timestamp_2nd, 16)}")
+        self.assertEqual(time_exp_us, int(timestamp_2nd, 16),
+                         msg=f"2-BRS interval mismatch: expected {time_exp_us}, "
+                             f"got {int(timestamp_2nd, 16)}")
 
-        # --- 20 classic frames: 1us jitter averages out over 19 intervals ---
+        # --- 20 classic frames ---
         tx_frame = b"t55585555555555555555"
         for _ in range(0, 20):
             self.dut.send(tx_frame + b"\r")
@@ -882,9 +882,9 @@ class TimestampUsTestCase(unittest.TestCase):
         timestamp_2nd = rx_data[pos : pos + 8]
 
         time_exp_us = (int(timestamp_1st, 16) + 19 * (47 + 8 * 8 + 1) * 100) % 3600000000
-        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
-                               msg=f"20-classic accumulated interval mismatch: expected {time_exp_us}, "
-                                   f"got {int(timestamp_2nd, 16)}")
+        self.assertEqual(time_exp_us, int(timestamp_2nd, 16),
+                         msg=f"20-classic accumulated interval mismatch: expected {time_exp_us}, "
+                             f"got {int(timestamp_2nd, 16)}")
 
         # --- 20 BRS FD frames ---
         tx_frame = b"B1555555585555555555555555"
@@ -900,9 +900,9 @@ class TimestampUsTestCase(unittest.TestCase):
         timestamp_2nd = rx_data[pos : pos + 8]
 
         time_exp_us = (int(timestamp_1st, 16) + 19 * (49 * 100 + (8 * 8 + 26 + 5 + 2) * 2)) % 3600000000
-        self.assertAlmostEqual(time_exp_us, int(timestamp_2nd, 16), delta=1,
-                               msg=f"20-BRS accumulated interval mismatch: expected {time_exp_us}, "
-                                   f"got {int(timestamp_2nd, 16)}")
+        self.assertEqual(time_exp_us, int(timestamp_2nd, 16),
+                         msg=f"20-BRS accumulated interval mismatch: expected {time_exp_us}, "
+                             f"got {int(timestamp_2nd, 16)}")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")

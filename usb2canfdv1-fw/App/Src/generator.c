@@ -22,19 +22,20 @@
 #include "generator.h"
 
 // Constants used in gen_get_timestamp_us_from_tim3
-#define GEN_TS_SKEW_TOLERANCE_US   0U            // Target: 1 us accuracy (see Note 2)
-#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay (Note 3): DLC8 classic @10kbps ~16ms + margin
-#define GEN_TS_SANDWICH_MAX_RETRY  16U           // Cap on sandwiched-read retries before giving up
+#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay: DLC8 classic @10kbps ~16ms + margin
+#define GEN_TS_SNAPSHOT_MAX_RETRY  8U            // Cap on (gen_us_base, TIM3) snapshot retries before giving up
 #define GEN_TS_RING_MS             60000U        // spec wrap
-#define GEN_TS_RING_US             3600000000U   // spec wrap; also TIM2 ARR + 1
+#define GEN_TS_RING_US             3600000000U   // spec wrap
+#define GEN_TS_TIM3_PERIOD         65536U        // TIM3 wrap interval in microseconds (ARR + 1)
 #define GEN_TS_INVALID_MS          0xFFFFU       // Out-of-spec sentinel: ms timestamp is unreliable
 #define GEN_TS_INVALID_US          0xFFFFFFFFU   // Out-of-spec sentinel: us timestamp is unreliable
 
-// Subtraction in the 3.6e9 (TIM2 ring) modulo space.
-static inline uint32_t gen_ring_sub(uint32_t a, uint32_t b)
-{
-    return (a >= b) ? (a - b) : (a + GEN_TS_RING_US - b);
-}
+// Microsecond base, folded into the spec ring [0, GEN_TS_RING_US).
+// Incremented by GEN_TS_TIM3_PERIOD on each TIM3 update event so that
+// (gen_us_base + TIM3->CNT) represents the live spec timestamp.
+// Written only from HAL_TIM_PeriodElapsedCallback (TIM3); read with the
+// (b1, ..., b2) snapshot pattern to tolerate ISR firing mid-read.
+static volatile uint32_t gen_us_base = 0;
 
 // Public variables
 const uint8_t gen_nibble_to_ascii[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -244,53 +245,84 @@ uint16_t gen_get_timestamp_ms_from_tim3(uint16_t latched_tim3)
     return (uint16_t)((us / 1000U) % GEN_TS_RING_MS);
 }
 
+// TIM3 update-event callback: advances the microsecond base by one TIM3
+// wrap. HAL routes every TIM_PeriodElapsed event to this single weak
+// override, so the htim->Instance check is required even though only
+// TIM3 has the update interrupt enabled today.
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM3)
+    {
+        uint32_t base = gen_us_base + GEN_TS_TIM3_PERIOD;
+        if (base >= GEN_TS_RING_US) base -= GEN_TS_RING_US;
+        gen_us_base = base;
+    }
+}
+
 // Gets micro second timestamp for the time `latched_tim3` was sampled
-// (4 bytes, resets at 3,600,000,000us = 0xD693A400 per spec).
+// (4 bytes, resets at GEN_TS_RING_US = 3,600,000,000 us per spec).
 //
-// TIM2 free-runs at 1 us with ARR = GEN_TS_RING_US - 1, so TIM2->CNT already
-// IS the spec timestamp. This function only steps it back to the moment
-// `latched_tim3` was captured. It is STATELESS, so every call pattern is
-// safe: the first call, idle/low-rate queries, and the two calls inside z[CR].
+// The live spec timestamp is (gen_us_base + TIM3->CNT), folded into the
+// spec ring. gen_us_base is maintained by HAL_TIM_PeriodElapsedCallback
+// from the TIM3 update ISR. Because both the running base and the latch
+// value originate from TIM3 alone, this function is jitter-free: there
+// is no second clock to phase-mismatch against. It is STATELESS, so any
+// call pattern (first call, idle queries, the two calls inside z[CR])
+// is safe.
 //
-// Note 1 (startup phase):
-//   TIM2 and TIM3 start independently, so their phase may differ by a few
-//   cycles -> a constant offset on the up-time origin only. `back` is a
-//   difference, so the offset cancels; relative timestamps are unaffected.
+// Note 1 (atomic snapshot):
+//   gen_us_base and TIM3->CNT must be read together. The do-while
+//   sandwiches the TIM3 (and SR) read between two reads of gen_us_base
+//   and retries while they disagree -- which happens when the TIM3
+//   update ISR fired mid-read. Retries are capped
+//   (GEN_TS_SNAPSHOT_MAX_RETRY); on exhaustion the timestamp is
+//   reported unreliable (GEN_TS_INVALID_US).
 //
-// Note 2 (non-atomic read):
-//   (TIM2->CNT, TIM3->CNT) cannot be read atomically. We sandwich the TIM3
-//   read between two TIM2 reads and retry while the gap exceeds the
-//   tolerance. Retries are capped (GEN_TS_SANDWICH_MAX_RETRY); on exhaustion
-//   the timestamp is reported unreliable (GEN_TS_INVALID_US).
+// Note 2 (wrap-pending race):
+//   TIM3 can wrap (CNT 0xFFFF -> 0x0000) a few cycles before the ISR
+//   actually runs, so a snapshot can capture a small CNT with the
+//   pre-wrap gen_us_base. SR.UIF is set by the wrap and cleared by
+//   the ISR, so a UIF-set / base-unchanged snapshot tells us to apply
+//   one wrap's worth of correction here.
 //
 // Note 3 (latch->report window -- a CALLER requirement):
-//   The caller MUST report within GEN_TS_LATCH_LIMIT_US (~20 ms) of the SOF
-//   latch. `back` = now_tim3 - latched_tim3 (lower 16 bits). If it exceeds the
-//   limit, the latch may have wrapped TIM3, so the result is reported as
-//   GEN_TS_INVALID_US. This is an out-of-spec input (an extremely slow bitrate
-//   and/or a stalled main loop), not a normal operating point. The underlying
-//   frame data is unaffected.
+//   The caller MUST report within GEN_TS_LATCH_LIMIT_US (~20 ms) of the
+//   SOF latch. `back` = (TIM3 now) - latched_tim3 on the lower 16 bits.
+//   If it exceeds the limit, the latch may have wrapped TIM3 and the
+//   result is reported as GEN_TS_INVALID_US. This is an out-of-spec
+//   input (extremely slow bitrate and/or a stalled main loop), not a
+//   normal operating point. The underlying frame data is unaffected.
 uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
 {
-    uint32_t t2_before, t2_after;
+    uint32_t base_before, base_after, tim3_sr;
     uint16_t now_tim3;
 
-    // Note 2: sandwiched read with a capped retry count.
+    // Note 1: snapshot with a capped retry count.
     uint8_t retry = 0;
     do {
-        if (retry++ >= GEN_TS_SANDWICH_MAX_RETRY) return GEN_TS_INVALID_US;
-        t2_before = TIM2->CNT;
-        now_tim3  = (uint16_t)TIM3->CNT;
-        t2_after  = TIM2->CNT;
-    } while (gen_ring_sub(t2_after, t2_before) > GEN_TS_SKEW_TOLERANCE_US);
+        if (retry++ >= GEN_TS_SNAPSHOT_MAX_RETRY) return GEN_TS_INVALID_US;
+        base_before = gen_us_base;
+        now_tim3    = (uint16_t)TIM3->CNT;
+        tim3_sr     = TIM3->SR;
+        base_after  = gen_us_base;
+    } while (base_before != base_after);
+
+    // Note 2: wrap pending but ISR not yet processed -- add one wrap.
+    if (tim3_sr & TIM_SR_UIF)
+    {
+        base_before += GEN_TS_TIM3_PERIOD;
+        if (base_before >= GEN_TS_RING_US) base_before -= GEN_TS_RING_US;
+    }
 
     // Note 3: distance from the latch moment to now. Too large -> unreliable.
     uint16_t back = (uint16_t)(now_tim3 - latched_tim3);
     if (back > GEN_TS_LATCH_LIMIT_US) return GEN_TS_INVALID_US;
 
-    // t2_after is TIM2 (the spec timestamp) at now_tim3; step back to the
-    // latch moment, correcting a ring underflow when back > t2_after.
-    return gen_ring_sub(t2_after, (uint32_t)back);
+    // (base + TIM3) is the spec timestamp at the snapshot moment;
+    // step back to the latch moment, correcting a ring underflow.
+    uint32_t now_us = base_before + now_tim3;
+    if (now_us >= GEN_TS_RING_US) now_us -= GEN_TS_RING_US;
+    return (now_us >= back) ? (now_us - back) : (now_us + GEN_TS_RING_US - back);
 }
 
 #if 0  /* legacy: kept for reference */
