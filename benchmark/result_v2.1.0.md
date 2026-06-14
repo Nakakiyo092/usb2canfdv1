@@ -16,6 +16,8 @@ PS C:\Users\kiyomaro> function prompt { "> " }
 Microsoft Windows 11 Home
 > (Get-CimInstance Win32_OperatingSystem).Version
 10.0.26200
+> Get-CimInstance Win32_USBController | Select-Object Name, Status, DeviceID
+
 > $PSVersionTable.PSVersion.ToString()
 7.6.1
 > python --version
@@ -23,15 +25,6 @@ Python 3.13.13
 > pip freeze
 pyserial==3.5
 ... snip ...
-> Get-CimInstance Win32_USBController | Select-Object Name, Status, DeviceID
-
-Name                                                            Status DeviceID
-----                                                            ------ --------
-Intel(R) USB 3.20 eXtensible Host Controller - 1.20 (Microsoft) OK     PCI\VEN_8086&DEV_A71E&SUBSYS_0BEB1028&REV_00\3&…
-Intel(R) USB 3.10 eXtensible Host Controller - 1.20 (Microsoft) OK     PCI\VEN_8086&DEV_51ED&SUBSYS_0BEB1028&REV_01\3&…
-USB4 (TM) ホスト ルーター (Microsoft)                           OK     PCI\VEN_8086&DEV_A73E&SUBSYS_0BEB1028&REV_00&US…
-USB Composite Device                                            OK     USB\VID_FFFF&PID_BACE&REV_0002\1
-
 > 
 ```
 
