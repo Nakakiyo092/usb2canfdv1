@@ -29,7 +29,7 @@ pyserial==3.5
 ## CDC Speed Test
 
 ```powershell
->  python ./test/cdc_speed_test.py COM9 --rx --chunk-size 16 --iteration 2 --duration 10
+> python ./test/cdc_speed_test.py COM9 --rx --chunk-size 16 --iteration 2 --duration 10
 usb port name: COM9
 
 serial number: NEC01
