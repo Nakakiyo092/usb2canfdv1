@@ -135,9 +135,18 @@ def print_round_trip_time(dev: serial.Serial) -> int:
 
 
 def make_data_to_write() -> bytes:
-    """Make data to write to device."""
-    single_msg = b"00112233445566778899AABBCCDDEEFF"
-    single_msg = b"B00000000F" + single_msg * 4 + b"\r" # a frame with 64 bytes data
+    """Make data to write to device.
+
+    Keep the FD-BRS extended-ID frame format (`B`) so the BRS code path
+    is still exercised, but shrink the payload to 8 bytes. The test
+    verifies long-running timestamp consistency, which is independent
+    of frame size, and the previous 139-byte command (64-byte payload)
+    overran the CDC Rx ring under sustained pressure (sustained-rate
+    BRS stress is now covered by can_stress_test.py).
+    """
+    single_msg = b"B000000008" + b"00112233445566778899AABBCCDDEEFF"[:16] + b"\r"
+    #single_msg = b"00112233445566778899AABBCCDDEEFF"
+    #single_msg = b"B00000000F" + single_msg * 4 + b"\r" # a frame with 64 bytes data
 
     data_write = single_msg
 
