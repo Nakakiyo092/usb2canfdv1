@@ -62,6 +62,10 @@ void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
+  // Clear any UIF latched during init (e.g. from PSC/ARR writes) so the
+  // first interrupt corresponds to a real wrap, not a stale flag. Without
+  // this, gen_us_base would be advanced by one period at startup.
+  __HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE);
   HAL_TIM_Base_Start_IT(&htim3);
   /* USER CODE END TIM3_Init 2 */
 
