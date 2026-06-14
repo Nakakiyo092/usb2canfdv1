@@ -28,6 +28,7 @@
 #define GEN_TS_INVALID_MS          0xFFFFU       // Out-of-spec sentinel: ms timestamp is unreliable
 #define GEN_TS_INVALID_US          0xFFFFFFFFU   // Out-of-spec sentinel: us timestamp is unreliable
 #define GEN_TS_TICK_THROTTLE_MS    100U          // Min interval between heartbeat-driven accumulator updates
+#define GEN_TS_HEARTBEAT_MAX_MS    1000U         // Max gap between calls before the accumulator is considered stale
 
 #if 0  /* deprecated: kept for reference */
 // Constants used by the deprecated sandwich-based us-timestamp implementation.
@@ -348,7 +349,7 @@ uint16_t gen_get_timestamp_ms(void)
 //   Built directly from the latched TIM3 (the FDCAN external timestamp
 //   source) -- no jitter from non-atomic timer reads.
 //
-// Note (latch->call window -- a CALLER requirement):
+// Note 1 (latch->call window -- a CALLER requirement):
 //   `latched_tim3` MUST have been sampled within GEN_TS_LATCH_LIMIT_US
 //   (~20 ms) of this call. `back` = (TIM3 now) - latched_tim3 on the
 //   lower 16 bits. If it exceeds the limit, the latch may have wrapped
@@ -356,18 +357,21 @@ uint16_t gen_get_timestamp_ms(void)
 //   The caller must also report `back` < ~UINT16_MAX/2 (~30 ms) for the
 //   ms/us wrap-count math to stay correct.
 //
-// Limitations:
-//   - Breaks after HAL_GetTick wraps (~49.7 days of uptime) if the
-//     function is not called in the meantime. The heartbeat tick
-//     (gen_timestamp_tick) guards against that.
+// Note 2 (stall recovery -- self-heal):
+//   The function must be called at least every GEN_TS_HEARTBEAT_MAX_MS
+//   (1 sec) for the accumulator math to stay reliable. The main-loop
+//   heartbeat (gen_process) enforces this in normal operation. If a
+//   longer gap is detected (main-loop stall, etc.), the accumulator is
+//   advanced through the gap as usual but the call returns
+//   GEN_TS_INVALID_US so the host knows the result was affected. The
+//   next call resumes normally.
 uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
 {
     static uint32_t gen_last_timestamp_us = 0;
     static uint32_t gen_last_time_ms = 0;
     static uint16_t gen_last_time_us = 0;
 
-    // D guard: latch->call delay window. Bail out before touching state so
-    // an out-of-spec call cannot corrupt the running accumulator.
+    // D guard (Note 1): drop this frame; running accumulator stays valid.
     uint16_t now_tim3 = (uint16_t)TIM3->CNT;
     uint16_t back = (uint16_t)(now_tim3 - latched_tim3);
     if (back > GEN_TS_LATCH_LIMIT_US) return GEN_TS_INVALID_US;
@@ -384,6 +388,10 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
 
     time_diff_ms = (uint32_t)(current_time_ms - gen_last_time_ms);
     time_diff_us = (uint64_t)((uint16_t)(current_time_us - gen_last_time_us));
+
+    // Stall guard (Note 2): mark this call INVALID but still advance state
+    // through the gap so subsequent calls resume from real wall-clock.
+    uint8_t stalled = (time_diff_ms > GEN_TS_HEARTBEAT_MAX_MS);
 
     // Counter mismatch (time_diff_ms <= 3 ms and time_diff_us > ~30 ms, this can happen)
     if (time_diff_ms <= 3 && time_diff_us > UINT16_MAX / 2)     // 3 ms >> main-loop cycle * CAN frame buffer size
@@ -412,7 +420,7 @@ uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
     gen_last_time_ms = current_time_ms;
     gen_last_time_us = current_time_us;
 
-    return gen_last_timestamp_us;
+    return stalled ? GEN_TS_INVALID_US : gen_last_timestamp_us;
 }
 
 // Main-loop heartbeat. Keeps the us-timestamp accumulator fresh so that
