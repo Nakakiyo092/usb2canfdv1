@@ -130,8 +130,10 @@ class ErrorTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"FA4\r",
                          "Expected FA4 (BUS_ERROR | ERROR_PASSIVE | ERROR_WARNING) after sustained no-ACK retransmit")
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r",
-                         "F bits should self-clear on read; second F should be F00")
+        self.assertEqual(self.dut.receive(), b"F80\r",
+                         "BUS_ERROR keeps re-firing from PEA on every retried no-ACK frame; "
+                         "ERROR_WARNING / ERROR_PASSIVE do not (they are status-change flags and "
+                         "the node stays in ER_PSSV)")
         self.dut.send(b"f\r")
         self.assertEqual(self.dut.receive(), F_DETAIL_PSSV_TX_80,
                          "Detailed status should report ER_PSSV and TEC=0x80 after entering passive state")
@@ -344,8 +346,10 @@ class ErrorTestCase(unittest.TestCase):
         """The APP-level CAN Tx FIFO holds 64 frames. Filling it raises the
         bus-error/passive/warning chain (FA4) because frames cannot reach the
         bus. Subsequent Tx command bytes that find the FIFO already full
-        report F02 (CAN Tx FIFO full, F bit 1) and individual `t` commands
-        are rejected with [BEL]."""
+        report F bit 1 (CAN Tx FIFO full); individual `t` commands are
+        rejected with [BEL]. BUS_ERROR (bit 7) keeps re-firing throughout
+        because the queued frames are continuously retried with no ACK, so
+        every later F read includes bit 7 too."""
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -370,8 +374,8 @@ class ErrorTestCase(unittest.TestCase):
             self.dut.receive()
 
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F02\r",
-                         "Expected F02 (CAN Tx FIFO full, bit 1) after the second 64-frame burst")
+        self.assertEqual(self.dut.receive(), b"F82\r",
+                         "Expected F82 (BUS_ERROR | CAN_TX_FIFO_FULL) after the second 64-frame burst")
 
         # Each subsequent Tx command is rejected with [BEL] (no slot to queue).
         for _ in range(0, 64):
@@ -380,11 +384,11 @@ class ErrorTestCase(unittest.TestCase):
                              "Tx command should be rejected with [BEL] while the Tx FIFO is full")
 
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F02\r",
-                         "F02 should be raised again by the rejection burst")
+        self.assertEqual(self.dut.receive(), b"F82\r",
+                         "F82 (BUS_ERROR | CAN_TX_FIFO_FULL) should be raised again by the rejection burst")
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r",
-                         "F bits should clear after read")
+        self.assertEqual(self.dut.receive(), b"F80\r",
+                         "Bit 1 clears with the read; bit 7 keeps re-firing from PEA on the still-retrying queue")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -463,8 +467,10 @@ class ErrorTestCase(unittest.TestCase):
     def test_no_retransmit(self):
         """In no-retransmit mode a frame that fails to be acknowledged is
         dropped instead of being retransmitted. The TEC saturates after the
-        first ~16 frames and stays put; further sends do not raise additional
-        BUS_ERROR/PASSIVE flags."""
+        first ~16 frames and stays put, so ERROR_WARNING / ERROR_PASSIVE do
+        not re-fire (they are status-change flags). BUS_ERROR (bit 7) still
+        re-fires on every dropped frame because each no-ACK updates LEC and
+        re-sets PEA, independent of the counter saturation."""
         self.dut.send(b"-\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -489,8 +495,9 @@ class ErrorTestCase(unittest.TestCase):
             self.assertEqual(self.dut.receive(), b"z\r")
 
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r",
-                         "TEC saturates by ~16 frames; further no-ACK sends should not re-raise the error flags")
+        self.assertEqual(self.dut.receive(), b"F80\r",
+                         "TEC saturates by ~16 frames so ERROR_WARNING / ERROR_PASSIVE do not re-fire, "
+                         "but BUS_ERROR re-fires from PEA on every dropped no-ACK frame")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")

@@ -293,7 +293,7 @@ void can_process(void)
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST);
     }
 
-    // Check for bus state and error counter
+    // Check for bus state and error counters
     FDCAN_ProtocolStatusTypeDef sts;
     FDCAN_ErrorCountersTypeDef cnt;
 
@@ -301,12 +301,6 @@ void can_process(void)
         HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
     {
         uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
-        if (rec > can_error_state.rx_err_cnt || cnt.TxErrorCnt > can_error_state.tx_err_cnt)
-            gen_raise_error(SLCAN_STS_BUS_ERROR);
-        if (sts.BusOff && !can_error_state.bus_off)     // If it gets bus off right now
-            // ... capture counter increase that caused bus off since it does not increase TxErrorCnt
-            gen_raise_error(SLCAN_STS_BUS_ERROR);
-
         can_error_state.bus_off = (uint8_t)sts.BusOff;
         can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
         can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
@@ -318,6 +312,20 @@ void can_process(void)
             can_error_state.last_err_code = sts.DataLastErrorCode;
         if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
             can_error_state.last_err_code = sts.LastErrorCode;
+    }
+
+    // BUS_ERROR on any FDCAN protocol error event (PEA/PED sticky flags).
+    // See: https://github.com/Nakakiyo092/usb2canfdv1/issues/167
+    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR))
+    {
+        gen_raise_error(SLCAN_STS_BUS_ERROR);
+        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR);
+    }
+
+    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_DATA_PROTOCOL_ERROR))
+    {
+        gen_raise_error(SLCAN_STS_BUS_ERROR);
+        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_DATA_PROTOCOL_ERROR);
     }
 
     // Check for bus error flags
