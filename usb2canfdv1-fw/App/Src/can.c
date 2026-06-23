@@ -300,9 +300,6 @@ void can_process(void)
     if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts) == HAL_OK &&
         HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
     {
-        if (sts.BusOff && !can_error_state.bus_off)
-            gen_raise_error(SLCAN_STS_BUS_ERROR);
-
         uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
         can_error_state.bus_off = (uint8_t)sts.BusOff;
         can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
