@@ -76,10 +76,12 @@ class DominantTestCase(unittest.TestCase):
                                               ------
                                               F = 0xA4
 
-            After F is read once, the EI / BEI status flags clear and
-            the next F read returns F00. The detailed f-command then
-            reports node_sts=ER_PSSV with err_cnt_tx_rx=[0x00, 0x80]
-            (REC=128).
+            After F is read once, the EI / EPI status flags clear and
+            stay clear as the node sits in passive (those flags are
+            status-change-triggered). BEI keeps re-firing from PEA on
+            the still-ongoing FORM errors, so the next F read returns
+            F80, not F00. The detailed f-command then reports
+            node_sts=ER_PSSV with err_cnt_tx_rx=[0x00, 0x80] (REC=128).
         """
         #self.dut.print_on = True
 
@@ -119,11 +121,13 @@ class DominantTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA4\r",
                          "Expected F=A4 (BEI|EPI|EI) under dominant bus; see docstring for bit breakdown")
-        # Second F read: EI / BEI status flags are cleared by the first F read
-        # (LAWICEL semantics); EPI is a state flag and stays implicit in f-command.
+        # Second F read: EI / EPI cleared by the first F (and stay clear as
+        # we sit in passive, since they are status-change-triggered).
+        # BEI keeps re-firing from PEA on the continuous FORM errors so it
+        # returns to F80, not F00.
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r",
-                         "Expected F=00 on the second read (status flags cleared by the first F)")
+        self.assertEqual(self.dut.receive(), b"F80\r",
+                         "Expected F=80 on the second read (BUS_ERROR keeps re-firing under dominant bus)")
         # Detailed f-command must reflect the persistent error-passive state.
         self.dut.send(b"f\r")
         status = self.dut.receive()
