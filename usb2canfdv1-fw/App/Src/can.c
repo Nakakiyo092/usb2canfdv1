@@ -61,6 +61,14 @@ static uint32_t can_cycle_ave_time_ns = 0;
 static uint32_t can_bit_time_ns = 0;            // Time for one bit in ns
 static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
 
+#ifdef DEBUG
+// Tx delay compensation override state. Default is AUTO (matches the
+// non-debug build). Setters change these; can_enable() consults them.
+static enum CanTdcMode can_tdc_mode = CAN_TDC_AUTO;
+static uint8_t can_tdc_manual_tdco = 0;
+static uint8_t can_tdc_manual_tdcf = 0;
+#endif
+
 // Private methods
 static void can_update_bit_time_ns(void);
 static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader);
@@ -141,21 +149,36 @@ HAL_StatusTypeDef can_enable(void)
 
         if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) return HAL_ERROR;
 
-        // Setup Tx delay compensation
-        // Turn off for <= 1Mbps and Turn on for >= 2Mbps
-        uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
-        if (offset <= CAN_TDC_ENABLE_THRESHOLD)
+        // Setup Tx delay compensation.
+        // Default (AUTO): turn off for <= 1Mbps and turn on for >= 2Mbps.
+        // The debug-only !7DC command can override this to DISABLED or MANUAL.
+#ifdef DEBUG
+        if (can_tdc_mode == CAN_TDC_DISABLED)
         {
-            // Follow the recommended values in the link.
-            // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
-            if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
+            if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+        }
+        else if (can_tdc_mode == CAN_TDC_MANUAL)
+        {
+            if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, can_tdc_manual_tdco, can_tdc_manual_tdcf) != HAL_OK) return HAL_ERROR;
             if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
         }
         else
+#endif
         {
-            // The offset value would exceed the max value 0x7F at low bitrates,
-            // but it should be fine since the compensation is not effective at such bitrates.
-            if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+            uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
+            if (offset <= CAN_TDC_ENABLE_THRESHOLD)
+            {
+                // Follow the recommended values in the link.
+                // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
+                if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
+                if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+            }
+            else
+            {
+                // The offset value would exceed the max value 0x7F at low bitrates,
+                // but it should be fine since the compensation is not effective at such bitrates.
+                if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+            }
         }
 
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_std_filter) != HAL_OK) return HAL_ERROR;
@@ -876,3 +899,60 @@ static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEven
     //frame_header.RxTimestamp = pTxEvent->TxTimestamp;
     return can_get_bit_number_in_rx_frame(&frame_header);
 }
+
+#ifdef DEBUG
+// Switch TDC override to AUTO (the default). Takes effect on next can_enable.
+// Rejected while the bus is open since FDCAN config must happen in INIT mode.
+HAL_StatusTypeDef can_set_tdc_auto(void)
+{
+    if (can_bus_state != BUS_CLOSED) return HAL_ERROR;
+    can_tdc_mode = CAN_TDC_AUTO;
+    return HAL_OK;
+}
+
+// Force TDC off regardless of bit timing. Takes effect on next can_enable.
+HAL_StatusTypeDef can_set_tdc_disabled(void)
+{
+    if (can_bus_state != BUS_CLOSED) return HAL_ERROR;
+    can_tdc_mode = CAN_TDC_DISABLED;
+    return HAL_OK;
+}
+
+// Use the given TDCO/TDCF on the next can_enable. Values are 7-bit; callers
+// must validate (0..0x7F).
+HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf)
+{
+    if (can_bus_state != BUS_CLOSED) return HAL_ERROR;
+    if (tdco > 0x7F || tdcf > 0x7F) return HAL_ERROR;
+    can_tdc_manual_tdco = tdco;
+    can_tdc_manual_tdcf = tdcf;
+    can_tdc_mode = CAN_TDC_MANUAL;
+    return HAL_OK;
+}
+
+// Read the live TDC values from the FDCAN peripheral. TDCV is the
+// hardware-measured Tx delay (updated each FD frame).
+//
+// IMPORTANT: only valid while BUS_OPENED. After can_disable() the
+// peripheral has been DeInit'd, which gates the FDCAN bus clock via
+// HAL_FDCAN_MspDeInit -> __HAL_RCC_FDCAN_CLK_DISABLE. Touching the
+// FDCAN registers in that state is undefined and can HardFault.
+// When closed we therefore return all-zero rather than reading.
+struct CanTdcLiveState can_get_tdc_state(void)
+{
+    struct CanTdcLiveState s = {0};
+    if (can_bus_state == BUS_OPENED)
+    {
+        FDCAN_ProtocolStatusTypeDef status;
+        if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &status) == HAL_OK)
+        {
+            s.tdcv = (uint8_t)status.TDCvalue;
+        }
+        uint32_t tdcr = hfdcan1.Instance->TDCR;
+        s.tdco = (uint8_t)((tdcr & FDCAN_TDCR_TDCO_Msk) >> FDCAN_TDCR_TDCO_Pos);
+        s.tdcf = (uint8_t)((tdcr & FDCAN_TDCR_TDCF_Msk) >> FDCAN_TDCR_TDCF_Pos);
+        s.enabled = (hfdcan1.Instance->DBTP & FDCAN_DBTP_TDC) ? 1U : 0U;
+    }
+    return s;
+}
+#endif
