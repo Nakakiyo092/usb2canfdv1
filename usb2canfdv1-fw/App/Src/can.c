@@ -293,20 +293,13 @@ void can_process(void)
         __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST);
     }
 
-    // Check for bus state and error counters. Counter values are stored for
-    // the `E` query path (parser.c); the BUS_ERROR detection itself is done
-    // below via the PEA/PED sticky flags.
+    // Check for bus state and error counters
     FDCAN_ProtocolStatusTypeDef sts;
     FDCAN_ErrorCountersTypeDef cnt;
 
     if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts) == HAL_OK &&
         HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
     {
-        // Per CAN spec, the bus-off transition itself does not always bump
-        // TEC (e.g. it can be entered while TEC is already saturated), and
-        // the PEA/PED sticky flags are not guaranteed to fire on it either.
-        // Edge-detect on the BusOff status flag so the host always sees
-        // BUS_ERROR raised on entry to bus-off.
         if (sts.BusOff && !can_error_state.bus_off)
             gen_raise_error(SLCAN_STS_BUS_ERROR);
 
@@ -324,14 +317,8 @@ void can_process(void)
             can_error_state.last_err_code = sts.LastErrorCode;
     }
 
-    // BUS_ERROR: any protocol error event in the arbitration or data phase.
-    // PEA/PED are sticky interrupt bits set by hardware when PSR.LEC /
-    // PSR.DLEC are updated to a non-zero non-NoChange value
-    // (Bosch M_CAN UM v3.3.1 §2.3.16). They catch events that don't bump
-    // TEC/REC -- e.g. No-ACK detected by an error-passive node -- and
-    // transient sub-warning bursts that fully recover within a single
-    // polling interval. Routine arbitration loss is not a protocol error
-    // per ISO 11898-1 and does not set PEA on spec-compliant operation.
+    // BUS_ERROR on any FDCAN protocol error event (PEA/PED sticky flags).
+    // See: https://github.com/Nakakiyo092/usb2canfdv1/issues/167
     if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR))
     {
         gen_raise_error(SLCAN_STS_BUS_ERROR);
