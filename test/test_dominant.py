@@ -76,12 +76,15 @@ class DominantTestCase(unittest.TestCase):
                                               ------
                                               F = 0xA4
 
-            After F is read once, the EI / EPI status flags clear and
-            stay clear as the node sits in passive (those flags are
-            status-change-triggered). BEI keeps re-firing from PEA on
-            the still-ongoing FORM errors, so the next F read returns
-            F80, not F00. The detailed f-command then reports
-            node_sts=ER_PSSV with err_cnt_tx_rx=[0x00, 0x80] (REC=128).
+            After F is read once, EI / EPI / BEI all clear and the next
+            F read returns F00 even though the bus stays dominant. PEA
+            does not re-fire because, per the CAN spec, an error-passive
+            node sends a passive (recessive) error flag and then waits
+            for 11 consecutive recessive bits (bus idle) before resuming
+            -- which never happens under a continuous dominant clamp, so
+            no new LEC updates arrive. The detailed f-command still
+            reports node_sts=ER_PSSV with err_cnt_tx_rx=[0x00, 0x80]
+            (REC=128).
         """
         #self.dut.print_on = True
 
@@ -121,13 +124,13 @@ class DominantTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA4\r",
                          "Expected F=A4 (BEI|EPI|EI) under dominant bus; see docstring for bit breakdown")
-        # Second F read: EI / EPI cleared by the first F (and stay clear as
-        # we sit in passive, since they are status-change-triggered).
-        # BEI keeps re-firing from PEA on the continuous FORM errors so it
-        # returns to F80, not F00.
+        # Second F read: all flags cleared by the first F. PEA does not
+        # re-fire on a dominant-clamped bus because an error-passive node
+        # is waiting for 11 consecutive recessive bits before resuming,
+        # which the clamp prevents -- so no new LEC update, no new PEA.
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F80\r",
-                         "Expected F=80 on the second read (BUS_ERROR keeps re-firing under dominant bus)")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F=00 on the second read (no new LEC update while the dominant clamp blocks bus idle)")
         # Detailed f-command must reflect the persistent error-passive state.
         self.dut.send(b"f\r")
         status = self.dut.receive()
