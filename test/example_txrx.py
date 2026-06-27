@@ -174,7 +174,10 @@ def _create_bus(args):
 
 
 def _run_tx(bus):
-    """Send one t -> d -> b cycle per second for the configured duration."""
+    """Send one t -> d -> b cycle per second for the configured duration.
+
+    Returns the number of frames the slcan bus accepted (send did not raise).
+    """
     print(f"TX: sending t/d/b frames to ID 0x{_TX_CAN_ID:X} for {_TX_DURATION_S}s")
 
     # Frame templates: classic, FD without BRS, FD with BRS.
@@ -188,31 +191,65 @@ def _run_tx(bus):
     ]
 
     deadline = time.monotonic() + _TX_DURATION_S
+    sent = 0
     i = 0
     while time.monotonic() < deadline:
         label, msg = templates[i % len(templates)]
         try:
             bus.send(msg)
+            sent += 1
             print(f"TX [{label}] ID=0x{_TX_CAN_ID:X} data={msg.data.hex().upper()}")
         except can.CanError as err:
             print(f"TX [{label}] failed: {err}")
         i += 1
         time.sleep(_TX_INTERVAL_S)
-    print("TX: done.")
+    print(f"TX: done. Sent {sent} frames.")
+    return sent
 
 
 def _run_rx(bus):
-    """Listen for frames indefinitely and print each one.
+    """Listen for frames until Ctrl+C and print each one.
 
     Uses python-can's standard Message.__str__ format so the output looks
     the same as can.Printer / can.Logger and other tools in the ecosystem.
+
+    Returns the number of frames received.
     """
     print("RX: listening (Ctrl+C to stop)")
-    while True:
-        msg = bus.recv(timeout=1.0)
-        if msg is None:
+    received = 0
+    try:
+        while True:
+            msg = bus.recv(timeout=1.0)
+            if msg is None:
+                continue
+            print(msg)
+            received += 1
+    except KeyboardInterrupt:
+        print()  # newline after ^C
+    print(f"RX: done. Received {received} frames.")
+    return received
+
+
+def _query_f(bus, timeout=1.0):
+    """Send the slcan `F` status command and return the 2-hex response.
+
+    Returns the status hex string (e.g. '00', 'A4') or None on timeout.
+    Uses the slcan backend's private _write / _read so we can interleave
+    a status request with frame traffic on the same bus -- python-can
+    does not expose a public method for the `F` command.
+    Any non-`F` strings read while we wait are stashed back into the
+    backend's queue so they are not lost.
+    """
+    bus._write("F")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        s = bus._read(0.1)
+        if not s:
             continue
-        print(msg)
+        if s[0] == "F" and len(s) >= 3:
+            return s[1:-1]  # strip leading 'F' and trailing '\r'
+        bus._queue.put_nowait(s)
+    return None
 
 
 def main():
@@ -229,6 +266,15 @@ def main():
         else:
             _run_rx(bus)
     finally:
+        # Always query F before shutdown so the run can be categorised
+        # (bus normal / data loss / bus error). The slcan `F` command
+        # clears the flags on read, so this also leaves the device in a
+        # clean state for the next run.
+        f = _query_f(bus)
+        if f is None:
+            print("Status (F): no reply (timeout)")
+        else:
+            print(f"Status (F): F{f}")
         bus.shutdown()
 
 
