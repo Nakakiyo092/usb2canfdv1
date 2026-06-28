@@ -23,8 +23,8 @@ URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
 - `biiildd...[CR] `- Transmits CANFD base frames (BRS enabled)
 - `Biiiiiiiildd...[CR] `- Transmits CANFD extended frames (BRS enable)
 - `V[CR]` and `v[CR]` - Returns firmware version and remote path as a string
-- `Z[CR]` and `z[CR]` - Configures reporting mechanism including time stamp and Tx event
-- `M[CR]` and `m[CR]` - Configures CAN acceptance filter
+- `Z` and `z` - Configures reporting mechanism including time stamp and Tx event
+- `M` and `m` - Configures CAN acceptance filter
 - `F[CR]` - Returns status flags
 
 `[CR]` : `0x0D` (hex), `\r` (ascii)
