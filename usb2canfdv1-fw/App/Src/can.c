@@ -951,6 +951,18 @@ HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf)
 // HAL_FDCAN_MspDeInit -> __HAL_RCC_FDCAN_CLK_DISABLE. Touching the
 // FDCAN registers in that state is undefined and can HardFault.
 // When closed we therefore return all-zero rather than reading.
+//
+// SIDE EFFECT on can_error_state.last_err_code (`f` command):
+// HAL_FDCAN_GetProtocolStatus() reads the whole PSR word, and the M_CAN
+// spec marks PSR.LEC / PSR.DLEC as "Set on read": any read replaces them
+// with 7 (NO_CHANGE). The latch in can_process() deliberately ignores
+// NO_CHANGE, so a protocol error that occurred between the previous
+// can_process() poll and this call is consumed here and never reaches
+// last_err_code. IR.PEA/PED (F bit 7), TEC/REC and the EW/EP/BO flags
+// are not affected; only the error *code* of that one window is lost,
+// and only in DEBUG builds while a TDC query is being served. Accepted
+// for a debug-only query. If it ever matters, feed `status` through the
+// same LEC/DLEC latch that can_process() uses instead of discarding it.
 struct CanTdcLiveState can_get_tdc_state(void)
 {
     struct CanTdcLiveState s = {0};
