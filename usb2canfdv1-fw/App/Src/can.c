@@ -328,6 +328,14 @@ void can_process(void)
             __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST);
         }
 
+        // Snapshot consistency (relevant to the `f` command, a debug aid):
+        // PSR (node state, LEC/DLEC) and ECR (TEC/REC) are two separate reads a
+        // few cycles apart. An error event landing in between can leave one
+        // can_error_state snapshot inconsistent (e.g. err_pssv=0 with
+        // tx_err_cnt=128); it self-corrects on the next poll. last_err_code is
+        // a sticky latch (last error since open, never cleared by `F`) and
+        // bus load is a 100 ms moving average, so neither describes the same
+        // instant as the node state / counters. Accepted for a debug query.
         // Check for bus state and error counters
         FDCAN_ProtocolStatusTypeDef sts;
         FDCAN_ErrorCountersTypeDef cnt;
