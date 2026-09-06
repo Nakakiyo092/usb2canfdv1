@@ -336,6 +336,7 @@ void can_process(void)
         // a sticky latch (last error since open, never cleared by `F`) and
         // bus load is a 100 ms moving average, so neither describes the same
         // instant as the node state / counters. Accepted for a debug query.
+
         // Check for bus state and error counters
         FDCAN_ProtocolStatusTypeDef sts;
         FDCAN_ErrorCountersTypeDef cnt;
