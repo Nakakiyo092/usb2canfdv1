@@ -297,79 +297,100 @@ void can_process(void)
         tick_last = tick_now;
     }
 
-    // Check for message loss
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST))
+    // Poll the FDCAN status registers only while the channel is open.
+    // can_disable() DeInit's the peripheral, which gates its bus clock via
+    // HAL_FDCAN_MspDeInit -> __HAL_RCC_FDCAN_CLK_DISABLE. RM0444 (RCC chapter)
+    // states that register accesses to a peripheral whose clock is not active
+    // are "not effective", so reading IR/PSR/ECR and clearing IR flags below
+    // would be undefined while closed. HAL_FDCAN_GetProtocolStatus() and
+    // HAL_FDCAN_GetErrorCounters() have no state check of their own (unlike
+    // GetTxEvent/GetRxMessage above), hence the explicit gate here.
+    // Nothing below is needed while closed: can_error_state is reset by
+    // can_enable() and `F`/`f` are rejected by the parser while closed.
+    if (can_bus_state == BUS_OPENED)
     {
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST);
-    }
+        // Check for message loss
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST))
+        {
+            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST);
+        }
 
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST))
-    {
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST);
-    }
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST))
+        {
+            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST);
+        }
 
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST))
-    {
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST);
-    }
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST))
+        {
+            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST);
+        }
 
-    // Check for bus state and error counters
-    FDCAN_ProtocolStatusTypeDef sts;
-    FDCAN_ErrorCountersTypeDef cnt;
+        // Snapshot consistency (relevant to the `f` command, a debug aid):
+        // PSR (node state, LEC/DLEC) and ECR (TEC/REC) are two separate reads a
+        // few cycles apart. An error event landing in between can leave one
+        // can_error_state snapshot inconsistent (e.g. err_pssv=0 with
+        // tx_err_cnt=128); it self-corrects on the next poll. last_err_code is
+        // a sticky latch (last error since open, never cleared by `F`) and
+        // bus load is a 100 ms moving average, so neither describes the same
+        // instant as the node state / counters. Accepted for a debug query.
+        // Check for bus state and error counters
+        FDCAN_ProtocolStatusTypeDef sts;
+        FDCAN_ErrorCountersTypeDef cnt;
 
-    if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts) == HAL_OK &&
-        HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
-    {
-        uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
-        can_error_state.bus_off = (uint8_t)sts.BusOff;
-        can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
-        can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
-        can_error_state.rx_err_cnt = (uint8_t)rec;
+        if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts) == HAL_OK &&
+            HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
+        {
+            uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
+            can_error_state.bus_off = (uint8_t)sts.BusOff;
+            can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
+            can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
+            can_error_state.rx_err_cnt = (uint8_t)rec;
 
-        // Check for error code (See the link for the intended behavior)
-        // https://github.com/Nakakiyo092/canable2-fw/issues/68
-        if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
-            can_error_state.last_err_code = sts.DataLastErrorCode;
-        if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
-            can_error_state.last_err_code = sts.LastErrorCode;
-    }
+            // Check for error code (See the link for the intended behavior)
+            // https://github.com/Nakakiyo092/canable2-fw/issues/68
+            if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
+                can_error_state.last_err_code = sts.DataLastErrorCode;
+            if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
+                can_error_state.last_err_code = sts.LastErrorCode;
+        }
 
-    // BUS_ERROR on any FDCAN protocol error event (PEA/PED sticky flags).
-    // See: https://github.com/Nakakiyo092/usb2canfdv1/issues/167
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR))
-    {
-        gen_raise_error(SLCAN_STS_BUS_ERROR);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR);
-    }
+        // BUS_ERROR on any FDCAN protocol error event (PEA/PED sticky flags).
+        // See: https://github.com/Nakakiyo092/usb2canfdv1/issues/167
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR))
+        {
+            gen_raise_error(SLCAN_STS_BUS_ERROR);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR);
+        }
 
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_DATA_PROTOCOL_ERROR))
-    {
-        gen_raise_error(SLCAN_STS_BUS_ERROR);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_DATA_PROTOCOL_ERROR);
-    }
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_DATA_PROTOCOL_ERROR))
+        {
+            gen_raise_error(SLCAN_STS_BUS_ERROR);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_DATA_PROTOCOL_ERROR);
+        }
 
-    // Check for bus error flags
-    // See the link for the difference from the bus status
-    // https://github.com/Nakakiyo092/canable2-fw/issues/63
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING))
-    {
-        gen_raise_error(SLCAN_STS_ERROR_WARNING);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING);
-    }
+        // Check for bus error flags
+        // See the link for the difference from the bus status
+        // https://github.com/Nakakiyo092/canable2-fw/issues/63
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING))
+        {
+            gen_raise_error(SLCAN_STS_ERROR_WARNING);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING);
+        }
 
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE))
-    {
-        gen_raise_error(SLCAN_STS_ERROR_PASSIVE);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE);
-    }
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE))
+        {
+            gen_raise_error(SLCAN_STS_ERROR_PASSIVE);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE);
+        }
 
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF))
-    {
-        gen_raise_error(SLCAN_STS_BUS_OFF);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF);
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF))
+        {
+            gen_raise_error(SLCAN_STS_BUS_OFF);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF);
+        }
     }
 
     // Update cycle time
@@ -938,6 +959,18 @@ HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf)
 // HAL_FDCAN_MspDeInit -> __HAL_RCC_FDCAN_CLK_DISABLE. Touching the
 // FDCAN registers in that state is undefined and can HardFault.
 // When closed we therefore return all-zero rather than reading.
+//
+// SIDE EFFECT on can_error_state.last_err_code (`f` command):
+// HAL_FDCAN_GetProtocolStatus() reads the whole PSR word, and the M_CAN
+// spec marks PSR.LEC / PSR.DLEC as "Set on read": any read replaces them
+// with 7 (NO_CHANGE). The latch in can_process() deliberately ignores
+// NO_CHANGE, so a protocol error that occurred between the previous
+// can_process() poll and this call is consumed here and never reaches
+// last_err_code. IR.PEA/PED (F bit 7), TEC/REC and the EW/EP/BO flags
+// are not affected; only the error *code* of that one window is lost,
+// and only in DEBUG builds while a TDC query is being served. Accepted
+// for a debug-only query. If it ever matters, feed `status` through the
+// same LEC/DLEC latch that can_process() uses instead of discarding it.
 struct CanTdcLiveState can_get_tdc_state(void)
 {
     struct CanTdcLiveState s = {0};
