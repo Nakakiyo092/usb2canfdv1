@@ -452,9 +452,11 @@ class TimestampMsTestCase(unittest.TestCase):
         self.dut.send(b"=\r")           # open internal loopback
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Enqueue Tx, give it 2 ms to start, then stall the loop for 40 ms.
-        self.dut.send(b"T0137FEC880011223344556677\r")
-        time.sleep(0.002)
+        # Enqueue Tx, give it time to start, then stall the loop for 40 ms.
+        # Win time management may be too rough (~10ms)
+        tx_frame = b"T0137FEC880011223344556677\r" * 2  # ~20ms to send
+        self.dut.send(tx_frame)
+        time.sleep(0.005)
         self.dut.send(b"~0028\r")
 
         # Drain output for >40 ms so the post-stall report is captured.
@@ -802,9 +804,11 @@ class TimestampUsTestCase(unittest.TestCase):
         self.dut.send(b"=\r")           # open internal loopback
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Enqueue Tx, give it 2 ms to start, then stall the loop for 40 ms.
-        self.dut.send(b"T0137FEC880011223344556677\r")
-        time.sleep(0.002)
+        # Enqueue Tx, give it time to start, then stall the loop for 40 ms.
+        # Win time management may be too rough (~10ms)
+        tx_frame = b"T0137FEC880011223344556677\r" * 2  # ~20ms to send
+        self.dut.send(tx_frame)
+        time.sleep(0.005)
         self.dut.send(b"~0028\r")
 
         # Drain output for >40 ms so the post-stall report is captured.
