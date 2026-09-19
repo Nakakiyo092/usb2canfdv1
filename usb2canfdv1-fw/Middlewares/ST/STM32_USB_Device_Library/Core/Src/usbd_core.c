@@ -358,10 +358,22 @@ USBD_StatusTypeDef  USBD_UnRegisterClassComposite(USBD_HandleTypeDef *pdev)
 
   return ret;
 }
-
-
 #endif /* USE_USBD_COMPOSITE */
 
+#if (USBD_USER_REGISTER_CALLBACK == 1U)
+/**
+  * @brief  USBD_RegisterDevStateCallback
+  * @param  pdev : Device Handle
+  * @param  pUserCallback: User Callback
+  * @retval USBD Status
+  */
+USBD_StatusTypeDef USBD_RegisterDevStateCallback(USBD_HandleTypeDef *pdev, USBD_DevStateCallbackTypeDef pUserCallback)
+{
+  pdev->DevStateCallback = pUserCallback;
+
+  return USBD_OK;
+}
+#endif /* USBD_USER_REGISTER_CALLBACK */
 /**
   * @brief  USBD_Start
   *         Start the USB Device Core.
@@ -629,19 +641,6 @@ USBD_StatusTypeDef USBD_LL_DataOutStage(USBD_HandleTypeDef *pdev,
         (void)USBD_CtlSendStatus(pdev);
       }
     }
-    else
-    {
-#if 0
-      if (pdev->ep0_state == USBD_EP0_STATUS_OUT)
-      {
-        /*
-          * STATUS PHASE completed, update ep0_state to idle
-          */
-        pdev->ep0_state = USBD_EP0_IDLE;
-        (void)USBD_LL_StallEP(pdev, 0U);
-      }
-#endif
-    }
   }
   else
   {
@@ -725,16 +724,6 @@ USBD_StatusTypeDef USBD_LL_DataInStage(USBD_HandleTypeDef *pdev,
           (void)USBD_CtlReceiveStatus(pdev);
         }
       }
-    }
-    else
-    {
-#if 0
-      if ((pdev->ep0_state == USBD_EP0_STATUS_IN) ||
-          (pdev->ep0_state == USBD_EP0_IDLE))
-      {
-        (void)USBD_LL_StallEP(pdev, 0x80U);
-      }
-#endif
     }
 
     if (pdev->dev_test_mode != 0U)
@@ -862,7 +851,11 @@ USBD_StatusTypeDef USBD_LL_SetSpeed(USBD_HandleTypeDef *pdev,
 
 USBD_StatusTypeDef USBD_LL_Suspend(USBD_HandleTypeDef *pdev)
 {
-  pdev->dev_old_state = pdev->dev_state;
+  if (pdev->dev_state != USBD_STATE_SUSPENDED)
+  {
+    pdev->dev_old_state = pdev->dev_state;
+  }
+
   pdev->dev_state = USBD_STATE_SUSPENDED;
 
   return USBD_OK;

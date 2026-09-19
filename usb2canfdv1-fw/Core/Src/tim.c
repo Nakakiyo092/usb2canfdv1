@@ -62,6 +62,10 @@ void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
+  // Clear any UIF latched during init (e.g. from PSC/ARR writes) so the
+  // first interrupt corresponds to a real wrap, not a stale flag. Without
+  // this, gen_us_base would be advanced by one period at startup.
+  __HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE);
   HAL_TIM_Base_Start_IT(&htim3);
   /* USER CODE END TIM3_Init 2 */
 
@@ -77,6 +81,10 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
   /* USER CODE END TIM3_MspInit 0 */
     /* TIM3 clock enable */
     __HAL_RCC_TIM3_CLK_ENABLE();
+
+    /* TIM3 interrupt Init */
+    HAL_NVIC_SetPriority(TIM3_TIM4_IRQn, 3, 0);
+    HAL_NVIC_EnableIRQ(TIM3_TIM4_IRQn);
   /* USER CODE BEGIN TIM3_MspInit 1 */
 
   /* USER CODE END TIM3_MspInit 1 */
@@ -93,6 +101,9 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* tim_baseHandle)
   /* USER CODE END TIM3_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_TIM3_CLK_DISABLE();
+
+    /* TIM3 interrupt Deinit */
+    HAL_NVIC_DisableIRQ(TIM3_TIM4_IRQn);
   /* USER CODE BEGIN TIM3_MspDeInit 1 */
 
   /* USER CODE END TIM3_MspDeInit 1 */
@@ -102,3 +113,4 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* tim_baseHandle)
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
+

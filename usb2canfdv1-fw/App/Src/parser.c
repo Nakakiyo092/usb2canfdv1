@@ -29,11 +29,11 @@
 #include "bootloader.h"
 #endif
 
-#define SLCAN_VERSION       "VW1K4"
-#define SLCAN_SW_VERSION    "2.1.0"
+#define SLCAN_VERSION       "VW1K5"
+#define SLCAN_SW_VERSION    "2.2.0"
 #define SLCAN_RET_OK    ((uint8_t*)"\r")
 #define SLCAN_RET_ERR   ((uint8_t*)"\a")
-#define SLCAN_RET_LEN   (1)
+#define SLCAN_RET_LEN   1U
 
 // Private variables
 #ifndef DEBUG
@@ -50,7 +50,11 @@ static HAL_StatusTypeDef psr_convert_str_to_number(uint8_t *buf, uint8_t len);
 static void psr_parse_str_open(uint8_t *buf, uint8_t len);
 static void psr_parse_str_close(uint8_t *buf, uint8_t len);
 static void psr_parse_str_set_bitrate(uint8_t *buf, uint8_t len);
-static void psr_parse_str_report_mode(uint8_t *buf, uint8_t len);
+static void psr_parse_str_report(uint8_t *buf, uint8_t len);
+static void psr_query_timestamp(void);
+static void psr_query_detailed_time(void);
+static void psr_set_report_full(uint8_t *buf, uint8_t len);
+static void psr_set_report_individual(uint8_t *buf, uint8_t len);
 static void psr_parse_str_filter_mode(uint8_t *buf, uint8_t len);
 static void psr_parse_str_filter_code(uint8_t *buf, uint8_t len);
 static void psr_parse_str_filter_mask(uint8_t *buf, uint8_t len);
@@ -63,6 +67,7 @@ static void psr_parse_str_auto_startup(uint8_t *buf, uint8_t len);
 static void psr_parse_str_open_test_mode(uint8_t *buf, uint8_t len);
 static void psr_parse_str_extended(uint8_t *buf, uint8_t len);
 static void psr_parse_str_debug(uint8_t *buf, uint8_t len);
+static void psr_parse_str_stall(uint8_t *buf, uint8_t len);
 #endif
 
 // Parse an incoming slcan command from the USB CDC port
@@ -124,10 +129,10 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     case 'f':
         psr_parse_str_status(buf, len);
         return;
-    // Set report mode
+    // Set report mode or report timestamp
     case 'Z':
     case 'z':
-        psr_parse_str_report_mode(buf, len);
+        psr_parse_str_report(buf, len);
         return;
     // Set filter mode
     case 'W':
@@ -159,6 +164,10 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // Parse debug command
     case '?':
         psr_parse_str_debug(buf, len);
+        return;
+    // Parse stall command (stall main loop for N ms; test aid for timing-sensitive tests)
+    case '~':
+        psr_parse_str_stall(buf, len);
         return;
 #endif
     default:
@@ -240,6 +249,15 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // Update length if message is extended ID
     if (frame_header->IdType == FDCAN_EXTENDED_ID)
         id_len = SLCAN_EXT_ID_LEN;
+
+    // Check command length
+    // Reject early when the input is too short to hold the command byte +
+    // ID nibbles + DLC nibble.
+    if (len < 1 + id_len + 1)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
 
     // Iterate through ID bytes
     while (parse_loc <= id_len)
@@ -486,163 +504,225 @@ void psr_parse_str_set_bitrate(uint8_t *buf, uint8_t len)
     return;
 }
 
-// Set report mode
-void psr_parse_str_report_mode(uint8_t *buf, uint8_t len)
+// Set report mode or report timestamp
+// Dispatch the Z / z command family:
+//   Z[CR]         -> psr_query_timestamp        (current timestamp in active mode)
+//   z[CR]         -> psr_query_detailed_time    (ms + us + main-loop cycle stats)
+//   Z<n>[CR]      -> psr_set_report_full        (set timestamp mode, reset report)
+//   z<n>xxxx[CR]  -> psr_set_report_individual  (set timestamp mode + report bits)
+// The query forms work regardless of bus state. The setters require the
+// CAN channel to be closed and are gated here so each setter does not
+// have to repeat the check.
+void psr_parse_str_report(uint8_t *buf, uint8_t len)
 {
-    // Get timestamp
     if (buf[0] == 'Z' && len == 1)
     {
-        // Check timestamp mode
-        if (gen_get_timestamp_mode() == SLCAN_TIMESTAMP_MILLI)
-        {
-        	uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
-            if (tmsstr == NULL) return;
-        	uint16_t timestamp_ms = gen_get_timestamp_ms();
-
-        	tmsstr[0] = 'Z';
-        	tmsstr[1] = gen_nibble_to_ascii[SLCAN_TIMESTAMP_MILLI];
-        	tmsstr[2] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
-        	tmsstr[3] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
-        	tmsstr[4] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
-        	tmsstr[5] = gen_nibble_to_ascii[timestamp_ms & 0xF];
-        	tmsstr[6] = '\r';
-            buf_commit_cdc_dest(7);
-        }
-        else if (gen_get_timestamp_mode() == SLCAN_TIMESTAMP_MICRO)
-        {
-        	uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
-            if (tmsstr == NULL) return;
-        	uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
-
-        	tmsstr[0] = 'Z';
-        	tmsstr[1] = gen_nibble_to_ascii[SLCAN_TIMESTAMP_MICRO];
-        	tmsstr[2] = gen_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
-        	tmsstr[3] = gen_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
-        	tmsstr[4] = gen_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
-        	tmsstr[5] = gen_nibble_to_ascii[(timestamp_us >> 16) & 0xF];
-        	tmsstr[6] = gen_nibble_to_ascii[(timestamp_us >> 12) & 0xF];
-        	tmsstr[7] = gen_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
-        	tmsstr[8] = gen_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
-        	tmsstr[9] = gen_nibble_to_ascii[timestamp_us & 0xF];
-        	tmsstr[10] = '\r';
-            buf_commit_cdc_dest(11);
-        }
-        else
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-        }
+        psr_query_timestamp();
         return;
     }
-
-    // Get detailed time
     if (buf[0] == 'z' && len == 1)
     {
-        // "z: time_ms=0x0000, time_us=0x00000000, cycle_time_us_ave_max=[0x000, 0x000]\r";
-
-        uint8_t* timstr;
-
-        buf_enqueue_cdc((uint8_t *)"z: time_ms=0x", 13);
-
-        uint16_t timestamp_ms = gen_get_timestamp_ms();
-        uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
-
-        timstr = buf_reserve_cdc_dest(SLCAN_MTU);
-        if (timstr == NULL) return;
-        timstr[0] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
-        timstr[1] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
-        timstr[2] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
-        timstr[3] = gen_nibble_to_ascii[timestamp_ms & 0xF];
-        buf_commit_cdc_dest(4);
-
-        buf_enqueue_cdc((uint8_t *)", time_us=0x", 12);
-
-        timstr += (4 + 12);
-        timstr[0] = gen_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
-        timstr[1] = gen_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
-        timstr[2] = gen_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
-        timstr[3] = gen_nibble_to_ascii[(timestamp_us >> 16) & 0xF];
-        timstr[4] = gen_nibble_to_ascii[(timestamp_us >> 12) & 0xF];
-        timstr[5] = gen_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
-        timstr[6] = gen_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
-        timstr[7] = gen_nibble_to_ascii[timestamp_us & 0xF];
-        buf_commit_cdc_dest(8);
-
-        buf_enqueue_cdc((uint8_t *)", cycle_time_us_ave_max=[0x", 27);
-
-        // Read and clear cycle time. The max value accumulates from device boot
-        // (or since the last z[CR] query), spanning open and closed periods.
-        uint16_t cycle_ave = (uint16_t)(can_get_cycle_ave_time_ns() >= 4095000 ? 4095 : can_get_cycle_ave_time_ns() / 1000);
-        uint16_t cycle_max = (uint16_t)(can_get_cycle_max_time_ns() >= 4095000 ? 4095 : can_get_cycle_max_time_ns() / 1000);
-        can_clear_cycle_time();
-
-        timstr += (8 + 27);
-        timstr[0] = gen_nibble_to_ascii[(cycle_ave >> 8) & 0xF];
-        timstr[1] = gen_nibble_to_ascii[(cycle_ave >> 4) & 0xF];
-        timstr[2] = gen_nibble_to_ascii[cycle_ave & 0xF];
-        buf_commit_cdc_dest(3);
-
-        buf_enqueue_cdc((uint8_t *)", 0x", 4);
-
-        timstr += (3 + 4);
-        timstr[0] = gen_nibble_to_ascii[(cycle_max >> 8) & 0xF];
-        timstr[1] = gen_nibble_to_ascii[(cycle_max >> 4) & 0xF];
-        timstr[2] = gen_nibble_to_ascii[cycle_max & 0xF];
-        buf_commit_cdc_dest(3);
-
-        buf_enqueue_cdc((uint8_t *)"]\r", 2);
-
+        psr_query_detailed_time();
         return;
     }
 
-    // Set report mode
-    if (can_get_bus_state() == BUS_CLOSED)
-    {
-        if (buf[0] == 'Z')
-        {
-            // Check for valid command
-            if (len != 2 || SLCAN_TIMESTAMP_INVALID <= buf[1])
-            {
-                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-                return;
-            }
-
-            if (gen_set_timestamp_mode(buf[1]) != HAL_OK)
-            {
-                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-                return;
-            }
-
-            // 'Z' intentionally resets the full report register to the default value (Rx only,
-            // no timestamp, no ESI, no Tx). Use 'z' to set individual report options.
-            gen_set_report_mode(1);   // Default: no timestamp, no ESI, no Tx, but with Rx
-            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
-            return;
-        }
-        else if (buf[0] == 'z')
-        {
-            // Check for valid command
-            if (len != 5 || SLCAN_TIMESTAMP_INVALID <= buf[1])
-            {
-                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-                return;
-            }
-
-            if (gen_set_timestamp_mode(buf[1]) != HAL_OK)
-            {
-                buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-                return;
-            }
-            gen_set_report_mode((buf[3] << 4) + buf[4]);
-            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
-            return;
-        }
-    }
-    // This command is only active if the CAN channel is closed.
-    else
+    // Setters from here on — channel must be closed.
+    if (can_get_bus_state() != BUS_CLOSED)
     {
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
+    if (buf[0] == 'Z')
+    {
+        psr_set_report_full(buf, len);
+        return;
+    }
+    if (buf[0] == 'z')
+    {
+        psr_set_report_individual(buf, len);
+        return;
+    }
+}
+
+// Z[CR] — report the current timestamp in the active timestamp mode.
+// Format: 'Z' + 1 hex digit mode + ms/us hex + '\r'.
+// Returns [BELL] if the mode is neither MILLI nor MICRO (cannot produce
+// a meaningful value).
+void psr_query_timestamp(void)
+{
+    if (gen_get_timestamp_mode() == SLCAN_TIMESTAMP_MILLI)
+    {
+        uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
+        if (tmsstr == NULL) return;
+        uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(TIM3->CNT);
+
+        tmsstr[0] = 'Z';
+        tmsstr[1] = gen_nibble_to_ascii[SLCAN_TIMESTAMP_MILLI];
+        tmsstr[2] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
+        tmsstr[3] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
+        tmsstr[4] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
+        tmsstr[5] = gen_nibble_to_ascii[timestamp_ms & 0xF];
+        tmsstr[6] = '\r';
+        buf_commit_cdc_dest(7);
+    }
+    else if (gen_get_timestamp_mode() == SLCAN_TIMESTAMP_MICRO)
+    {
+        uint8_t* tmsstr = buf_reserve_cdc_dest(SLCAN_MTU);
+        if (tmsstr == NULL) return;
+        uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(TIM3->CNT);
+
+        tmsstr[0] = 'Z';
+        tmsstr[1] = gen_nibble_to_ascii[SLCAN_TIMESTAMP_MICRO];
+        tmsstr[2] = gen_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
+        tmsstr[3] = gen_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
+        tmsstr[4] = gen_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
+        tmsstr[5] = gen_nibble_to_ascii[(timestamp_us >> 16) & 0xF];
+        tmsstr[6] = gen_nibble_to_ascii[(timestamp_us >> 12) & 0xF];
+        tmsstr[7] = gen_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
+        tmsstr[8] = gen_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
+        tmsstr[9] = gen_nibble_to_ascii[timestamp_us & 0xF];
+        tmsstr[10] = '\r';
+        buf_commit_cdc_dest(11);
+    }
+    else
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+    }
+}
+
+// z[CR] — detailed time response: ms timestamp + us timestamp + main
+// loop cycle-time stats (ave / max). The cycle-time counters are read
+// and CLEARED here, so each call reports the window since the previous
+// call.
+void psr_query_detailed_time(void)
+{
+    // "z: time_ms=0x0000, time_us=0x00000000, cycle_time_us_ave_max=[0x000, 0x000]\r";
+
+    // Reserve worst-case footprint up front. SLCAN_MTU is well above
+    // the ~76 byte actual response, so this is a safe upper bound.
+    // On failure NOTHING has been queued yet — the host therefore
+    // never sees a truncated fragment of the response. F bit 0 is
+    // raised inside buf_reserve_cdc_dest itself when the reservation
+    // fails.
+    //
+    // The entire response is built by writing into the reserved
+    // region directly — buf_enqueue_cdc is intentionally NOT used in
+    // this handler. Interleaving the two APIs would rely on the
+    // (undocumented) guarantee that both target the same head Tx slot
+    // even when one of them advances msglen between the other's
+    // pointer capture and write; by going reserve-only here we avoid
+    // depending on that internal coupling.
+    uint8_t* p = buf_reserve_cdc_dest(SLCAN_MTU);
+    if (p == NULL) return;
+
+    // Latch TIM3 once so the ms and us fields reflect the same
+    // instant. Reading TIM3->CNT twice (the previous behaviour) made
+    // the two fields disagree by a handful of timer ticks, which is
+    // small in practice but inconsistent with the doc that describes
+    // both fields as snapshots of the same "now".
+    uint16_t tim3_now = (uint16_t)TIM3->CNT;
+    uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(tim3_now);
+    uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(tim3_now);
+
+    // Read and clear cycle time. The max value accumulates from device boot
+    // (or since the last z[CR] query), spanning open and closed periods.
+    uint16_t cycle_ave = (uint16_t)(can_get_cycle_ave_time_ns() >= 4095000 ? 4095 : can_get_cycle_ave_time_ns() / 1000);
+    uint16_t cycle_max = (uint16_t)(can_get_cycle_max_time_ns() >= 4095000 ? 4095 : can_get_cycle_max_time_ns() / 1000);
+    can_clear_cycle_time();
+
+    // Layout (matches the template comment above):
+    //   "z: time_ms=0x"               13 B
+    //   ms hex                         4 B
+    //   ", time_us=0x"                12 B
+    //   us hex                         8 B
+    //   ", cycle_time_us_ave_max=[0x" 27 B
+    //   cycle_ave hex                  3 B
+    //   ", 0x"                         4 B
+    //   cycle_max hex                  3 B
+    //   "]\r"                          2 B
+    //   -------------------------------------
+    //   total                         76 B
+    memcpy(p, "z: time_ms=0x", 13);
+    p += 13;
+    p[0] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
+    p[1] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
+    p[2] = gen_nibble_to_ascii[(timestamp_ms >> 4) & 0xF];
+    p[3] = gen_nibble_to_ascii[timestamp_ms & 0xF];
+    p += 4;
+
+    memcpy(p, ", time_us=0x", 12);
+    p += 12;
+    p[0] = gen_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
+    p[1] = gen_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
+    p[2] = gen_nibble_to_ascii[(timestamp_us >> 20) & 0xF];
+    p[3] = gen_nibble_to_ascii[(timestamp_us >> 16) & 0xF];
+    p[4] = gen_nibble_to_ascii[(timestamp_us >> 12) & 0xF];
+    p[5] = gen_nibble_to_ascii[(timestamp_us >> 8) & 0xF];
+    p[6] = gen_nibble_to_ascii[(timestamp_us >> 4) & 0xF];
+    p[7] = gen_nibble_to_ascii[timestamp_us & 0xF];
+    p += 8;
+
+    memcpy(p, ", cycle_time_us_ave_max=[0x", 27);
+    p += 27;
+    p[0] = gen_nibble_to_ascii[(cycle_ave >> 8) & 0xF];
+    p[1] = gen_nibble_to_ascii[(cycle_ave >> 4) & 0xF];
+    p[2] = gen_nibble_to_ascii[cycle_ave & 0xF];
+    p += 3;
+
+    memcpy(p, ", 0x", 4);
+    p += 4;
+    p[0] = gen_nibble_to_ascii[(cycle_max >> 8) & 0xF];
+    p[1] = gen_nibble_to_ascii[(cycle_max >> 4) & 0xF];
+    p[2] = gen_nibble_to_ascii[cycle_max & 0xF];
+    p += 3;
+
+    memcpy(p, "]\r", 2);
+
+    buf_commit_cdc_dest(76);
+    return;
+}
+
+// Z<n>[CR] — set the timestamp mode AND reset the full report register
+// to the default value (Rx only, no timestamp, no ESI, no Tx). Use
+// z<n>xxxx[CR] to control individual report bits.
+// Caller must ensure the channel is closed.
+void psr_set_report_full(uint8_t *buf, uint8_t len)
+{
+    if (len != 2 || SLCAN_TIMESTAMP_INVALID <= buf[1])
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    if (gen_set_timestamp_mode(buf[1]) != HAL_OK)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    gen_set_report_mode(1);   // Default: no timestamp, no ESI, no Tx, but with Rx
+    buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+}
+
+// z<n>xxxx[CR] — set the timestamp mode AND the individual report
+// register (xxxx = two hex nibbles packed into bits 4..7 and 0..3).
+// Caller must ensure the channel is closed.
+void psr_set_report_individual(uint8_t *buf, uint8_t len)
+{
+    if (len != 5 || SLCAN_TIMESTAMP_INVALID <= buf[1])
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    if (gen_set_timestamp_mode(buf[1]) != HAL_OK)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    gen_set_report_mode((buf[3] << 4) + buf[4]);
+    buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
 }
 
 // Set filter mode
@@ -959,33 +1039,98 @@ void psr_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
 #endif
 
 #ifdef DEBUG
-// Parse extended command (upgrade mode)
-void psr_parse_str_extended(uint8_t *buf, uint8_t len)
+// Sub-command of the extended (!) family that drives the Tx delay
+// compensation override added in can.c.
+//
+// Variants:
+//   !7DC               -- print live TDC state on the host (no state change).
+//                         Format: "!: TDCV=0xXX, TDCO=0xXX, TDCF=0xXX, EN=X\r"
+//   !7DC0              -- disable TDC; applied on next can_enable().
+//   !7DC1              -- restore auto TDC (the non-debug default).
+//   !7DC2<TDCO><TDCF>  -- manual TDC: each is one byte of hex (0..7F).
+//
+// Setters require BUS_CLOSED so the change can be applied during the next
+// FDCAN INIT pass.
+static void psr_parse_str_ext_tdc(uint8_t *buf, uint8_t len)
 {
-    if (can_get_bus_state() == BUS_CLOSED)
+    // !7DC -- live getter, works in any bus state.
+    if (len == 4)
     {
-        // Check for valid command
-        if (len != 5)
-        {
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-            return;
-        }
-
-        if (buf[1] == 0xB && buf[2] == 0x0 && buf[3] == 0x0 && buf[4] == 0x7)
-        {
-            buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
-        	bootloader_enter_update_mode();
-        }
-        else
-            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
-
+        struct CanTdcLiveState s = can_get_tdc_state();
+        // "!: TDCV=0xXX, TDCO=0xXX, TDCF=0xXX, EN=X\r"
+        uint8_t out[41];
+        uint8_t i = 0;
+        out[i++] = '!'; out[i++] = ':'; out[i++] = ' ';
+        out[i++] = 'T'; out[i++] = 'D'; out[i++] = 'C'; out[i++] = 'V'; out[i++] = '=';
+        out[i++] = '0'; out[i++] = 'x';
+        out[i++] = gen_nibble_to_ascii[(s.tdcv >> 4) & 0xF];
+        out[i++] = gen_nibble_to_ascii[s.tdcv & 0xF];
+        out[i++] = ','; out[i++] = ' ';
+        out[i++] = 'T'; out[i++] = 'D'; out[i++] = 'C'; out[i++] = 'O'; out[i++] = '=';
+        out[i++] = '0'; out[i++] = 'x';
+        out[i++] = gen_nibble_to_ascii[(s.tdco >> 4) & 0xF];
+        out[i++] = gen_nibble_to_ascii[s.tdco & 0xF];
+        out[i++] = ','; out[i++] = ' ';
+        out[i++] = 'T'; out[i++] = 'D'; out[i++] = 'C'; out[i++] = 'F'; out[i++] = '=';
+        out[i++] = '0'; out[i++] = 'x';
+        out[i++] = gen_nibble_to_ascii[(s.tdcf >> 4) & 0xF];
+        out[i++] = gen_nibble_to_ascii[s.tdcf & 0xF];
+        out[i++] = ','; out[i++] = ' ';
+        out[i++] = 'E'; out[i++] = 'N'; out[i++] = '=';
+        out[i++] = s.enabled ? '1' : '0';
+        out[i++] = '\r';
+        buf_enqueue_cdc(out, i);
         return;
     }
-    else
+
+    // Setters from here on -- bus must be closed.
+    if (can_get_bus_state() != BUS_CLOSED)
     {
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
+
+    HAL_StatusTypeDef rc = HAL_ERROR;
+    if (len == 5 && buf[4] == 0x0)
+        rc = can_set_tdc_disabled();
+    else if (len == 5 && buf[4] == 0x1)
+        rc = can_set_tdc_auto();
+    else if (len == 9 && buf[4] == 0x2)
+    {
+        uint8_t tdco = (uint8_t)((buf[5] << 4) | buf[6]);
+        uint8_t tdcf = (uint8_t)((buf[7] << 4) | buf[8]);
+        rc = can_set_tdc_manual(tdco, tdcf);
+    }
+
+    buf_enqueue_cdc(rc == HAL_OK ? SLCAN_RET_OK : SLCAN_RET_ERR, SLCAN_RET_LEN);
+}
+
+// Parse extended command (! family). Currently dispatches:
+//   !B007        -- enter bootloader update mode (existing).
+//   !7DC[...]    -- Tx delay compensation override (see psr_parse_str_ext_tdc).
+void psr_parse_str_extended(uint8_t *buf, uint8_t len)
+{
+    // !B007 -- enter update mode.
+    if (len == 5 && buf[1] == 0xB && buf[2] == 0x0 && buf[3] == 0x0 && buf[4] == 0x7)
+    {
+        if (can_get_bus_state() != BUS_CLOSED)
+        {
+            buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+            return;
+        }
+        buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+        bootloader_enter_update_mode();
+        return;
+    }
+
+    // !7DC[...] -- TDC override family.
+    if (len >= 4 && buf[1] == 0x7 && buf[2] == 0xD && buf[3] == 0xC)
+    {
+        psr_parse_str_ext_tdc(buf, len);
+        return;
+    }
+
+    buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
 }
 #endif
 
@@ -1006,6 +1151,56 @@ void psr_parse_str_debug(uint8_t *buf, uint8_t len)
     dbgstr[1] = '\r';
     dbgstr[2] = '\0';
     buf_enqueue_cdc(dbgstr, strlen((char *)dbgstr));
+
+    return;
+}
+#endif
+
+#ifdef DEBUG
+// Parse stall command: blocks the main loop for the given number of milliseconds.
+// Format: ~<HHHH>[CR]
+//   HHHH: 4-digit hex (0..65535 ms)
+// Response: [CR] on success, [BELL] on length error.
+//
+// Behaviour during the stall:
+//   - ISRs (CAN, USB) continue to run; only the main loop is blocked.
+//   - Data already handed to the USB HAL for transmission is sent out.
+//   - Data merely enqueued in the APP-level CDC Tx buffer is NOT pumped to
+//     the HAL, because that pump runs in the main loop. Such data, including
+//     the ACK for this command itself, becomes visible to the host only
+//     after HAL_Delay returns.
+//   - Incoming bytes on USB CDC keep filling the APP-level CDC Rx buffer
+//     via ISR. If the host sends more than that buffer holds during the
+//     stall, the overflow path in buffer.c is exercised.
+//   - The ACK is enqueued before HAL_Delay so that any Rx reports produced
+//     after the stall are guaranteed to be ordered behind it.
+//
+// Used by tests that need to reproduce timing-sensitive scenarios:
+//   - the us timestamp sentinel that fires when the SOF-to-report delay
+//     exceeds the Note 3 design window (~20 ms);
+//   - CDC Rx buffer overflow under host-driven flooding.
+void psr_parse_str_stall(uint8_t *buf, uint8_t len)
+{
+    // 1 prefix char + 4 hex digits
+    if (len != 5)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    // buf[1..4] have already been converted from ASCII hex to nibbles
+    // (0..15) by psr_convert_str_to_number; invalid characters were
+    // rejected there.
+    uint16_t ms = (uint16_t)(
+        (buf[1] << 12) |
+        (buf[2] <<  8) |
+        (buf[3] <<  4) |
+         buf[4]
+    );
+
+    buf_enqueue_cdc(SLCAN_RET_OK, SLCAN_RET_LEN);
+
+    HAL_Delay(ms);
 
     return;
 }

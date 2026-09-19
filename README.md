@@ -10,8 +10,12 @@ URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
 
 - `O[CR]` - Opens the CAN channel
 - `C[CR]` - Closes the CAN channel
-- `sddxxyyzz[CR]` - Sets custom nominal bit rate
-- `yddxxyyzz[CR]` - Sets custom CANFD data segment bit rate
+- `sxxyy[CR]` - Sets custom nominal bit rate
+- `Y0[CR]` - Sets the CANFD data segment bit rate to 500k
+- `Y1[CR]` - Sets the CANFD data segment bit rate to 1M
+- `Y2[CR]` - Sets the CANFD data segment bit rate to 2M (default)
+- `Y4[CR]` - Sets the CANFD data segment bit rate to 4M
+- `Y5[CR]` - Sets the CANFD data segment bit rate to 5M
 - `tiiildd...[CR] `- Transmits base frame
 - `Tiiiiiiiildd...[CR] `- Transmits extended frame
 - `diiildd...[CR] `- Transmits CANFD base frame (BRS disabled)
@@ -19,8 +23,8 @@ URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
 - `biiildd...[CR] `- Transmits CANFD base frames (BRS enabled)
 - `Biiiiiiiildd...[CR] `- Transmits CANFD extended frames (BRS enable)
 - `V[CR]` and `v[CR]` - Returns firmware version and remote path as a string
-- `Z[CR]` and `z[CR]` - Configures reporting mechanism including time stamp and Tx event
-- `M[CR]` and `m[CR]` - Configures CAN acceptance filter
+- `Z` and `z` - Configures reporting mechanism including time stamp and Tx event
+- `M` and `m` - Configures CAN acceptance filter
 - `F[CR]` - Returns status flags
 
 `[CR]` : `0x0D` (hex), `\r` (ascii)
@@ -32,7 +36,8 @@ Please find more information in the `doc` directory or the [wiki](https://github
 The toolchain in this repository is designed to run on a Windows PC.
 
 ### How to build firmware
-Use STM32CubeIDE 1.19.0 with FW_G0 V1.6.2.
+Use STM32CubeIDE 2.1.1 with CubeMX 6.17.0 and FW_G0 V1.6.3.
+Import `usb2canfdv1-fw` as an existing project in file system.
 
 ### How to flash firmware
 Use the packager tool and the upgrade tool in the [root repository](https://github.com/WeActStudio/WeActStudio.USB2CANFDV1/tree/master/Tools).
@@ -43,7 +48,7 @@ Use the packager tool and the upgrade tool in the [root repository](https://gith
 > There would be no command to enter firmware upgrade mode.
 
 
-## Credit
+## Credits
 
 ### Related work
 

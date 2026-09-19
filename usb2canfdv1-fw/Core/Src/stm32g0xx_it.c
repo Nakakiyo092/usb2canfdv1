@@ -56,6 +56,7 @@
 
 /* External variables --------------------------------------------------------*/
 extern PCD_HandleTypeDef hpcd_USB_DRD_FS;
+extern TIM_HandleTypeDef htim3;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -152,6 +153,20 @@ void USB_UCPD1_2_IRQHandler(void)
   /* USER CODE BEGIN USB_UCPD1_2_IRQn 1 */
 
   /* USER CODE END USB_UCPD1_2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM3, TIM4 global Interrupt.
+  */
+void TIM3_TIM4_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM3_TIM4_IRQn 0 */
+
+  /* USER CODE END TIM3_TIM4_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim3);
+  /* USER CODE BEGIN TIM3_TIM4_IRQn 1 */
+
+  /* USER CODE END TIM3_TIM4_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

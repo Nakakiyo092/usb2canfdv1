@@ -26,20 +26,20 @@
 #include "generator.h"
 
 // Bit number for each frame type WithOut Data bytes (from SOF to ITM)
-#define CAN_BIT_NBR_WOD_CBFF            47
-#define CAN_BIT_NBR_WOD_CEFF            67
-#define CAN_BIT_NBR_WOD_FBFF_ARBIT      30          // Bit number in arbitration phase
-#define CAN_BIT_NBR_WOD_FEFF_ARBIT      49
+#define CAN_BIT_NBR_WOD_CBFF            47U
+#define CAN_BIT_NBR_WOD_CEFF            67U
+#define CAN_BIT_NBR_WOD_FBFF_ARBIT      30U         // Bit number in arbitration phase
+#define CAN_BIT_NBR_WOD_FEFF_ARBIT      49U
 #define CAN_BIT_NBR_WOD_FXFF_DATA_S     (26 + 5)    // Bit number in data phase with shorter crc (Including fixed stuff bits in CRC field)
 #define CAN_BIT_NBR_WOD_FXFF_DATA_L     (30 + 6)    // Bit number in data phase with longer crc (Including fixed stuff bits in CRC field)
 
 // Parameter to calculate bus load
-#define CAN_ROOT_CLOCK_MHZ              80
-#define CAN_BUS_LOAD_CYCLE_MS           100
+#define CAN_ROOT_CLOCK_MHZ              80U
+#define CAN_BUS_LOAD_CYCLE_MS           100U
 
 // Threshold for enabling Tx delay compensation
 // The offset value 0x28 corresponds to bitrate ~ 1Mbps @ 50% sampling point or ~ 2Mbps @ 100%.
-#define CAN_TDC_ENABLE_THRESHOLD        0x28
+#define CAN_TDC_ENABLE_THRESHOLD        0x28U
 
 // Public variable
 uint8_t can_dlc_to_bytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
@@ -60,6 +60,14 @@ static uint32_t can_cycle_max_time_ns = 0;
 static uint32_t can_cycle_ave_time_ns = 0;
 static uint32_t can_bit_time_ns = 0;            // Time for one bit in ns
 static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
+
+#ifdef DEBUG
+// Tx delay compensation override state. Default is AUTO (matches the
+// non-debug build). Setters change these; can_enable() consults them.
+static enum CanTdcMode can_tdc_mode = CAN_TDC_AUTO;
+static uint8_t can_tdc_manual_tdco = 0;
+static uint8_t can_tdc_manual_tdcf = 0;
+#endif
 
 // Private methods
 static void can_update_bit_time_ns(void);
@@ -141,21 +149,36 @@ HAL_StatusTypeDef can_enable(void)
 
         if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) return HAL_ERROR;
 
-        // Setup Tx delay compensation
-        // Turn off for <= 1Mbps and Turn on for >= 2Mbps
-        uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
-        if (offset <= CAN_TDC_ENABLE_THRESHOLD)
+        // Setup Tx delay compensation.
+        // Default (AUTO): turn off for <= 1Mbps and turn on for >= 2Mbps.
+        // The debug-only !7DC command can override this to DISABLED or MANUAL.
+#ifdef DEBUG
+        if (can_tdc_mode == CAN_TDC_DISABLED)
         {
-            // Follow the recommended values in the link.
-            // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
-            if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
+            if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+        }
+        else if (can_tdc_mode == CAN_TDC_MANUAL)
+        {
+            if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, can_tdc_manual_tdco, can_tdc_manual_tdcf) != HAL_OK) return HAL_ERROR;
             if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
         }
         else
+#endif
         {
-            // The offset value would exceed the max value 0x7F at low bitrates,
-            // but it should be fine since the compensation is not effective at such bitrates.
-            if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+            uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
+            if (offset <= CAN_TDC_ENABLE_THRESHOLD)
+            {
+                // Follow the recommended values in the link.
+                // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
+                if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
+                if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+            }
+            else
+            {
+                // The offset value would exceed the max value 0x7F at low bitrates,
+                // but it should be fine since the compensation is not effective at such bitrates.
+                if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+            }
         }
 
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_std_filter) != HAL_OK) return HAL_ERROR;
@@ -274,71 +297,101 @@ void can_process(void)
         tick_last = tick_now;
     }
 
-    // Check for message loss
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST))
+    // Poll the FDCAN status registers only while the channel is open.
+    // can_disable() DeInit's the peripheral, which gates its bus clock via
+    // HAL_FDCAN_MspDeInit -> __HAL_RCC_FDCAN_CLK_DISABLE. RM0444 (RCC chapter)
+    // states that register accesses to a peripheral whose clock is not active
+    // are "not effective", so reading IR/PSR/ECR and clearing IR flags below
+    // would be undefined while closed. HAL_FDCAN_GetProtocolStatus() and
+    // HAL_FDCAN_GetErrorCounters() have no state check of their own (unlike
+    // GetTxEvent/GetRxMessage above), hence the explicit gate here.
+    // Nothing below is needed while closed: can_error_state is reset by
+    // can_enable() and `F`/`f` are rejected by the parser while closed.
+    if (can_bus_state == BUS_OPENED)
     {
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST);
-    }
+        // Check for message loss
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST))
+        {
+            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_TX_EVT_FIFO_ELT_LOST);
+        }
 
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST))
-    {
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST);
-    }
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST))
+        {
+            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO0_MESSAGE_LOST);
+        }
 
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST))
-    {
-        gen_raise_error(SLCAN_STS_DATA_OVERRUN);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST);
-    }
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST))
+        {
+            gen_raise_error(SLCAN_STS_DATA_OVERRUN);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_RX_FIFO1_MESSAGE_LOST);
+        }
 
-    // Check for bus state and error counter
-    FDCAN_ProtocolStatusTypeDef sts;
-    FDCAN_ErrorCountersTypeDef cnt;
+        // Snapshot consistency (relevant to the `f` command, a debug aid):
+        // PSR (node state, LEC/DLEC) and ECR (TEC/REC) are two separate reads a
+        // few cycles apart. An error event landing in between can leave one
+        // can_error_state snapshot inconsistent (e.g. err_pssv=0 with
+        // tx_err_cnt=128); it self-corrects on the next poll. last_err_code is
+        // a sticky latch (last error since open, never cleared by `F`) and
+        // bus load is a 100 ms moving average, so neither describes the same
+        // instant as the node state / counters. Accepted for a debug query.
 
-    if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts) == HAL_OK &&
-        HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
-    {
-        uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
-        if (rec > can_error_state.rx_err_cnt || cnt.TxErrorCnt > can_error_state.tx_err_cnt)
+        // Check for bus state and error counters
+        FDCAN_ProtocolStatusTypeDef sts;
+        FDCAN_ErrorCountersTypeDef cnt;
+
+        if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &sts) == HAL_OK &&
+            HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
+        {
+            uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
+            can_error_state.bus_off = (uint8_t)sts.BusOff;
+            can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
+            can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
+            can_error_state.rx_err_cnt = (uint8_t)rec;
+
+            // Check for error code (See the link for the intended behavior)
+            // https://github.com/Nakakiyo092/canable2-fw/issues/68
+            if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
+                can_error_state.last_err_code = sts.DataLastErrorCode;
+            if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
+                can_error_state.last_err_code = sts.LastErrorCode;
+        }
+
+        // BUS_ERROR on any FDCAN protocol error event (PEA/PED sticky flags).
+        // See: https://github.com/Nakakiyo092/usb2canfdv1/issues/167
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR))
+        {
             gen_raise_error(SLCAN_STS_BUS_ERROR);
-        if (sts.BusOff && !can_error_state.bus_off)     // If it gets bus off right now
-            // ... capture counter increase that caused bus off since it does not increase TxErrorCnt
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ARB_PROTOCOL_ERROR);
+        }
+
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_DATA_PROTOCOL_ERROR))
+        {
             gen_raise_error(SLCAN_STS_BUS_ERROR);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_DATA_PROTOCOL_ERROR);
+        }
 
-        can_error_state.bus_off = (uint8_t)sts.BusOff;
-        can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
-        can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
-        can_error_state.rx_err_cnt = (uint8_t)rec;
+        // Check for bus error flags
+        // See the link for the difference from the bus status
+        // https://github.com/Nakakiyo092/canable2-fw/issues/63
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING))
+        {
+            gen_raise_error(SLCAN_STS_ERROR_WARNING);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING);
+        }
 
-        // Check for error code (See the link for the intended behavior)
-        // https://github.com/Nakakiyo092/canable2-fw/issues/68
-        if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
-            can_error_state.last_err_code = sts.DataLastErrorCode;
-        if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
-            can_error_state.last_err_code = sts.LastErrorCode;
-    }
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE))
+        {
+            gen_raise_error(SLCAN_STS_ERROR_PASSIVE);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE);
+        }
 
-    // Check for bus error flags
-    // See the link for the difference from the bus status
-    // https://github.com/Nakakiyo092/canable2-fw/issues/63
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING))
-    {
-        gen_raise_error(SLCAN_STS_ERROR_WARNING);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_WARNING);
-    }
-
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE))
-    {
-        gen_raise_error(SLCAN_STS_ERROR_PASSIVE);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_ERROR_PASSIVE);
-    }
-
-    if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF))
-    {
-        gen_raise_error(SLCAN_STS_BUS_OFF);
-        __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF);
+        if (__HAL_FDCAN_GET_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF))
+        {
+            gen_raise_error(SLCAN_STS_BUS_OFF);
+            __HAL_FDCAN_CLEAR_FLAG(&hfdcan1, FDCAN_FLAG_BUS_OFF);
+        }
     }
 
     // Update cycle time
@@ -868,3 +921,72 @@ static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEven
     //frame_header.RxTimestamp = pTxEvent->TxTimestamp;
     return can_get_bit_number_in_rx_frame(&frame_header);
 }
+
+#ifdef DEBUG
+// Switch TDC override to AUTO (the default). Takes effect on next can_enable.
+// Rejected while the bus is open since FDCAN config must happen in INIT mode.
+HAL_StatusTypeDef can_set_tdc_auto(void)
+{
+    if (can_bus_state != BUS_CLOSED) return HAL_ERROR;
+    can_tdc_mode = CAN_TDC_AUTO;
+    return HAL_OK;
+}
+
+// Force TDC off regardless of bit timing. Takes effect on next can_enable.
+HAL_StatusTypeDef can_set_tdc_disabled(void)
+{
+    if (can_bus_state != BUS_CLOSED) return HAL_ERROR;
+    can_tdc_mode = CAN_TDC_DISABLED;
+    return HAL_OK;
+}
+
+// Use the given TDCO/TDCF on the next can_enable. Values are 7-bit; callers
+// must validate (0..0x7F).
+HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf)
+{
+    if (can_bus_state != BUS_CLOSED) return HAL_ERROR;
+    if (tdco > 0x7F || tdcf > 0x7F) return HAL_ERROR;
+    can_tdc_manual_tdco = tdco;
+    can_tdc_manual_tdcf = tdcf;
+    can_tdc_mode = CAN_TDC_MANUAL;
+    return HAL_OK;
+}
+
+// Read the live TDC values from the FDCAN peripheral. TDCV is the
+// hardware-measured Tx delay (updated each FD frame).
+//
+// IMPORTANT: only valid while BUS_OPENED. After can_disable() the
+// peripheral has been DeInit'd, which gates the FDCAN bus clock via
+// HAL_FDCAN_MspDeInit -> __HAL_RCC_FDCAN_CLK_DISABLE. Touching the
+// FDCAN registers in that state is undefined and can HardFault.
+// When closed we therefore return all-zero rather than reading.
+//
+// SIDE EFFECT on can_error_state.last_err_code (`f` command):
+// HAL_FDCAN_GetProtocolStatus() reads the whole PSR word, and the M_CAN
+// spec marks PSR.LEC / PSR.DLEC as "Set on read": any read replaces them
+// with 7 (NO_CHANGE). The latch in can_process() deliberately ignores
+// NO_CHANGE, so a protocol error that occurred between the previous
+// can_process() poll and this call is consumed here and never reaches
+// last_err_code. IR.PEA/PED (F bit 7), TEC/REC and the EW/EP/BO flags
+// are not affected; only the error *code* of that one window is lost,
+// and only in DEBUG builds while a TDC query is being served. Accepted
+// for a debug-only query. If it ever matters, feed `status` through the
+// same LEC/DLEC latch that can_process() uses instead of discarding it.
+struct CanTdcLiveState can_get_tdc_state(void)
+{
+    struct CanTdcLiveState s = {0};
+    if (can_bus_state == BUS_OPENED)
+    {
+        FDCAN_ProtocolStatusTypeDef status;
+        if (HAL_FDCAN_GetProtocolStatus(&hfdcan1, &status) == HAL_OK)
+        {
+            s.tdcv = (uint8_t)status.TDCvalue;
+        }
+        uint32_t tdcr = hfdcan1.Instance->TDCR;
+        s.tdco = (uint8_t)((tdcr & FDCAN_TDCR_TDCO_Msk) >> FDCAN_TDCR_TDCO_Pos);
+        s.tdcf = (uint8_t)((tdcr & FDCAN_TDCR_TDCF_Msk) >> FDCAN_TDCR_TDCF_Pos);
+        s.enabled = (hfdcan1.Instance->DBTP & FDCAN_DBTP_TDC) ? 1U : 0U;
+    }
+    return s;
+}
+#endif

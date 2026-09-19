@@ -75,12 +75,12 @@ class ToolPreReleaseChecklistTestCase(unittest.TestCase):
         self._confirm("Did the LEDs behave as described?")
 
         # --- Error-stored LED ---
-        # Trigger a bus error by sending to a quiet bus with no retransmit
-        # so a stored flag gets set.  Per doc/5.-Hardware.md and the F
+        # Trigger a bus error by sending to a quiet bus
+        # Per doc/5.-Hardware.md and the F
         # command note, any stored flag turns RX & TX to constant ON.
         print("\n=== Error-stored LED ===")
         print("Expected: RDY constant ON, RX & TX both constant ON.")
-        self.dut.send(b"-\r")             # disable retransmit
+        self.dut.send(b"O\r")             # open
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"t0000\r")         # transmit -> NACK on quiet bus
         self.assertEqual(self.dut.receive(), b"z\r")

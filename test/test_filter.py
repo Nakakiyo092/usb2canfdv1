@@ -379,187 +379,393 @@ class SimpleFilterTestCase(unittest.TestCase):
         self.dut = DeviceUnderTest()
         self.dut.open()
         self.dut.setup()
+        # All tests below run under W2; switch once here. setUp's setup()
+        # has already left Code/Mask at defaults (M00000000, mFFFFFFFF).
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
 
 
     def tearDown(self):
         self.dut.close()
 
 
-    def test_simple_filter_basic(self):
-        cmd_send_std = (b"r", b"t", b"d", b"b")
-        cmd_send_ext = (b"R", b"T", b"D", b"B")
-
-        #self.dut.print_on = True
-
-        # Check pass all filter (default)
-        self.dut.send(b"W2\r")
-        self.assertEqual(self.dut.receive(), b"\r")
+    def test_pass_all(self):
+        """Doc Example 1: W2 with mFFFFFFFF (all bits don't-care) passes
+        all standard and extended frames. This is the default power-on
+        state."""
+        # setUp leaves Code=00000000, Mask=FFFFFFFF.
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"7C00\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"000007C00\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"1EC801370\r")
+
+        # Standard frames: a representative sample across the ID range.
+        for std_id in (0x000, 0x001, 0x100, 0x3FF, 0x601, 0x7FE, 0x7FF):
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"\r",
+                             f"STD ID {std_id:#x} should pass with mFFFFFFFF")
+
+        # Extended frames: a representative sample across the ID range.
+        for ext_id in (0x00000000, 0x00000001, 0x0137FEC8, 0x18DA0000, 0x1FFFFFFF):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"\r",
+                             f"EXT ID {ext_id:#x} should pass with mFFFFFFFF")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check pass 0x03F and 0x0000003F filter
-        self.dut.send(b"W2\r")
+
+    def test_std_id_only(self):
+        """Doc Example 2: Code=80000100, Mask=00000000 accepts only STD ID 0x100.
+
+        Bit calculation:
+          M[31]=1, m[31]=0 -> ~IDE=1 required -> STD frames only
+          M[10:0]=0x100, m[10:0]=0x000 -> exact match: STD ID 0x100
+          (M[28:11] are not mapped to a STD ID; with m=0 they are compared
+          against the implicit 0 of the STD frame's upper bits, but the
+          frame type itself is already constrained by M[31].)
+        """
+        self.dut.send(b"M80000100\r")
         self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # STD 0x100 must pass.
+        self.dut.send(b"t1000\r")
+        self.assertEqual(self.dut.receive(), b"z\rt1000\r",
+                         "STD ID 0x100 should pass")
+
+        # Adjacent and other STD IDs must be blocked.
+        for std_id in (0x000, 0x0FF, 0x101, 0x1FF, 0x200, 0x7FF):
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r",
+                             f"STD ID {std_id:#x} should be blocked")
+
+        # All EXT IDs must be blocked (frame type mismatch).
+        for ext_id in (0x00000000, 0x00000100, 0x0137FEC8, 0x1FFFFFFF):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r",
+                             f"EXT ID {ext_id:#x} should be blocked (STD-only filter)")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_ext_id_range(self):
+        """Doc Example 3: Code=18DB0000, Mask=0000FFFF accepts EXT ID range
+        0x18DB0000 - 0x18DBFFFF.
+
+        Bit calculation:
+          M[31]=0, m[31]=0 -> ~IDE=0 required -> EXT frames only
+          M[28:16]=0x18DB, m[28:16]=0x0000 -> exact match for upper 13 ID bits
+          M[15:0]=0x0000, m[15:0]=0xFFFF -> lower 16 ID bits don't-care
+          -> accepted: (ID & 0x1FFF0000) == 0x18DB0000
+        """
+        self.dut.send(b"M18DB0000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m0000FFFF\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # EXT IDs in the range 0x18DB0000..0x18DBFFFF must pass.
+        for ext_id in (0x18DB0000, 0x18DB0001, 0x18DB1234, 0x18DBFFFF):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"\r",
+                             f"EXT ID {ext_id:#x} should pass")
+
+        # EXT IDs outside that range must be blocked.
+        for ext_id in (0x00000000, 0x18DA0000, 0x18DC0000, 0x1FFFFFFF):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r",
+                             f"EXT ID {ext_id:#x} should be blocked")
+
+        # All STD IDs must be blocked (frame type mismatch).
+        for std_id in (0x000, 0x100, 0x7FF):
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r",
+                             f"STD ID {std_id:#x} should be blocked (EXT-only filter)")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_std_and_ext_with_dont_care_ide(self):
+        """Doc Example 4: Code=00000100, Mask=80000000 accepts STD ID 0x100
+        AND EXT ID 0x00000100. The leading 8 in mask marks the ~IDE bit
+        as don't-care, so the same low ID matches both frame types.
+
+        Bit calculation:
+          M[31]=0, m[31]=1 -> ~IDE don't-care -> both STD and EXT accepted
+          M[28:0]=0x00000100, m[28:0]=0x00000000 -> exact match on 29 bits
+          STD interpretation: M[10:0]=0x100 -> STD ID 0x100
+          EXT interpretation: M[28:0]=0x00000100 -> EXT ID 0x00000100
+        """
+        self.dut.send(b"M00000100\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m80000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # STD 0x100 must pass.
+        self.dut.send(b"t1000\r")
+        self.assertEqual(self.dut.receive(), b"z\rt1000\r",
+                         "STD ID 0x100 should pass")
+        # EXT 0x00000100 must pass.
+        self.dut.send(b"T000001000\r")
+        self.assertEqual(self.dut.receive(), b"Z\rT000001000\r",
+                         "EXT ID 0x00000100 should pass")
+
+        # Other STD IDs must be blocked.
+        for std_id in (0x000, 0x101, 0x7FF):
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r",
+                             f"STD ID {std_id:#x} should be blocked")
+
+        # Other EXT IDs must be blocked.
+        for ext_id in (0x00000000, 0x00000101, 0x0137FEC8, 0x1FFFFFFF):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r",
+                             f"EXT ID {ext_id:#x} should be blocked")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_ext_id_only(self):
+        """EXT-only counterpart to Example 2: Code=0137FEC8, Mask=00000000
+        accepts only EXT ID 0x0137FEC8.
+
+        Bit calculation:
+          M[31]=0, m[31]=0 -> ~IDE=0 required -> EXT frames only
+          M[28:0]=0x0137FEC8, m=0 -> exact match: EXT ID 0x0137FEC8
+        """
+        self.dut.send(b"M0137FEC8\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # EXT 0x0137FEC8 must pass.
+        self.dut.send(b"T0137FEC80\r")
+        self.assertEqual(self.dut.receive(), b"Z\rT0137FEC80\r",
+                         "EXT ID 0x0137FEC8 should pass")
+
+        # Other EXT IDs must be blocked.
+        for ext_id in (0x00000000, 0x0137FEC7, 0x0137FEC9, 0x1EC80137, 0x1FFFFFFF):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r",
+                             f"EXT ID {ext_id:#x} should be blocked")
+
+        # All STD IDs must be blocked (frame type mismatch).
+        for std_id in (0x000, 0x6C8, 0x7FF):   # 0x6C8 = 0x0137FEC8 & 0x7FF
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r",
+                             f"STD ID {std_id:#x} should be blocked (EXT-only filter)")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_lower_11bit_only_with_dont_care_ide(self):
+        """Code=0000003F, Mask=FFFFF800: only the lower 11 ID bits are
+        compared and the frame type is don't-care. Accepts STD ID 0x03F
+        and EXT IDs whose lower 11 bits are 0x03F.
+
+        Bit calculation:
+          M[31]=0, m[31]=1 -> ~IDE don't-care
+          M[10:0]=0x03F, m[10:0]=0x000 -> exact match on lower 11 bits
+          M[28:11]=0, m[28:11]=all 1 -> upper 18 bits don't-care
+        """
         self.dut.send(b"M0000003F\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"mFFFFF800\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0000003F0\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
+
+        # STD 0x03F must pass.
+        self.dut.send(b"t03F0\r")
+        self.assertEqual(self.dut.receive(), b"z\rt03F0\r",
+                         "STD ID 0x03F should pass")
+
+        # Other STD IDs must be blocked.
+        for std_id in (0x000, 0x03E, 0x040, 0x7FF):
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r",
+                             f"STD ID {std_id:#x} should be blocked")
+
+        # EXT IDs with lower 11 bits == 0x03F must pass, regardless of upper bits.
+        for ext_id in (0x0000003F, 0x0000083F, 0x0001003F, 0x1FFFF83F):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"\r",
+                             f"EXT ID {ext_id:#x} (lower 11 bits = 0x03F) should pass")
+
+        # EXT IDs with different lower 11 bits must be blocked.
+        for ext_id in (0x00000000, 0x0000003E, 0x0000043F, 0x0137FEC8):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r",
+                             f"EXT ID {ext_id:#x} should be blocked")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check pass 0x6C8 and 0x0137FEC8 filter
+
+    def test_same_code_distinct_std_and_ext_ids(self):
+        """Code=0137FEC8, Mask=E0000000 demonstrates that the same code
+        value is interpreted as different IDs for STD and EXT frames:
+        STD takes only the lower 11 bits, EXT takes 29 bits.
+
+        Bit calculation:
+          M[31]=0, m[31]=1 -> ~IDE don't-care
+          m[30:29]=0b11 -> upper 2 bits don't-care (they are AC0[6:5] and
+            are not part of the 29-bit EXT ID anyway, so the effect is nil
+            for this code value; included to mirror the original test)
+          M[28:0]=0x0137FEC8, m[28:0]=0 -> exact match on the 29-bit code
+          STD interpretation: M[10:0]=0x6C8 (= 0x0137FEC8 & 0x7FF)
+          EXT interpretation: M[28:0]=0x0137FEC8
+        """
         self.dut.send(b"M0137FEC8\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"mE0000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-            self.dut.send(cmd + b"6C80\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"6C80\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check pass STD ID 0x03F filter
-        self.dut.send(b"M8000003F\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"m00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r" + cmd + b"03F0\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
+        # STD 0x6C8 must pass (the lower 11 bits of M).
+        self.dut.send(b"t6C80\r")
+        self.assertEqual(self.dut.receive(), b"z\rt6C80\r",
+                         "STD ID 0x6C8 should pass")
+        # EXT 0x0137FEC8 must pass (the full 29 bits of M).
+        self.dut.send(b"T0137FEC80\r")
+        self.assertEqual(self.dut.receive(), b"Z\rT0137FEC80\r",
+                         "EXT ID 0x0137FEC8 should pass")
 
-        # Check pass EXT ID 0x0137FEC8 filter
-        self.dut.send(b"M0137FEC8\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"m00000000\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"=\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        for cmd in cmd_send_std:
-            self.dut.send(cmd + b"03F0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-            self.dut.send(cmd + b"7C00\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-            self.dut.send(cmd + b"6C80\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
-        for cmd in cmd_send_ext:
-            self.dut.send(cmd + b"0000003F0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"000007C00\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
-            self.dut.send(cmd + b"0137FEC80\r")
-            self.assertEqual(self.dut.receive(), b"Z\r" + cmd + b"0137FEC80\r")
-            self.dut.send(cmd + b"1EC801370\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
+        # Other STD IDs must be blocked.
+        for std_id in (0x000, 0x03F, 0x6C7, 0x6C9, 0x7FF):
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r",
+                             f"STD ID {std_id:#x} should be blocked")
+
+        # Other EXT IDs must be blocked.
+        for ext_id in (0x00000000, 0x0000003F, 0x0137FEC7, 0x1EC80137):
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r",
+                             f"EXT ID {ext_id:#x} should be blocked")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    def test_simple_filter_every_bits(self):
-        # Check pass STD ID 0x000 filter comparing every bit in CAN ID
-        self.dut.send(b"W2\r")
-        self.assertEqual(self.dut.receive(), b"\r")
+    def test_every_std_id_bit(self):
+        """Verify each of the 11 STD CAN ID bits is independently compared.
+        Code=80000000, Mask=00000000 accepts only STD ID 0x000.
+
+        Bit calculation:
+          M[31]=1, m[31]=0 -> STD frames only
+          M[10:0]=0x000, m[10:0]=0 -> exact match: STD ID 0x000
+        """
         self.dut.send(b"M80000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m00000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+        # STD 0x000 must pass.
         self.dut.send(b"t0000\r")
-        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
-        for idx in range(0, 11):
-            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
+        self.assertEqual(self.dut.receive(), b"z\rt0000\r",
+                         "STD ID 0x000 should pass")
+
+        # Each STD ID with exactly one bit set must be blocked.
+        for bit in range(0, 11):
+            std_id = 1 << bit
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r",
+                             f"STD ID {std_id:#x} (bit {bit}) should be blocked")
+
+        # All EXT IDs must be blocked (frame type mismatch).
         self.dut.send(b"T000000000\r")
-        self.assertEqual(self.dut.receive(), b"Z\r")
-        for idx in range(0, 29):
-            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.assertEqual(self.dut.receive(), b"Z\r",
+                         "EXT ID 0x00000000 should be blocked (STD-only filter)")
+        for bit in range(0, 29):
+            ext_id = 1 << bit
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r",
+                             f"EXT ID {ext_id:#x} (bit {bit}) should be blocked (STD-only filter)")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check pass EXT ID 0x00000000 filter comparing every bit in CAN ID
+
+    def test_every_ext_id_bit(self):
+        """Verify each of the 29 EXT CAN ID bits is independently compared.
+        Code=00000000, Mask=00000000 accepts only EXT ID 0x00000000.
+
+        Bit calculation:
+          M[31]=0, m[31]=0 -> EXT frames only
+          M[28:0]=0, m[28:0]=0 -> exact match: EXT ID 0x00000000
+        """
         self.dut.send(b"M00000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m00000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"t0000\r")
-        self.assertEqual(self.dut.receive(), b"z\r")
-        for idx in range(0, 11):
-            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
+
+        # EXT 0x00000000 must pass.
         self.dut.send(b"T000000000\r")
-        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
-        for idx in range(0, 29):
-            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.assertEqual(self.dut.receive(), b"Z\rT000000000\r",
+                         "EXT ID 0x00000000 should pass")
+
+        # Each EXT ID with exactly one bit set must be blocked.
+        for bit in range(0, 29):
+            ext_id = 1 << bit
+            cmd = ("T" + f"{ext_id:08X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"Z\r",
+                             f"EXT ID {ext_id:#x} (bit {bit}) should be blocked")
+
+        # All STD IDs must be blocked (frame type mismatch).
+        self.dut.send(b"t0000\r")
+        self.assertEqual(self.dut.receive(), b"z\r",
+                         "STD ID 0x000 should be blocked (EXT-only filter)")
+        for bit in range(0, 11):
+            std_id = 1 << bit
+            cmd = ("t" + f"{std_id:03X}" + "0").encode()
+            self.dut.send(cmd + b"\r")
+            self.assertEqual(self.dut.receive(), b"z\r",
+                             f"STD ID {std_id:#x} (bit {bit}) should be blocked (EXT-only filter)")
+
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check pass 0x000 and 0x00000000 filter comparing every bit in CAN ID
+
+    def test_command_order_independence(self):
+        """The order in which M and m are sent must not affect the resulting
+        filter state. Configure Code=00000000, Mask=80000000 (STD 0x000 +
+        EXT 0x00000000) in both orders and confirm the same pass/block set."""
+        # --- Order 1: M then m ---
         self.dut.send(b"M00000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"m80000000\r")
@@ -567,19 +773,18 @@ class SimpleFilterTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"t0000\r")
-        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
-        for idx in range(0, 11):
-            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
+        self.assertEqual(self.dut.receive(), b"z\rt0000\r",
+                         "Order M->m: STD 0x000 should pass")
         self.dut.send(b"T000000000\r")
-        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
-        for idx in range(0, 29):
-            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.assertEqual(self.dut.receive(), b"Z\rT000000000\r",
+                         "Order M->m: EXT 0x00000000 should pass")
+        self.dut.send(b"t1000\r")
+        self.assertEqual(self.dut.receive(), b"z\r",
+                         "Order M->m: STD 0x100 should be blocked")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Check consistency by setting pass STD ID 0x000 filter again
+        # --- Order 2: m then M (swapped) ---
         self.dut.send(b"m80000000\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"M00000000\r")
@@ -587,15 +792,70 @@ class SimpleFilterTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"t0000\r")
-        self.assertEqual(self.dut.receive(), b"z\r" + b"t0000\r")
-        for idx in range(0, 11):
-            self.dut.send(b"t" + (f'{(1 << idx):03X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
+        self.assertEqual(self.dut.receive(), b"z\rt0000\r",
+                         "Order m->M: STD 0x000 should pass (same result as M->m)")
         self.dut.send(b"T000000000\r")
-        self.assertEqual(self.dut.receive(), b"Z\r" + b"T000000000\r")
-        for idx in range(0, 29):
-            self.dut.send(b"T" + (f'{(1 << idx):08X}').encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"Z\r")
+        self.assertEqual(self.dut.receive(), b"Z\rT000000000\r",
+                         "Order m->M: EXT 0x00000000 should pass (same result as M->m)")
+        self.dut.send(b"t1000\r")
+        self.assertEqual(self.dut.receive(), b"z\r",
+                         "Order m->M: STD 0x100 should be blocked (same result as M->m)")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_mode_switch_w2_w0_w2(self):
+        """Switching from W2 to W0 and back to W2 correctly re-applies the
+        simple-mode filter. The Code/Mask values are preserved across mode
+        changes; only the interpretation is switched.
+
+        Config: Code=80000100, Mask=00000000
+          W2: STD ID 0x100 only (Doc Example 2)
+          W0: same Code/Mask reinterpreted as dual filter -> different pass set
+          W2 again: STD ID 0x100 again
+        """
+        self.dut.send(b"M80000100\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"m00000000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # --- W2: STD 0x100 must pass; STD 0x000 blocked ---
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t1000\r")
+        self.assertEqual(self.dut.receive(), b"z\rt1000\r",
+                         "W2: STD 0x100 should pass")
+        self.dut.send(b"t0000\r")
+        self.assertEqual(self.dut.receive(), b"z\r",
+                         "W2: STD 0x000 should be blocked")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # --- W0: same Code/Mask now interpreted as dual filter ---
+        # Under W0 the same code 0x80000100 yields different filter values
+        # (the bit-mapping switches). STD 0x100 is not expected to pass any
+        # more; the exact dual-mode behaviour is covered by DualFilterTestCase.
+        self.dut.send(b"W0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t1000\r")
+        self.assertEqual(self.dut.receive(), b"z\r",
+                         "W0: STD 0x100 should NOT pass (code/mask reinterpreted as dual filter)")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # --- W2 again: original behaviour must be restored ---
+        self.dut.send(b"W2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"t1000\r")
+        self.assertEqual(self.dut.receive(), b"z\rt1000\r",
+                         "W2 restored: STD 0x100 should pass again")
+        self.dut.send(b"t0000\r")
+        self.assertEqual(self.dut.receive(), b"z\r",
+                         "W2 restored: STD 0x000 should still be blocked")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 

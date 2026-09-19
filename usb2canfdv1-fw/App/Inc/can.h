@@ -56,6 +56,25 @@ enum CanBusState
     BUS_OPENED
 };
 
+#ifdef DEBUG
+// Tx delay compensation mode (debug-only override of the AUTO default).
+enum CanTdcMode
+{
+    CAN_TDC_AUTO,       // Default: compute TDCO from bit timing; disable above threshold
+    CAN_TDC_DISABLED,   // Force TDC off regardless of bit timing
+    CAN_TDC_MANUAL      // Use stored TDCO/TDCF
+};
+
+// Snapshot of live TDC values read from the FDCAN peripheral.
+struct CanTdcLiveState
+{
+    uint8_t tdcv;       // Measured Tx delay (FDCAN_PSR.TDCV), updated each FD tx
+    uint8_t tdco;       // Configured offset (FDCAN_TDCR.TDCO)
+    uint8_t tdcf;       // Configured filter (FDCAN_TDCR.TDCF)
+    uint8_t enabled;    // FDCAN_DBTP.TDC bit
+};
+#endif
+
 // Structure for CAN protocol status and error counters
 struct CanErrorState
 {
@@ -79,10 +98,10 @@ struct CanBitrateCfg
 #define CAN_HAL_DLC_TO_STD_DLC(val)   ((uint8_t)(((val) / FDCAN_DLC_BYTES_1) & 0xF))
 
 // CANFD parameter
-#define CAN_MAX_DATALEN                 64  // CAN maximum data length. Must be 64 for canfd.
+#define CAN_MAX_DATALEN                 64U // CAN maximum data length. Must be 64 for canfd.
 
 // Public variable
-#define CAN_DLC_TO_BYTES_SIZE           16  // Number of entries in can_dlc_to_bytes (DLC 0x0..0xF)
+#define CAN_DLC_TO_BYTES_SIZE           16U // Number of entries in can_dlc_to_bytes (DLC 0x0..0xF)
 extern uint8_t can_dlc_to_bytes[];
 
 // Prototypes
@@ -128,5 +147,14 @@ uint32_t can_get_cycle_ave_time_ns(void);
 uint32_t can_get_cycle_max_time_ns(void);
 
 FDCAN_HandleTypeDef *can_get_handle(void);
+
+#ifdef DEBUG
+// Tx delay compensation override (debug-only).
+// Setters require BUS_CLOSED; they take effect on the next can_enable().
+HAL_StatusTypeDef can_set_tdc_auto(void);
+HAL_StatusTypeDef can_set_tdc_disabled(void);
+HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf);
+struct CanTdcLiveState can_get_tdc_state(void);
+#endif
 
 #endif // USB2CANFDV1_CAN_H

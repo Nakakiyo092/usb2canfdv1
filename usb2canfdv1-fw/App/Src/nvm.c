@@ -29,9 +29,9 @@ enum NvmMemoryStatus
     NVM_MEMORY_CLEARED = 0xF    /* Flash memory store 0xFF when cleared */
 };
 
-#define NVM_PAGE_NUMBER_DATA      (62)                          /* Page number of data area (see RM0444-3.3.1) */
-#define NVM_ERASE_OK              (0xFFFFFFFF)
-#define NVM_ADDR_ORIGIN           (0x0801F000)                  /* Start address of data area in flash */
+#define NVM_PAGE_NUMBER_DATA      62U                           /* Page number of data area (see RM0444-3.3.1) */
+#define NVM_ERASE_OK              0xFFFFFFFFU
+#define NVM_ADDR_ORIGIN           0x0801F000U                   /* Start address of data area in flash */
 #define NVM_ADDR_SERIAL_NUMBER    (NVM_ADDR_ORIGIN + 0x000UL)
 #define NVM_ADDR_STP_CONFIG       (NVM_ADDR_ORIGIN + 0x008UL)   /* Auto startup configuration */
 #define NVM_ADDR_STP_NOM_BITRATE  (NVM_ADDR_ORIGIN + 0x010UL)   /* Nominal bitrate at STartuP */
@@ -127,7 +127,8 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     if (SLCAN_FILTER_INVALID <= filter_mode)
         return HAL_ERROR;
 
-    gen_set_filter_mode(filter_mode);
+    if (gen_set_filter_mode(filter_mode) != HAL_OK)
+        return HAL_ERROR;
 
     uint8_t timestamp_mode = (uint8_t)((nvm_stp_config_raw >> 16) & 0xFF);
 
@@ -147,17 +148,21 @@ HAL_StatusTypeDef nvm_apply_startup_cfg(void)
     bitrate.time_seg1 = (uint8_t)((nvm_stp_nom_bitrate_raw >> 8) & 0xFF);
     bitrate.time_seg2 = (uint8_t)((nvm_stp_nom_bitrate_raw >> 16) & 0xFF);
     bitrate.sjw = (uint8_t)((nvm_stp_nom_bitrate_raw >> 24) & 0xFF);
-    can_set_nominal_bitrate_cfg(bitrate);
+    if (can_set_nominal_bitrate_cfg(bitrate) != HAL_OK)
+        return HAL_ERROR;
 
     bitrate.prescaler = (uint16_t)((nvm_stp_data_bitrate_raw) & 0xFF);
     bitrate.time_seg1 = (uint8_t)((nvm_stp_data_bitrate_raw >> 8) & 0xFF);
     bitrate.time_seg2 = (uint8_t)((nvm_stp_data_bitrate_raw >> 16) & 0xFF);
     bitrate.sjw = (uint8_t)((nvm_stp_data_bitrate_raw >> 24) & 0xFF);
-    can_set_data_bitrate_cfg(bitrate);
+    if (can_set_data_bitrate_cfg(bitrate) != HAL_OK)
+        return HAL_ERROR;
 
     // Read and apply filter
-    gen_set_filter_code(nvm_stp_filter_code_raw & 0xFFFFFFFF);
-    gen_set_filter_mask(nvm_stp_filter_mask_raw & 0xFFFFFFFF);
+    if (gen_set_filter_code(nvm_stp_filter_code_raw & 0xFFFFFFFF) != HAL_OK)
+        return HAL_ERROR;
+    if (gen_set_filter_mask(nvm_stp_filter_mask_raw & 0xFFFFFFFF) != HAL_OK)
+        return HAL_ERROR;
 
     // Start the CAN peripheral
     if (startup_mode == SLCAN_AUTO_STARTUP_NORMAL)
