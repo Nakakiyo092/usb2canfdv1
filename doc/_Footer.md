@@ -1,1 +1,1 @@
-_Let's enjoy a "talk" with your CAN FD node !_
+CC0 1.0 Universal
