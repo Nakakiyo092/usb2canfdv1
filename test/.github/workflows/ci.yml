@@ -113,4 +113,3 @@ jobs:
           pylint --source-roots=. --fail-under=9 cdc_speed_test.py
           pylint --source-roots=. --fail-under=9 long_time_test.py
 #          pylint --source-roots=. --fail-under=9 $(git ls-files '*.py')
-
