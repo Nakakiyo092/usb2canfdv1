@@ -35,6 +35,7 @@ jobs:
       - name: Verify CLI help
         run: |
           python3 cdc_speed_test.py --help
+          python3 long_time_test.py --help
 
   macOS:
     runs-on: macos-latest

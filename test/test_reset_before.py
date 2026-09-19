@@ -33,7 +33,7 @@ class ResetBeforeTestCase(unittest.TestCase):
         self.dut.close()
 
 
-    def test_persist_via_q1(self):
+    def test_persist_via_Q1(self):
         """Write persisted settings via Q1, then apply RAM-only overrides.
 
         Persisted (expected to survive reset):
