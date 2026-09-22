@@ -37,9 +37,10 @@
 #define CAN_ROOT_CLOCK_MHZ              80U
 #define CAN_BUS_LOAD_CYCLE_MS           100U
 
-// Threshold for enabling Tx delay compensation
-// The offset value 0x28 corresponds to bitrate ~ 1Mbps @ 50% sampling point or ~ 2Mbps @ 100%.
-#define CAN_TDC_ENABLE_THRESHOLD        0x28U
+// Maximum data bit rate prescaler for which Tx delay compensation is available.
+// Per Bosch M_CAN User's Manual v3.3.1 (p.8), when TDC = '1' the DBTP.DBRP field
+// range is limited to 0 or 1, i.e. an actual data prescaler of 1 or 2.
+#define CAN_TDC_MAX_DATA_PRESCALER      2U
 
 // Public variable
 uint8_t can_dlc_to_bytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
@@ -150,7 +151,7 @@ HAL_StatusTypeDef can_enable(void)
         if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) return HAL_ERROR;
 
         // Setup Tx delay compensation.
-        // Default (AUTO): turn off for <= 1Mbps and turn on for >= 2Mbps.
+        // Default (AUTO): turn on whenever the data prescaler allows it (1 or 2), off otherwise.
         // The debug-only !7DC command can override this to DISABLED or MANUAL.
 #ifdef DEBUG
         if (can_tdc_mode == CAN_TDC_DISABLED)
@@ -165,18 +166,25 @@ HAL_StatusTypeDef can_enable(void)
         else
 #endif
         {
-            uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
-            if (offset <= CAN_TDC_ENABLE_THRESHOLD)
+            // TDC is available only for a data prescaler of 1 or 2 (M_CAN v3.3.1 p.8),
+            // so enable it whenever the prescaler allows and leave it off otherwise. No FD
+            // check is needed because this device always operates in CAN FD.
+            if (can_bit_cfg_data.prescaler <= CAN_TDC_MAX_DATA_PRESCALER)
             {
+                // The offset (data sample point) is prescaler * time_seg1. With a prescaler
+                // of 1 or 2 it never exceeds 2 * 32 = 64 (DataTimeSeg1 max is 32), which is
+                // below the TDCO field maximum 0x7F (127), so no upper clamp is required.
                 // Follow the recommended values in the link.
                 // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
+                uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
                 if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
                 if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
             }
             else
             {
-                // The offset value would exceed the max value 0x7F at low bitrates,
-                // but it should be fine since the compensation is not effective at such bitrates.
+                // A data prescaler above 2 only occurs at low data bit rates, where the
+                // transceiver loop delay is negligible compared to the bit time so TDC is
+                // not needed. It is unsupported by the hardware, so leave it disabled.
                 if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
             }
         }
