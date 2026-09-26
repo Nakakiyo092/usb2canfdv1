@@ -2,6 +2,7 @@
 
 import unittest
 
+import re
 import time
 import random
 from device_under_test import DeviceUnderTest
@@ -12,6 +13,7 @@ from device_under_test import DeviceUnderTest
 #       - TxEventTestCase: aux acts as a normal ACK provider.
 #       - EsiTestCase: aux receives but cannot ACK frames whose data phase
 #         is faster than its own configuration, allowing controlled NACKs.
+#       - TdcTestCase: aux acts as a normal ACK provider.
 #       The test_single_tx_event_after_retries requires the channel of the
 #       aux device becoming open and closed repeatedly.
 class TxEventTestCase(unittest.TestCase):
@@ -316,6 +318,75 @@ class EsiTestCase(unittest.TestCase):
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+
+class TdcTestCase(unittest.TestCase):
+
+    dut: DeviceUnderTest
+
+    def setUp(self):
+        self.dut = DeviceUnderTest()
+        self.dut.open()
+        self.dut.setup()
+
+
+    def tearDown(self):
+        self.dut.close()
+
+
+    def test_transceiver_loop_delay(self):
+        """Measure the transceiver loop delay with TDC and check that it
+        is in a plausible range.
+
+        Sends a CAN-FD frame with BRS in Normal mode at the default
+        bitrate (data prescaler 1, so auto TDC is on), ACKed by the aux,
+        then reads TDCV and TDCO with the DEBUG-only `!7DC` query. TDCV
+        is the secondary sample point position, i.e. the measured delay
+        from FDCAN_TX to FDCAN_RX plus TDCO, in minimum time quanta
+        (one CAN clock period). The loop delay is therefore
+        (TDCV - TDCO) * 1000 / clock_mhz ns.
+
+        A typical transceiver loop delay is around 150 - 250 ns. The
+        50 - 500 ns window is a rough plausibility check, not a
+        transceiver specification.
+        """
+        #self.dut.print_on = True
+        if not self.dut.fd_support or not self.dut.debug_build:
+            self.skipTest("Requires a CAN-FD capable DEBUG build (!7DC)")
+
+        # Make sure auto TDC is selected (the override survives C/O).
+        self.dut.send(b"!7DC1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # CAN clock for converting mtq to ns.
+        self.dut.send(b"i\r")
+        rx_data = self.dut.receive()
+        match = re.search(rb"clock_mhz=(\d+)", rx_data)
+        self.assertIsNotNone(match, f"No clock_mhz in the i reply: {rx_data!r}")
+        clock_mhz = int(match.group(1))
+
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"b03F80011223344556677\r")
+        self.assertEqual(self.dut.receive(), b"z\r")
+        self.dut.send(b"!7DC\r")
+        rx_data = self.dut.receive()
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        match = re.fullmatch(rb"!: TDCV=0x([0-9A-F]{2}), TDCO=0x([0-9A-F]{2}), "
+                             rb"TDCF=0x([0-9A-F]{2}), EN=([01])\r", rx_data)
+        self.assertIsNotNone(match, f"Unexpected !7DC reply: {rx_data!r}")
+        tdcv = int(match.group(1), 16)
+        tdco = int(match.group(2), 16)
+        self.assertEqual(match.group(4), b"1",
+                         f"TDC should be enabled at the default data bitrate: {rx_data!r}")
+        delay_ns = (tdcv - tdco) * 1000 / clock_mhz
+        print(f"\nTransceiver loop delay: {delay_ns:.1f} ns (TDCV=0x{tdcv:02X}, TDCO=0x{tdco:02X})")
+        self.assertGreaterEqual(delay_ns, 50,
+                                f"Loop delay {delay_ns:.1f} ns out of [50, 500] ns: {rx_data!r}")
+        self.assertLessEqual(delay_ns, 500,
+                             f"Loop delay {delay_ns:.1f} ns out of [50, 500] ns: {rx_data!r}")
 
 
 if __name__ == "__main__":

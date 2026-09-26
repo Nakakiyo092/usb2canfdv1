@@ -2,6 +2,7 @@
 
 import unittest
 
+import re
 import time
 from device_under_test import DeviceUnderTest
 
@@ -431,7 +432,41 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # TODO Measure and show tx delay of the tranceiver?
+    def test_tdc_enable_by_data_prescaler(self):
+        """Verify that auto TDC is enabled only when the data prescaler
+        is 1 or 2.
+
+        Per Bosch M_CAN User's Manual v3.3.1 (p.8), the data prescaler
+        must be 1 or 2 when TDC is enabled. Keeps the data time segments
+        fixed (tseg1=9, tseg2=10, sjw=9) and sweeps the prescaler across
+        the boundary, reading the EN bit with the DEBUG-only `!7DC`
+        query after opening the channel. No frame is sent: EN is
+        decided in can_enable().
+        """
+        #self.dut.print_on = True
+        if not self.dut.fd_support or not self.dut.debug_build:
+            self.skipTest("Requires a CAN-FD capable DEBUG build (!7DC)")
+
+        # Make sure auto TDC is selected (the override survives C/O).
+        self.dut.send(b"!7DC1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        for prescaler, expected_en in ((1, 1), (2, 1), (3, 0), (4, 0)):
+            cmd = f"y{prescaler:02X}090A09\r"
+            self.dut.send(cmd.encode())
+            self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"+\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"!7DC\r")
+            rx_data = self.dut.receive()
+            match = re.fullmatch(rb"!: TDCV=0x[0-9A-F]{2}, TDCO=0x[0-9A-F]{2}, "
+                                 rb"TDCF=0x[0-9A-F]{2}, EN=([01])\r", rx_data)
+            self.assertIsNotNone(match, f"Unexpected !7DC reply: {rx_data!r}")
+            en = int(match.group(1))
+            self.assertEqual(en, expected_en,
+                             f"Data prescaler {prescaler}: TDC EN={en}, expected {expected_en}")
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
 
 
 if __name__ == "__main__":
