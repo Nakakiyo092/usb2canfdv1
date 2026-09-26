@@ -158,11 +158,13 @@ HAL_StatusTypeDef can_enable(void)
         if (can_tdc_mode == CAN_TDC_DISABLED)
         {
             if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+            can_tdc_mode = CAN_TDC_AUTO;
         }
         else if (can_tdc_mode == CAN_TDC_MANUAL)
         {
             if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, can_tdc_manual_tdco, can_tdc_manual_tdcf) != HAL_OK) return HAL_ERROR;
             if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
+            can_tdc_mode = CAN_TDC_AUTO;
         }
         else
 #endif
@@ -188,10 +190,6 @@ HAL_StatusTypeDef can_enable(void)
                 if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
             }
         }
-#ifdef DEBUG
-        // The override applies to this open only; the next open is back to AUTO.
-        can_tdc_mode = CAN_TDC_AUTO;
-#endif
 
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_std_filter) != HAL_OK) return HAL_ERROR;
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_ext_filter) != HAL_OK) return HAL_ERROR;
