@@ -358,12 +358,12 @@ class TdcTestCase(unittest.TestCase):
         self.dut.send(b"!7DC1\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # CAN clock for converting mtq to ns.
-        self.dut.send(b"i\r")
+        # CAN clock for converting mtq to ns (Ixyzz, zz in hex MHz).
+        self.dut.send(b"I\r")
         rx_data = self.dut.receive()
-        match = re.search(rb"clock_mhz=(\d+)", rx_data)
-        self.assertIsNotNone(match, f"No clock_mhz in the i reply: {rx_data!r}")
-        clock_mhz = int(match.group(1))
+        match = re.fullmatch(rb"I[0-9A-F]{2}([0-9A-F]{2})\r", rx_data)
+        self.assertIsNotNone(match, f"Unexpected I reply: {rx_data!r}")
+        clock_mhz = int(match.group(1), 16)
 
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
