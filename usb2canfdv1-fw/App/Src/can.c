@@ -64,7 +64,8 @@ static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
 
 #ifdef DEBUG
 // Tx delay compensation override state. Default is AUTO (matches the
-// non-debug build). Setters change these; can_enable() consults them.
+// non-debug build). Setters change these; can_enable() consults them and
+// then resets the mode to AUTO, so an override applies to the next open only.
 static enum CanTdcMode can_tdc_mode = CAN_TDC_AUTO;
 static uint8_t can_tdc_manual_tdco = 0;
 static uint8_t can_tdc_manual_tdcf = 0;
@@ -152,7 +153,7 @@ HAL_StatusTypeDef can_enable(void)
 
         // Setup Tx delay compensation.
         // Default (AUTO): turn on whenever the data prescaler allows it (1 or 2), off otherwise.
-        // The debug-only !7DC command can override this to DISABLED or MANUAL.
+        // The debug-only !7DC command can override this to DISABLED or MANUAL for the next open only.
 #ifdef DEBUG
         if (can_tdc_mode == CAN_TDC_DISABLED)
         {
@@ -187,6 +188,10 @@ HAL_StatusTypeDef can_enable(void)
                 if (HAL_FDCAN_DisableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
             }
         }
+#ifdef DEBUG
+        // The override applies to this open only; the next open is back to AUTO.
+        can_tdc_mode = CAN_TDC_AUTO;
+#endif
 
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_std_filter) != HAL_OK) return HAL_ERROR;
         if (HAL_FDCAN_ConfigFilter(&hfdcan1, &can_ext_filter) != HAL_OK) return HAL_ERROR;
@@ -930,7 +935,7 @@ static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEven
 }
 
 #ifdef DEBUG
-// Switch TDC override to AUTO (the default). Takes effect on next can_enable.
+// Switch TDC override to AUTO (the default), cancelling a pending override.
 // Rejected while the bus is open since FDCAN config must happen in INIT mode.
 HAL_StatusTypeDef can_set_tdc_auto(void)
 {
@@ -939,7 +944,7 @@ HAL_StatusTypeDef can_set_tdc_auto(void)
     return HAL_OK;
 }
 
-// Force TDC off regardless of bit timing. Takes effect on next can_enable.
+// Force TDC off regardless of bit timing. Applies to the next can_enable only.
 HAL_StatusTypeDef can_set_tdc_disabled(void)
 {
     if (can_bus_state != BUS_CLOSED) return HAL_ERROR;
@@ -947,7 +952,7 @@ HAL_StatusTypeDef can_set_tdc_disabled(void)
     return HAL_OK;
 }
 
-// Use the given TDCO/TDCF on the next can_enable. Values are 7-bit; callers
+// Use the given TDCO/TDCF on the next can_enable only. Values are 7-bit; callers
 // must validate (0..0x7F).
 HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf)
 {

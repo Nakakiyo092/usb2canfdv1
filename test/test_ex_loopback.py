@@ -447,10 +447,6 @@ class ExLoopbackTestCase(unittest.TestCase):
         if not self.dut.fd_support or not self.dut.debug_build:
             self.skipTest("Requires a CAN-FD capable DEBUG build (!7DC)")
 
-        # Make sure auto TDC is selected (the override survives C/O).
-        self.dut.send(b"!7DC1\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
         for prescaler, expected_en in ((1, 1), (2, 1), (3, 0), (4, 0)):
             cmd = f"y{prescaler:02X}090A09\r"
             self.dut.send(cmd.encode())

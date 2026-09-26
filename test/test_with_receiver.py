@@ -354,10 +354,6 @@ class TdcTestCase(unittest.TestCase):
         if not self.dut.fd_support or not self.dut.debug_build:
             self.skipTest("Requires a CAN-FD capable DEBUG build (!7DC)")
 
-        # Make sure auto TDC is selected (the override survives C/O).
-        self.dut.send(b"!7DC1\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
         # CAN clock for converting mtq to ns (Ixyzz, zz in hex MHz).
         self.dut.send(b"I\r")
         rx_data = self.dut.receive()
