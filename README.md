@@ -13,7 +13,7 @@ URL to this repository: https://github.com/Nakakiyo092/usb2canfdv1
 - `sxxyy[CR]` - Sets custom nominal bit rate
 - `Y0[CR]` - Sets the CANFD data segment bit rate to 500k
 - `Y1[CR]` - Sets the CANFD data segment bit rate to 1M
-- `Y2[CR]` - Sets the CANFD data segment bit rate to 2M (default)
+- `Y2[CR]` - Sets the CANFD data segment bit rate to 2M
 - `Y4[CR]` - Sets the CANFD data segment bit rate to 4M
 - `Y5[CR]` - Sets the CANFD data segment bit rate to 5M
 - `tiiildd...[CR] `- Transmits base frame
