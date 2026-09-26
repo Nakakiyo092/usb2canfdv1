@@ -166,16 +166,15 @@ HAL_StatusTypeDef can_enable(void)
         else
 #endif
         {
+            // TDC AUTO MODE
             // TDC is available only for a data prescaler of 1 or 2 (M_CAN v3.3.1 p.8),
-            // so enable it whenever the prescaler allows and leave it off otherwise. No FD
-            // check is needed because this device always operates in CAN FD.
+            // so enable it whenever the prescaler allows and leave it off otherwise.
             if (can_bit_cfg_data.prescaler <= CAN_TDC_MAX_DATA_PRESCALER)
             {
-                // The offset (data sample point) is prescaler * time_seg1. With a prescaler
-                // of 1 or 2 it never exceeds 2 * 32 = 64 (DataTimeSeg1 max is 32), which is
-                // below the TDCO field maximum 0x7F (127), so no upper clamp is required.
                 // Follow the recommended values in the link.
                 // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
+                // With a prescaler of 1 or 2 the offset never exceeds 2 * 32 = 64,
+                // which is below the TDCO field maximum 0x7F (127), so no upper clamp is required.
                 uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
                 if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
                 if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
