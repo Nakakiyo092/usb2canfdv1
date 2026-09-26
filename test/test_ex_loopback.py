@@ -2,6 +2,7 @@
 
 import unittest
 
+import re
 import time
 from device_under_test import DeviceUnderTest
 
@@ -273,7 +274,11 @@ class ExLoopbackTestCase(unittest.TestCase):
         # Full load for more than 1 second
         time.sleep(1)
         for _ in range(0, 10):
-            self.dut.receive()
+            # Drain cheaply. Once the acks have been read, receive() has nothing
+            # to return, never meets its break condition and burns the whole 1 s
+            # timeout (~1.5 s measured), which idles the bus and drags the
+            # reading below the floor if it happens late in the loop.
+            self.dut.ser.read_all()
             self.dut.send(tx_data)
             time.sleep(0.25)
 
@@ -297,7 +302,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps min-stuffing)")
-        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
         pct = int(rx_data[89:91], 10)
         self.assertGreaterEqual(pct, 93,
                                 f"10 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
@@ -313,7 +318,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         # Full load for more than 1 second
         time.sleep(1)
         for _ in range(0, 10):
-            self.dut.receive()
+            self.dut.ser.read_all()    # cheap drain (see min-stuffing block above)
             self.dut.send(tx_data)
             time.sleep(0.25)
 
@@ -331,7 +336,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps max-stuffing)")
-        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
         pct = int(rx_data[89:91], 10)
         self.assertGreaterEqual(pct, 81,
                                 f"10 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
@@ -367,10 +372,10 @@ class ExLoopbackTestCase(unittest.TestCase):
 
         # Full load for more than 1 second
         time.sleep(1)
-        for _ in range(0, 20):
-            self.dut.receive()
+        for _ in range(0, 25):
+            self.dut.ser.read_all()    # cheap drain (see test_bus_load_full_10k)
             self.dut.send(tx_data)
-            time.sleep(0.125)
+            time.sleep(0.11)
 
         self.dut.receive()
         # Flush + bit-3 only check (see 10 kbps min-stuffing block above for rationale).
@@ -386,7 +391,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps min-stuffing)")
-        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
         pct = int(rx_data[89:91], 10)
         self.assertGreaterEqual(pct, 93,
                                 f"20 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
@@ -401,10 +406,10 @@ class ExLoopbackTestCase(unittest.TestCase):
 
         # Full load for more than 1 second
         time.sleep(1)
-        for _ in range(0, 20):
-            self.dut.receive()
+        for _ in range(0, 25):
+            self.dut.ser.read_all()    # cheap drain (see min-stuffing block above)
             self.dut.send(tx_data)
-            time.sleep(0.125)
+            time.sleep(0.11)
 
         self.dut.receive()
         # Flush + bit-3 only check (see 10 kbps min-stuffing block above for rationale).
@@ -420,7 +425,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps max-stuffing)")
-        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
         pct = int(rx_data[89:91], 10)
         self.assertGreaterEqual(pct, 81,
                                 f"20 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
@@ -431,7 +436,37 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
-    # TODO Measure and show tx delay of the tranceiver?
+    def test_tdc_enable_by_data_prescaler(self):
+        """Verify that auto TDC is enabled only when the data prescaler
+        is 1 or 2.
+
+        Per Bosch M_CAN User's Manual v3.3.1 (p.8), the data prescaler
+        must be 1 or 2 when TDC is enabled. Keeps the data time segments
+        fixed (tseg1=9, tseg2=10, sjw=9) and sweeps the prescaler across
+        the boundary, reading the EN bit with the DEBUG-only `!7DC`
+        query after opening the channel. No frame is sent: EN is
+        decided in can_enable().
+        """
+        #self.dut.print_on = True
+        if not self.dut.fd_support or not self.dut.debug_build:
+            self.skipTest("Requires a CAN-FD capable DEBUG build (!7DC)")
+
+        for prescaler, expected_en in ((1, 1), (2, 1), (3, 0), (4, 0)):
+            cmd = f"y{prescaler:02X}090A09\r"
+            self.dut.send(cmd.encode())
+            self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"+\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"!7DC\r")
+            rx_data = self.dut.receive()
+            match = re.fullmatch(rb"!: TDCV=0x[0-9A-F]{2}, TDCO=0x[0-9A-F]{2}, "
+                                 rb"TDCF=0x[0-9A-F]{2}, EN=([01])\r", rx_data)
+            self.assertIsNotNone(match, f"Unexpected !7DC reply: {rx_data!r}")
+            en = int(match.group(1))
+            self.assertEqual(en, expected_en,
+                             f"Data prescaler {prescaler}: TDC EN={en}, expected {expected_en}")
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
 
 
 if __name__ == "__main__":

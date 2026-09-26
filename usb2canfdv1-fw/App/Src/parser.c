@@ -29,8 +29,8 @@
 #include "bootloader.h"
 #endif
 
-#define SLCAN_VERSION       "VW1K5"
-#define SLCAN_SW_VERSION    "2.2.0"
+#define SLCAN_VERSION       "VW1K6"
+#define SLCAN_SW_VERSION    "2.3.0"
 #define SLCAN_RET_OK    ((uint8_t*)"\r")
 #define SLCAN_RET_ERR   ((uint8_t*)"\a")
 #define SLCAN_RET_LEN   1U
@@ -1045,12 +1045,13 @@ void psr_parse_str_open_test_mode(uint8_t *buf, uint8_t len)
 // Variants:
 //   !7DC               -- print live TDC state on the host (no state change).
 //                         Format: "!: TDCV=0xXX, TDCO=0xXX, TDCF=0xXX, EN=X\r"
-//   !7DC0              -- disable TDC; applied on next can_enable().
-//   !7DC1              -- restore auto TDC (the non-debug default).
+//   !7DC0              -- disable TDC.
+//   !7DC1              -- auto TDC (the non-debug default); cancels a pending override.
 //   !7DC2<TDCO><TDCF>  -- manual TDC: each is one byte of hex (0..7F).
 //
 // Setters require BUS_CLOSED so the change can be applied during the next
-// FDCAN INIT pass.
+// FDCAN INIT pass. An override applies to the next open only; can_enable()
+// resets it to auto afterwards.
 static void psr_parse_str_ext_tdc(uint8_t *buf, uint8_t len)
 {
     // !7DC -- live getter, works in any bus state.
