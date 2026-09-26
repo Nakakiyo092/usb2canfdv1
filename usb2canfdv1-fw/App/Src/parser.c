@@ -29,8 +29,8 @@
 #include "bootloader.h"
 #endif
 
-#define SLCAN_VERSION       "VW1K5"
-#define SLCAN_SW_VERSION    "2.2.0"
+#define SLCAN_VERSION       "VW1K6"
+#define SLCAN_SW_VERSION    "2.3.0"
 #define SLCAN_RET_OK    ((uint8_t*)"\r")
 #define SLCAN_RET_ERR   ((uint8_t*)"\a")
 #define SLCAN_RET_LEN   1U
