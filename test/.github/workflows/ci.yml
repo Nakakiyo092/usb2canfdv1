@@ -105,11 +105,11 @@ jobs:
 
       - name: Run pylint error check
         run: |
-          pylint -E $(git ls-files '*.py')
+          pylint -E --source-roots=. $(git ls-files '*.py')
           
       - name: Assess pylint score
         run: |
-          pylint --fail-under=9 device_under_test.py
-          pylint --fail-under=9 cdc_speed_test.py
-          pylint --fail-under=9 long_time_test.py
-#          pylint --fail-under=9 $(git ls-files '*.py')
+          pylint --source-roots=. --fail-under=9 device_under_test.py
+          pylint --source-roots=. --fail-under=9 cdc_speed_test.py
+          pylint --source-roots=. --fail-under=9 long_time_test.py
+#          pylint --source-roots=. --fail-under=9 $(git ls-files '*.py')
