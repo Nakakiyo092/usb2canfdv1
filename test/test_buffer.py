@@ -119,14 +119,20 @@ class BufferTestCase(unittest.TestCase):
         """Verify CDC Tx buffer preserves order and content of stored Rx
         frame reports under sustained load.
 
-        Internal-loopback mode: sends 180 short data frames (sized to
-        fit in the 4096-byte CDC Tx slot at ~22 bytes per reply). Expects
-        all `z[CR]` acks and looped-back Rx frame reports in order, with
-        no loss reported via the F command.
+        Internal-loopback mode at S8 (1 Mbps): sends 180 short data frames
+        (sized to fit in the 4096-byte CDC Tx slot at ~22 bytes per reply).
+        Expects all `z[CR]` acks and looped-back Rx frame reports in order,
+        with no loss reported via the F command.
         """
         #self.dut.print_on = True
         rx_data_exp = b""
 
+        # S8 (1 Mbps) keeps a frame on the bus for only ~0.11 ms, well inside
+        # the 1 ms throttle below, so the device always reports the loop-back
+        # before the next command's ACK is queued. At the default S4 the two are
+        # nearly equal (~0.9 ms vs 1 ms) and the ACK can overtake the report.
+        self.dut.send(b"S8\r")
+        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -156,14 +162,17 @@ class BufferTestCase(unittest.TestCase):
         """Verify CDC Tx buffer preserves order and content of stored Tx
         event reports under sustained load.
 
-        Reporting mode z0002 (Tx event ON, Rx OFF). Sends 180 short data
-        frames over internal loopback (sized to fit in the 4096-byte CDC
-        Tx slot at ~22 bytes per Tx event) and confirms each Tx event
-        report is delivered in order with no loss.
+        Reporting mode z0002 (Tx event ON, Rx OFF) at S8 (1 Mbps). Sends
+        180 short data frames over internal loopback (sized to fit in the
+        4096-byte CDC Tx slot at ~22 bytes per Tx event) and confirms each
+        Tx event report is delivered in order with no loss.
         """
         #self.dut.print_on = True
         rx_data_exp = b""
 
+        # S8 for the same ordering reason as test_rx_frame_in_cdc_tx_buffer.
+        self.dut.send(b"S8\r")
+        self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"z0002\r")  # no rx, tx event only
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")

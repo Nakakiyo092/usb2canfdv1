@@ -274,7 +274,11 @@ class ExLoopbackTestCase(unittest.TestCase):
         # Full load for more than 1 second
         time.sleep(1)
         for _ in range(0, 10):
-            self.dut.receive()
+            # Drain cheaply. Once the acks have been read, receive() has nothing
+            # to return, never meets its break condition and burns the whole 1 s
+            # timeout (~1.5 s measured), which idles the bus and drags the
+            # reading below the floor if it happens late in the loop.
+            self.dut.ser.read_all()
             self.dut.send(tx_data)
             time.sleep(0.25)
 
@@ -298,7 +302,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps min-stuffing)")
-        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
         pct = int(rx_data[89:91], 10)
         self.assertGreaterEqual(pct, 93,
                                 f"10 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
@@ -314,7 +318,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         # Full load for more than 1 second
         time.sleep(1)
         for _ in range(0, 10):
-            self.dut.receive()
+            self.dut.ser.read_all()    # cheap drain (see min-stuffing block above)
             self.dut.send(tx_data)
             time.sleep(0.25)
 
@@ -332,7 +336,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps max-stuffing)")
-        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
         pct = int(rx_data[89:91], 10)
         self.assertGreaterEqual(pct, 81,
                                 f"10 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
@@ -368,10 +372,10 @@ class ExLoopbackTestCase(unittest.TestCase):
 
         # Full load for more than 1 second
         time.sleep(1)
-        for _ in range(0, 20):
-            self.dut.receive()
+        for _ in range(0, 25):
+            self.dut.ser.read_all()    # cheap drain (see test_bus_load_full_10k)
             self.dut.send(tx_data)
-            time.sleep(0.125)
+            time.sleep(0.11)
 
         self.dut.receive()
         # Flush + bit-3 only check (see 10 kbps min-stuffing block above for rationale).
@@ -387,7 +391,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps min-stuffing)")
-        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
         pct = int(rx_data[89:91], 10)
         self.assertGreaterEqual(pct, 93,
                                 f"20 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
@@ -402,10 +406,10 @@ class ExLoopbackTestCase(unittest.TestCase):
 
         # Full load for more than 1 second
         time.sleep(1)
-        for _ in range(0, 20):
-            self.dut.receive()
+        for _ in range(0, 25):
+            self.dut.ser.read_all()    # cheap drain (see min-stuffing block above)
             self.dut.send(tx_data)
-            time.sleep(0.125)
+            time.sleep(0.11)
 
         self.dut.receive()
         # Flush + bit-3 only check (see 10 kbps min-stuffing block above for rationale).
@@ -421,7 +425,7 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(b"f\r")
         rx_data = self.dut.receive()
         self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps max-stuffing)")
-        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box stability)
+        # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
         pct = int(rx_data[89:91], 10)
         self.assertGreaterEqual(pct, 81,
                                 f"20 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
