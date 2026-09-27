@@ -60,7 +60,7 @@ enum CanBusState
 // Tx delay compensation mode (debug-only override of the AUTO default).
 enum CanTdcMode
 {
-    CAN_TDC_AUTO,       // Default: compute TDCO from bit timing; disable above threshold
+    CAN_TDC_AUTO,       // Default: compute TDCO from bit timing; disable above prescaler 2
     CAN_TDC_DISABLED,   // Force TDC off regardless of bit timing
     CAN_TDC_MANUAL      // Use stored TDCO/TDCF
 };
@@ -150,7 +150,7 @@ FDCAN_HandleTypeDef *can_get_handle(void);
 
 #ifdef DEBUG
 // Tx delay compensation override (debug-only).
-// Setters require BUS_CLOSED; they take effect on the next can_enable().
+// Setters require BUS_CLOSED; they apply to the next can_enable() only.
 HAL_StatusTypeDef can_set_tdc_auto(void);
 HAL_StatusTypeDef can_set_tdc_disabled(void);
 HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf);
