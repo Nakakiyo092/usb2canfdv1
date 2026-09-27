@@ -83,7 +83,7 @@ def setup_device_under_test(dev: serial.Serial, with_receiver: bool):
     dev.write(b"z2002\r")
     time.sleep(0.1)
     dev.read_all()
-    
+
     if with_receiver:
         dev.write(b"O\r")    # TODO: warning if loopback is not supported
         time.sleep(0.1)
@@ -201,11 +201,11 @@ def calc_timestamp_diff(ts_new: int, ts_old: int) -> int:
     Timestamp counter resets at 3600_000_000 us.
     Returns difference in us.
     """
-    if ts_new >= ts_old:
-        return ts_new - ts_old
-    else:
+    if ts_new < ts_old:
         # Overflow occurred
         return (TIMESTAMP_PERIOD_US - ts_old) + ts_new
+
+    return ts_new - ts_old
 
 
 def print_status_check(stats: dict):
@@ -225,11 +225,11 @@ def print_timestamp_verification(stats: dict):
         print("timestamp verification: 0 samples (need at least 1)")
         print("")
         return
-    
+
     avg_error = stats["ts_error_sum"] / stats["ts_verified"]
     max_error = stats["ts_error_max"]
     failure_count = stats["ts_failure_count"]
-    
+
     print(f"timestamp comparison (host - device): {stats['ts_verified']} samples")
     print(f"  ave abs error: {avg_error:.1f} us")
     print(f"  max abs error: {max_error} us")
@@ -258,8 +258,8 @@ def print_clock_accuracy(stats: dict):
         print(f"  drift upper bound: {stats['clock_offset_upper_bound'] / stats['clock_duration'] * 1000_000:.1f} ppm")
         print(f"  drift lower bound: {stats['clock_offset_lower_bound'] / stats['clock_duration'] * 1000_000:.1f} ppm")
     else:
-        print(f"  drift upper bound: N/A ppm")
-        print(f"  drift lower bound: N/A ppm")
+        print("  drift upper bound: N/A ppm")
+        print("  drift lower bound: N/A ppm")
 
     # Reference value via time.time() (NTP-aware when NTP sync is active).
     # host_perf_vs_wall_ppm = how much perf_counter ran faster than the wall
@@ -269,7 +269,7 @@ def print_clock_accuracy(stats: dict):
     perf_us = stats.get("host_perfcounter_elapsed_us", 0)
     if wall_us > 0:
         host_perf_vs_wall_ppm = (perf_us - wall_us) / wall_us * 1_000_000
-        print(f"  (reference, time.time() based):")
+        print("  (reference, time.time() based):")
         print(f"    host perf_counter vs wall clock: {host_perf_vs_wall_ppm:+.1f} ppm")
         if stats['clock_duration'] > 0:
             drift_us_perf = stats['clock_offset']
@@ -456,8 +456,7 @@ def main():
                         # Then include safety margin as the RTT can sometimes be much higher than the average (like x10).
                         drift_upper_bound_us = abs(drift_us) + RTT_SAFETY_MARGIN * 2 * rtt
                         drift_lower_bound_us = abs(drift_us) - RTT_SAFETY_MARGIN * 2 * rtt
-                        if drift_lower_bound_us < 0:
-                            drift_lower_bound_us = 0
+                        drift_lower_bound_us = max(drift_lower_bound_us, 0)
 
                         stats["clock_samples"] += 1
                         stats["clock_offset"] = drift_us

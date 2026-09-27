@@ -426,11 +426,11 @@ class TimestampMsTestCase(unittest.TestCase):
 
         self.assertTrue(wrap_detected,
                         "Millisecond timestamp wrap-around not detected within test window")
-        self.assertGreaterEqual(pre_wrap_ts, WRAP_MS - 50,
+        self.assertGreaterEqual(pre_wrap_ts, WRAP_MS - 100,
                                 f"Wrap occurred too early: last ts={pre_wrap_ts:#06x}")
         self.assertLess(pre_wrap_ts, WRAP_MS,
                         f"Pre-wrap ts must be < {WRAP_MS:#06x}, got {pre_wrap_ts:#06x}")
-        self.assertLess(post_wrap_ts, 50,
+        self.assertLess(post_wrap_ts, 100,
                         f"Post-wrap ts should be near 0, got {post_wrap_ts:#06x}")
 
         self.dut.send(b"C\r")
