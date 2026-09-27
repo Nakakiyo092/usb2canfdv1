@@ -7,7 +7,7 @@ Python test scripts for SLCAN device with CAN FD support.
 
 ## Requirements
 
-- Python 3.13
+- Python 3.13 or later
 - pyserial library (`pip install pyserial`)
 
 
