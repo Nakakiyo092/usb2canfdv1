@@ -23,20 +23,23 @@
 #include "led.h"
 #include "parser.h"
 
-// APP FIFO release pacing — bound on (send − tail) before forced release.
+// CAN transmit buffering
+#define BUF_CAN_TXQUEUE_LEN             64U     // Number of buffers allocated
+
+// APP FIFO release pacing - bound on (send - tail) before forced release.
 //
 // Worst case: a burst of successes followed by all-failure pushes while
 // the HAL TEF drains.
-//   loop 1: push 3 frames, all succeed → 3 events fill HAL TEF
+//   loop 1: push 3 frames, all succeed -> 3 events fill HAL TEF
 //   loops 2-4: push 3 frames each, all fail; process 1 event per loop
 //   After loop 4: send=12, tail=3, nbr_sent_frames = TFQ * TEF = 9
 //
 // Other shapes stay below this peak:
 //   - All-failure runs: TEF stays empty, growth is capped by buf_release_can_tail().
 //   - Mixed runs: each released success drags older failed entries along, so
-//     (send − tail) shrinks instead of drifting up.
+//     (send - tail) shrinks instead of drifting up.
 //
-// (3 * 3 * 2) = TFQ * TEF * Margin = 18 — 2× the worst case in case the
+// (3 * 3 * 2) = TFQ * TEF * Margin = 18 - 2x the worst case in case the
 // pattern repeats, and well below BUF_CAN_TXQUEUE_LEN (64) so genuine
 // overflow remains observable.
 // See also: https://github.com/Nakakiyo092/usb2canfdv1/issues/49
@@ -64,7 +67,7 @@ static uint8_t cmd_line_buf_idx = 0;
 // Sticky CDC Rx re-sync flag. Set when a slot is observed with the producer-
 // overflow marker and cleared at the next '\r'. The flag spans slots so that
 // a long command (e.g. a B FD frame is ~139 chars and crosses ~3 USB packets)
-// whose middle packet is dropped still has its trailing fragment discarded —
+// whose middle packet is dropped still has its trailing fragment discarded -
 // without it, the leading random byte of the next, non-dropped slot could
 // land in the frame-command path and emit garbled CAN frames on the bus.
 static uint8_t cdc_rx_drop_resync = 0;
@@ -113,8 +116,8 @@ void buf_process(void)
     if (buf_cdc_rx.tail != cpy_head)
     {
         // Engage the sticky resync if the producer overflowed this slot.
-        // The torn data must be discarded all the way to the next '\r' —
-        // which may not appear in this slot — so the flag is set here and
+        // The torn data must be discarded all the way to the next '\r' -
+        // which may not appear in this slot - so the flag is set here and
         // only cleared by the '\r' check in the byte loop below. The
         // already-buffered partial command is dropped at the same time.
         if (buf_cdc_rx.data_drop[buf_cdc_rx.tail])
@@ -326,7 +329,7 @@ uint8_t *buf_get_can_head_data(void)
 // the special case where the marker-search loop exits without iterating).
 // Does NOT raise an error: per buffer.c's reporting policy, this query is
 // neither a buffer-full condition nor a data-loss event in the buffer's
-// processing path — interpreting a NULL return is the caller's business.
+// processing path - interpreting a NULL return is the caller's business.
 uint8_t *buf_get_can_sent_data(uint8_t marker)
 {
     uint8_t idx = buf_can_tx.tail;
