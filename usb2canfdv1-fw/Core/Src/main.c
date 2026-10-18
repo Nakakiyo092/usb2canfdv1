@@ -82,7 +82,12 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  // Flash prefetch fails when a branch crosses the bank 1/2 boundary (0x08010000),
+  // which the app image reaches once it exceeds ~38 kB (ES0548 2.2.10). HAL_Init()
+  // has just enabled it from PREFETCH_ENABLE in stm32g0xx_hal_conf.h, a CubeMX
+  // generated file that loses the setting on every re-generation (#50, #186), so
+  // clear the bit here where the fix survives instead.
+  __HAL_FLASH_PREFETCH_BUFFER_DISABLE();
   /* USER CODE END Init */
 
   /* Configure the system clock */
