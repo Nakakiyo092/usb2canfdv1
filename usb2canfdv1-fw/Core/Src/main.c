@@ -127,6 +127,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_CRSInitTypeDef pInit = {0};
 
   /** Configure the main internal regulator output voltage
   */
@@ -162,6 +163,21 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+
+  /** Enable the SYSCFG APB clock
+  */
+  __HAL_RCC_CRS_CLK_ENABLE();
+
+  /** Configures CRS
+  */
+  pInit.Prescaler = RCC_CRS_SYNC_DIV1;
+  pInit.Source = RCC_CRS_SYNC_SOURCE_USB;
+  pInit.Polarity = RCC_CRS_SYNC_POLARITY_RISING;
+  pInit.ReloadValue = __HAL_RCC_CRS_RELOADVALUE_CALCULATE(48000000,1000);
+  pInit.ErrorLimitValue = 34;
+  pInit.HSI48CalibrationValue = 32;
+
+  HAL_RCCEx_CRSConfig(&pInit);
 }
 
 /* USER CODE BEGIN 4 */
