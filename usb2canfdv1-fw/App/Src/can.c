@@ -177,9 +177,9 @@ HAL_StatusTypeDef can_enable(void)
                 // Place the SSP at the same position within the bit as the SP.
                 // SSP = measured Tx-to-Rx delay + TDCO, so TDCO is the SSP position counted
                 // from the start of the received bit and must include the sync segment:
-                // (1 + time_seg1) * prescaler mtq. The Linux kernel uses the same formula
-                // (can_calc_tdco()). This is one tq later than the ST example below, which
-                // uses DataTimeSeg1 * DataPrescaler and omits the sync segment.
+                // (1 + time_seg1) * prescaler mtq. This is one tq later than the offset
+                // recommended in the link (DataTimeSeg1 * DataPrescaler), which omits the
+                // sync segment. The filter value 0 follows the recommendation in the link.
                 // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
                 // With a prescaler of 1 or 2 the offset never exceeds 2 * (32 + 1) = 66,
                 // which is below the TDCO field maximum 0x7F (127), so no upper clamp is required.
