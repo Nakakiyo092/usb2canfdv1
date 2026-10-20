@@ -99,6 +99,7 @@ struct CanBitrateCfg
 
 // CANFD parameter
 #define CAN_MAX_DATALEN                 64U // CAN maximum data length. Must be 64 for canfd.
+#define CAN_ROOT_CLOCK_MHZ              80U // FDCAN kernel clock, reported by the I and i commands
 
 // Public variable
 #define CAN_DLC_TO_BYTES_SIZE           16U // Number of entries in can_dlc_to_bytes (DLC 0x0..0xF)
