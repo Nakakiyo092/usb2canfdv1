@@ -34,7 +34,6 @@
 #define CAN_BIT_NBR_WOD_FXFF_DATA_L     (30 + 6)    // Bit number in data phase with longer crc (Including fixed stuff bits in CRC field)
 
 // Parameter to calculate bus load
-#define CAN_ROOT_CLOCK_MHZ              80U
 #define CAN_BUS_LOAD_CYCLE_MS           100U
 
 // Maximum data bit rate prescaler for which Tx delay compensation is available.
