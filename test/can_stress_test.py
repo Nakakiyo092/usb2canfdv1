@@ -317,10 +317,12 @@ def run_loop(args, dut, aux, stop_flag):
 
 def _print_status(stats, elapsed):
     rate = stats.pings_sent / max(elapsed, 0.001)
-    loss = stats.pings_sent - stats.echos_seen_at_dut
+    # Pings whose echo has not been observed yet. This includes frames still
+    # in flight, so it is not a loss; the loss is counted in the summary.
+    pending = stats.pings_sent - stats.echos_seen_at_dut
     print(f"  t+{elapsed:6.0f}s  sent={stats.pings_sent:>8}  "
           f"recv={stats.echos_seen_at_dut:>8}  "
-          f"loss={loss:>5}  corrupt={stats.echos_corrupted:>3}  "
+          f"pending={pending:>5}  corrupt={stats.echos_corrupted:>3}  "
           f"~{rate:7.1f} fps", flush=True)
 
 

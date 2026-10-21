@@ -112,6 +112,45 @@ class DeviceUnderTest:
             self.print_data("T", tx_data)
 
 
+    def send_with_stall_chain(self, tx_data: bytes, n_stalls: int = 8, stall_ms: int = 300,
+                              stall_interval: float = 0.15):
+        """Send frames, then a chain of stall commands (~, debug build only),
+        to overflow the 3-deep HAL Tx Event FIFO and Rx FIFO of the device.
+        Returns after all stalls end; the replies are left to receive().
+
+        Use internal loopback (=) at S0, so that each frame takes several ms
+        and is also received. The tx_data should hold enough frames to keep
+        the HAL Tx FIFO full during the stalls (48 short frames are enough).
+
+        The HAL Tx FIFO, the Tx Event FIFO and the Rx FIFO are all 3 deep,
+        and only the main loop moves frames into the Tx FIFO and takes events
+        and frames out of the other two (1 of each per iteration). So:
+
+          1. During a stall, the 3 frames in the Tx FIFO are sent and
+             received, and the Tx Event FIFO and the Rx FIFO become full.
+             After the stall, the next 3 frames are moved into the Tx FIFO.
+          2. If the next stall is read in the next iteration, 1 event and 1
+             frame are read before it (2 left each). During the stall the 3
+             frames are sent and received, but only 1 fits, so 2 are lost.
+
+        Whether the next stall is read in the next iteration depends on when
+        the USB OUT endpoint is re-armed, which is roughly a coin toss. If it
+        is read later, the FIFOs are drained in between, but the stall fills
+        them again, so the next pair gets another chance. A chain of stalls,
+        each sent in a separate write during the previous one, makes an
+        overflow practically certain. This does not depend on how many bytes
+        the device handles per iteration.
+        """
+        stall = b"~" + format(stall_ms, "04X").encode() + b"\r"
+        self.send(tx_data)
+        time.sleep(0.05)    # separate the stalls from the frames, well before the frames run out
+        for _ in range(0, n_stalls):
+            self.send(stall)
+            time.sleep(stall_interval)  # send the next stall during the previous one
+        # The stalls run back to back, so wait for all of them and the remaining frames
+        time.sleep(n_stalls * (stall_ms / 1000.0 - stall_interval) + 1.0)
+
+
     def receive(self) -> bytes:
         """Receive data from the device."""
         rx_data = b""

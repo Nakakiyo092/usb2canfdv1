@@ -55,7 +55,7 @@ class CommunicationTestCase(unittest.TestCase):
     NUM_FD_BRS = 20
 
     # Nominal / data bit rates per doc/2.-Command-List.md.
-    # Y3 is documented as N/A; Y6-9 and S9 do not exist.
+    # Y3 is documented as N/A; Y6-9 do not exist. S9 support depends on the project.
     S_KBPS = {0: 10, 1: 20, 2: 50, 3: 100, 4: 125, 5: 250, 6: 500, 7: 800, 8: 1000}
     Y_KBPS = {0: 500, 1: 1000, 2: 2000, 4: 4000, 5: 5000}
 
