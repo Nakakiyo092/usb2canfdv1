@@ -2,6 +2,7 @@
 
 Python test scripts for SLCAN device with CAN FD support.
 - https://github.com/Nakakiyo092/usb2canfdv1
+- https://github.com/Nakakiyo092/canable2kai
 - https://github.com/Nakakiyo092/canable2-fw
 
 
@@ -16,6 +17,7 @@ Python test scripts for SLCAN device with CAN FD support.
 1. Store this repository under "test" directory
 1. Connect the host and the device
 1. The device should not be connected to another CAN device
+1. The CAN bus should be equipped with two terminal resisters
 1. Search the device and get the device name (ex. COMX or ttyACMX)
 1. Update test scripts with the device name (test/device_under_test.py)
 1. Run the test script from the root directory

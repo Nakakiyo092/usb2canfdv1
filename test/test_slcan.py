@@ -191,17 +191,19 @@ class SlcanTestCase(unittest.TestCase):
 
 
     def test_S_command(self):
-        """Sn[CR]: select a nominal bitrate preset (n in 0..8). Only valid when closed."""
-        # Closed: S0..S8 are accepted, S9 is rejected.
-        for idx in range(0, 10):
+        """Sn[CR]: select a nominal bitrate preset. Only valid when closed."""
+        # Closed: S0..S8 are accepted. S9 support depends on the project.
+        for idx in range(0, 9):
             cmd = ("S" + str(idx) + "\r").encode()
             self.dut.send(cmd)
-            if idx <= 8:
-                self.assertEqual(self.dut.receive(), b"\r",
-                                 f"S{idx} should be accepted when closed")
-            else:
-                self.assertEqual(self.dut.receive(), b"\a",
-                                 f"S{idx} (out of range) should be rejected")
+            self.assertEqual(self.dut.receive(), b"\r",
+                             f"S{idx} should be accepted when closed")
+        self.dut.send(b"S9\r")
+        self.assertIn(self.dut.receive(), (b"\r", b"\a"),
+                      "S9 should be either accepted or rejected")
+        self.dut.send(b"SA\r")
+        self.assertEqual(self.dut.receive(), b"\a",
+                         "SA (out of range) should be rejected")
 
         # Bitrate cannot be changed while the bus is open (normal mode).
         self.dut.send(b"O\r")
