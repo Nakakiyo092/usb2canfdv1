@@ -186,11 +186,13 @@ class ErrorTestCase(unittest.TestCase):
 
 
     def test_cdc_rx_overflow(self):
-        """Flooding the CDC Rx buffer faster than the main loop can drain it
+        """Flood the CDC Rx buffer faster than the main loop can drain it.
+        The DEBUG-only stall command ~<HHHH>[CR] is used to guarantee the
+        overflow by blocking the main loop while the host floods.
+        Depending on the project, the device either discards data and
         raises F bit 1 (SLCAN_STS_CAN_TX_FIFO_FULL, shared by CDC Rx side
-        per doc/2). The DEBUG-only stall command ~<HHHH>[CR] is used to
-        guarantee the overflow by blocking the main loop while the host
-        floods.
+        per doc/2), or holds off the host so that every command is answered
+        and no F bit is raised.
 
         Note: The corruption-defence behaviour of the same overflow path
         is verified in test_buffer.test_message_loss_in_cdc_rx_buffer;
@@ -203,13 +205,21 @@ class ErrorTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"F00\r")
 
         # Stall 1000 ms (0x03E8) and flood `II\r` during the stall;
-        # 1500 * 3 = 4500 bytes >> ~512-byte CDC Rx ring.
+        # 1500 * 3 = 4500 bytes, larger than the CDC Rx buffer of the device.
+        # The write may block while the device holds off the host.
+        num_cmds = 1500
+        write_timeout = self.dut.ser.write_timeout
+        self.dut.ser.write_timeout = 10
         self.dut.send(b"~03E8\r")
-        self.dut.ser.write(b"II\r" * 1500)
+        self.dut.ser.write(b"II\r" * num_cmds)
+        self.dut.ser.write_timeout = write_timeout
         time.sleep(1.5)
+        rx_data = b""
         for _ in range(20):
-            if not self.dut.receive():
+            chunk = self.dut.receive()
+            if not chunk:
                 break
+            rx_data += chunk
 
         # Empty command flushes the device's pending state so F responds
         # promptly (see test_buffer.test_message_loss_in_cdc_rx_buffer).
@@ -217,11 +227,17 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.receive()
 
         self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F02\r",
-                         "Expected F02 (CDC Rx overflow, reported via bit 1) after sustained host write burst")
-        self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F00\r",
-                         "F bits should clear after read")
+        f_reply = self.dut.receive()
+        if f_reply == b"F00\r":
+            # No overflow reported: the device held off the host, so no command may be lost.
+            self.assertEqual(rx_data.count(b"\a"), num_cmds,
+                             "No CDC Rx overflow is reported but commands are lost")
+        else:
+            self.assertEqual(f_reply, b"F02\r",
+                             "Expected F02 (CDC Rx overflow, reported via bit 1) after sustained host write burst")
+            self.dut.send(b"F\r")
+            self.assertEqual(self.dut.receive(), b"F00\r",
+                             "F bits should clear after read")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -268,29 +284,15 @@ class ErrorTestCase(unittest.TestCase):
 
 
     def test_can_rx_overflow(self):
-        """Trigger a HAL CAN Rx FIFO overflow over internal loopback and
+        """Trigger a HAL Rx FIFO overflow over internal loopback and
         confirm it is reported as F bit 3 (DATA_OVERRUN -> F08).
 
-        Mechanism (3:1 asymmetry):
-          * buf_process drains the APP Tx queue into the HAL Tx FIFO with a
-            `while ... GetTxFifoFreeLevel() > 0` loop, sending up to 3
-            frames per main-loop iteration (HAL Tx FIFO depth).
-          * can_process pulls from the HAL Rx FIFO with a single `if
-            GetRxMessage()`, draining at most 1 frame per iteration.
-          * Under a host burst with internal loopback, +3 frames are
-            looped back per iteration while only 1 is drained -> the
-            HAL Rx FIFO (depth 3) fills within a few iterations and the
-            FDCAN hardware sets RX_FIFO0_MESSAGE_LOST, surfaced as F08.
+        The 3-deep HAL Rx FIFO is overflowed with a chain of stall
+        commands at S0; see DeviceUnderTest.send_with_stall_chain.
 
-        Sister test test_can_tx_event_overflow exercises the same
-        asymmetry for the HAL Tx Event FIFO.
-
-        Note: test_buffer.test_can_rx_buffer uses the same burst pattern
-        but focuses on Rx frame ordering; this test focuses on the F08
-        flag report."""
-        self.dut.send(b"S8\r")    # 1 Mbps nominal
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"Y5\r")    # 5 Mbps data
+        Note: test_buffer.test_can_rx_buffer uses the same pattern but focuses on
+        the order of the reports; this test focuses on the F08 flag report."""
+        self.dut.send(b"S0\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"z0001\r")  # Rx frame ON, Tx event OFF
         self.assertEqual(self.dut.receive(), b"\r")
@@ -301,32 +303,13 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
-        # Burst 180 frames in chunks of 30 - well above HAL Rx FIFO depth (3)
-        # per chunk so the asymmetry guarantees Rx FIFO overflow.
-        chunk = 30
-        n_chunks = 6
-        for i in range(0, n_chunks):
-            tx_data = b""
-            for j in range(0, chunk):
-                nbr = i * chunk + j
-                tx_data += b"t" + format(nbr, "03X").encode() + b"1" + format(nbr, "02X").encode() + b"\r"
-            self.dut.send(tx_data)
-        # Drain whatever made it through; reply ordering is not the concern here.
-        self.dut.receive()
+        tx_data = b""
+        for nbr in range(0, 48):
+            tx_data += b"t" + format(nbr, "03X").encode() + b"1" + format(nbr, "02X").encode() + b"\r"
+        self.dut.send_with_stall_chain(tx_data)
+        # Drain the replies; their order is not the concern here.
         self.dut.receive()
 
-        # Flush any pending CDC Rx resync state with a bare [CR] before F.
-        # The 180-frame burst above is fast enough to overflow the CDC Rx
-        # buffer; if the last torn slot has no following '\r' the firmware's
-        # drop-resync flag stays engaged and would otherwise consume the
-        # 'F\r' command itself. The empty-command convention (see doc/1)
-        # is the spec'd way to clear pending state.
-        self.dut.send(b"\r")
-        self.dut.receive()
-
-        # bit 3 (DATA_OVERRUN) is the core assertion. The APP-level Tx queue
-        # may also overflow as a side effect of the burst, so bit 1
-        # (CAN_TX_FIFO_FULL) can co-occur; only bit 3 is required.
         self.dut.send(b"F\r")
         f_reply = self.dut.receive()
         self.assertEqual(len(f_reply), len(b"Fxx\r"),
@@ -398,27 +381,12 @@ class ErrorTestCase(unittest.TestCase):
         """Trigger a HAL Tx Event FIFO overflow over internal loopback and
         confirm it is reported as F bit 3 (DATA_OVERRUN -> F08).
 
-        Mechanism (3:1 asymmetry):
-          * buf_process drains the APP Tx queue into the HAL Tx FIFO with a
-            `while ... GetTxFifoFreeLevel() > 0` loop, sending up to 3
-            frames per main-loop iteration. Each transmission produces a
-            Tx Event entry once the frame completes on the bus.
-          * can_process pulls from the HAL Tx Event FIFO with a single
-            `if GetTxEvent()`, draining at most 1 event per iteration.
-          * Under a host burst with Tx event reporting enabled, +3
-            events are queued per iteration while only 1 is drained ->
-            the HAL Tx Event FIFO (depth 3) fills and TX_EVT_FIFO_ELT_LOST
-            is raised, surfaced as F08.
+        The 3-deep HAL Tx Event FIFO is overflowed with a chain of stall
+        commands at S0; see DeviceUnderTest.send_with_stall_chain.
 
-        Sister test test_can_rx_overflow exercises the same asymmetry
-        for the HAL Rx FIFO.
-
-        Note: test_buffer.test_can_tx_event_buffer uses the same burst
-        pattern but focuses on Tx event ordering; this test focuses on
-        the F08 flag report."""
-        self.dut.send(b"S8\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"Y5\r")
+        Note: test_buffer.test_can_tx_event_buffer uses the same pattern but focuses on
+        the order of the reports; this test focuses on the F08 flag report."""
+        self.dut.send(b"S0\r")
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"z0002\r")  # Rx frame OFF, Tx event ON
         self.assertEqual(self.dut.receive(), b"\r")
@@ -429,26 +397,13 @@ class ErrorTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r")
 
-        # Same chunked-burst pattern as the Rx overflow test.
-        chunk = 30
-        n_chunks = 6
-        for i in range(0, n_chunks):
-            tx_data = b""
-            for j in range(0, chunk):
-                nbr = i * chunk + j
-                tx_data += b"t" + format(nbr, "03X").encode() + b"1" + format(nbr, "02X").encode() + b"\r"
-            self.dut.send(tx_data)
-        self.dut.receive()
+        tx_data = b""
+        for nbr in range(0, 48):
+            tx_data += b"t" + format(nbr, "03X").encode() + b"1" + format(nbr, "02X").encode() + b"\r"
+        self.dut.send_with_stall_chain(tx_data)
+        # Drain the replies; their order is not the concern here.
         self.dut.receive()
 
-        # Flush any pending CDC Rx resync state with a bare [CR] before F
-        # (same rationale as test_can_rx_overflow).
-        self.dut.send(b"\r")
-        self.dut.receive()
-
-        # bit 3 (DATA_OVERRUN) is the core assertion. The APP-level Tx queue
-        # may also overflow as a side effect of the burst, so bit 1
-        # (CAN_TX_FIFO_FULL) can co-occur; only bit 3 is required.
         self.dut.send(b"F\r")
         f_reply = self.dut.receive()
         self.assertEqual(len(f_reply), len(b"Fxx\r"),

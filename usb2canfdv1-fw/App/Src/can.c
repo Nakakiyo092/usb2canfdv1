@@ -34,7 +34,6 @@
 #define CAN_BIT_NBR_WOD_FXFF_DATA_L     (30 + 6)    // Bit number in data phase with longer crc (Including fixed stuff bits in CRC field)
 
 // Parameter to calculate bus load
-#define CAN_ROOT_CLOCK_MHZ              80U
 #define CAN_BUS_LOAD_CYCLE_MS           100U
 
 // Maximum data bit rate prescaler for which Tx delay compensation is available.
@@ -174,11 +173,16 @@ HAL_StatusTypeDef can_enable(void)
             // so enable it whenever the prescaler allows and leave it off otherwise.
             if (can_bit_cfg_data.prescaler <= CAN_TDC_MAX_DATA_PRESCALER)
             {
-                // Follow the recommended values in the link.
+                // Place the SSP at the same position within the bit as the SP.
+                // SSP = measured Tx-to-Rx delay + TDCO, so TDCO is the SSP position counted
+                // from the start of the received bit and must include the sync segment:
+                // (1 + time_seg1) * prescaler mtq. This is one tq later than the offset
+                // recommended in the link (DataTimeSeg1 * DataPrescaler), which omits the
+                // sync segment. The filter value 0 follows the recommendation in the link.
                 // https://github.com/stm32-hotspot/CKB-STM32-FDCAN-8Mbs/blob/8a22560/NUCLEO-G0B1/Core/Src/main.c#L139-L141
-                // With a prescaler of 1 or 2 the offset never exceeds 2 * 32 = 64,
+                // With a prescaler of 1 or 2 the offset never exceeds 2 * (32 + 1) = 66,
                 // which is below the TDCO field maximum 0x7F (127), so no upper clamp is required.
-                uint32_t offset = can_bit_cfg_data.prescaler * can_bit_cfg_data.time_seg1;
+                uint32_t offset = can_bit_cfg_data.prescaler * (can_bit_cfg_data.time_seg1 + 1);
                 if (HAL_FDCAN_ConfigTxDelayCompensation(&hfdcan1, offset, 0) != HAL_OK) return HAL_ERROR;
                 if (HAL_FDCAN_EnableTxDelayCompensation(&hfdcan1) != HAL_OK) return HAL_ERROR;
             }
