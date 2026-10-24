@@ -1,6 +1,6 @@
-# Benchmark for ver.2.3.0
+# Benchmark for ver.2.4.0
 
-Commit ID: 77538720e5631c8a0b581cc814880fc746bd9a21
+Commit ID: 6bdec776cd2e42590bb356d2c1768ba175406c56
 
 ## Environment
 
