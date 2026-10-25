@@ -41,15 +41,9 @@
 // range is limited to 0 or 1, i.e. an actual data prescaler of 1 or 2.
 #define CAN_TDC_MAX_DATA_PRESCALER      2U
 
-// Bit timing presets, computed from CAN_ROOT_CLOCK_MHZ by can_calc_nominal_cfg/can_calc_data_cfg.
-// Nominal (S): 87.5 % sample point, preferably with at most 80 time quanta per bit.
-// Data (Y): at most 40 time quanta per bit. A bit rate of 0 marks an unsupported index.
-#define CAN_NOMINAL_SP_PERMILLE         875U
-#define CAN_NOMINAL_MAX_TQ_PER_BIT      80U
-#define CAN_DATA_MAX_TQ_PER_BIT         40U
-static const uint16_t can_nominal_kbps[CAN_BITRATE_INVALID] = {10, 20, 50, 100, 125, 250, 500, 800, 1000};
-static const uint16_t can_data_kbps[CAN_DATA_BITRATE_INVALID] = {500, 1000, 2000, 0, 4000, 5000};
-static const uint16_t can_data_sp_permille[CAN_DATA_BITRATE_INVALID] = {775, 775, 775, 0, 750, 750};
+// The bit timing presets are written for 40 MHz and their prescaler is scaled
+// by this step: 1 at 40 MHz, 2 at 80 MHz.
+#define CAN_PRESCALER_STEP              (CAN_ROOT_CLOCK_MHZ / 40U)
 
 // Public variable
 uint8_t can_dlc_to_bytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
@@ -82,9 +76,6 @@ static uint8_t can_tdc_manual_tdcf = 0;
 
 // Private methods
 static void can_update_bit_time_ns(void);
-static uint32_t can_calc_sp_tq(uint32_t tq_per_bit, uint32_t sp_permille);
-static HAL_StatusTypeDef can_calc_nominal_cfg(uint32_t kbps, struct CanBitrateCfg *cfg);
-static HAL_StatusTypeDef can_calc_data_cfg(uint32_t kbps, uint32_t sp_permille, struct CanBitrateCfg *cfg);
 static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader);
 static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent);
 
@@ -459,13 +450,54 @@ HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate)
         return HAL_ERROR;
     }
 
-    // An unsupported value sets the default 125 kbit/s and returns an error.
-    // The presets up to 500 kbit/s are equivalent to the sxxyy command with BTR1=0x1C
-    // (e.g. 125 kbit/s with BTR0=0x03).
-    enum CanBitrateNominal preset = (bitrate < CAN_BITRATE_INVALID) ? bitrate : CAN_BITRATE_125K;
-    if (can_calc_nominal_cfg(can_nominal_kbps[preset], &can_bit_cfg_nominal) != HAL_OK) return HAL_ERROR;
+    // Set default bitrate 125kbps at 87.5% sampling point
+    // Equivalent to sxxyy command with BTR0=0x03, BTR1=0x1C
+    can_bit_cfg_nominal.prescaler = 4 * CAN_PRESCALER_STEP;
+    can_bit_cfg_nominal.sjw = 5;
+    can_bit_cfg_nominal.time_seg1 = 69;
+    can_bit_cfg_nominal.time_seg2 = 10;
 
-    return (preset == bitrate) ? HAL_OK : HAL_ERROR;
+    switch (bitrate)
+    {
+    case CAN_BITRATE_10K:
+        can_bit_cfg_nominal.prescaler = 50 * CAN_PRESCALER_STEP;
+        break;
+    case CAN_BITRATE_20K:
+        can_bit_cfg_nominal.prescaler = 25 * CAN_PRESCALER_STEP;
+        break;
+    case CAN_BITRATE_50K:
+        can_bit_cfg_nominal.prescaler = 10 * CAN_PRESCALER_STEP;
+        break;
+    case CAN_BITRATE_100K:
+        can_bit_cfg_nominal.prescaler = 5 * CAN_PRESCALER_STEP;
+        break;
+    case CAN_BITRATE_125K:
+        break;
+    case CAN_BITRATE_250K:
+        can_bit_cfg_nominal.prescaler = 2 * CAN_PRESCALER_STEP;
+        break;
+    case CAN_BITRATE_500K:
+        can_bit_cfg_nominal.prescaler = 1 * CAN_PRESCALER_STEP;
+        break;
+    case CAN_BITRATE_800K:
+        // 87.5% is not achievable at 800kbps; use 88% (N=50, SP=44/50) as the closest value.
+        can_bit_cfg_nominal.prescaler = 1 * CAN_PRESCALER_STEP;
+        can_bit_cfg_nominal.sjw = 3;
+        can_bit_cfg_nominal.time_seg1 = 43;
+        can_bit_cfg_nominal.time_seg2 = 6;
+        break;
+    case CAN_BITRATE_1000K:
+        // N=40, SP=35/40
+        can_bit_cfg_nominal.prescaler = 1 * CAN_PRESCALER_STEP;
+        can_bit_cfg_nominal.sjw = 3;
+        can_bit_cfg_nominal.time_seg1 = 34;
+        can_bit_cfg_nominal.time_seg2 = 5;
+        break;
+    default:
+        return HAL_ERROR;
+    }
+
+    return HAL_OK;
 }
 
 // Set the data bitrate of the CAN peripheral
@@ -477,87 +509,42 @@ HAL_StatusTypeDef can_set_data_bitrate(enum CanBitrateData bitrate)
         return HAL_ERROR;
     }
 
-    // An unsupported value sets the default 2 Mbit/s and returns an error.
-    enum CanBitrateData preset = CAN_DATA_BITRATE_2M;
-    if (bitrate < CAN_DATA_BITRATE_INVALID && can_data_kbps[bitrate] != 0) preset = bitrate;
-    if (can_calc_data_cfg(can_data_kbps[preset], can_data_sp_permille[preset], &can_bit_cfg_data) != HAL_OK) return HAL_ERROR;
+    // Set default bitrate 2M at 75% sampling point (N=20, SP=15/20)
+    // SJW is the largest allowed value, min(tseg1, tseg2), as recommended by CiA.
+    can_bit_cfg_data.prescaler = 1 * CAN_PRESCALER_STEP;
+    can_bit_cfg_data.sjw = 5;
+    can_bit_cfg_data.time_seg1 = 14;
+    can_bit_cfg_data.time_seg2 = 5;
 
-    return (preset == bitrate) ? HAL_OK : HAL_ERROR;
-}
-
-// Number of time quanta from the start of the bit to the sample point (1 + tseg1)
-// that gives the sample point closest to sp_permille. A tie goes to the earlier one.
-static uint32_t can_calc_sp_tq(uint32_t tq_per_bit, uint32_t sp_permille)
-{
-    uint32_t sp_tq = tq_per_bit * sp_permille / 1000;
-    if (2 * tq_per_bit * sp_permille > (2 * sp_tq + 1) * 1000) sp_tq++;
-    return sp_tq;
-}
-
-// Compute a nominal bit timing for kbps from CAN_ROOT_CLOCK_MHZ.
-// Use the smallest prescaler that gives at most CAN_NOMINAL_MAX_TQ_PER_BIT time quanta
-// per bit in a multiple of 8, which gives exactly 87.5 %. If there is none, use the
-// smallest prescaler whose segments fit, with the sample point closest to 87.5 %.
-// At 80 MHz this gives the former preset table (800 kbit/s: N = 100, SP = 87 %).
-static HAL_StatusTypeDef can_calc_nominal_cfg(uint32_t kbps, struct CanBitrateCfg *cfg)
-{
-    if (kbps == 0 || (CAN_ROOT_CLOCK_MHZ * 1000) % kbps != 0) return HAL_ERROR;
-    uint32_t tq_total = CAN_ROOT_CLOCK_MHZ * 1000 / kbps;   // prescaler * time quanta per bit
-
-    for (uint32_t pass = 0; pass < 2; pass++)
+    switch (bitrate)
     {
-        uint8_t exact = (pass == 0);    // First pass: exactly 87.5 % only
-        for (uint32_t prescaler = 1; IS_FDCAN_NOMINAL_PRESCALER(prescaler); prescaler++)
-        {
-            if (tq_total % prescaler != 0) continue;
-            uint32_t tq_per_bit = tq_total / prescaler;
-            if (exact && (tq_per_bit > CAN_NOMINAL_MAX_TQ_PER_BIT || tq_per_bit % 8 != 0)) continue;
-
-            uint32_t sp_tq = can_calc_sp_tq(tq_per_bit, CAN_NOMINAL_SP_PERMILLE);
-            uint32_t time_seg1 = sp_tq - 1;
-            uint32_t time_seg2 = tq_per_bit - sp_tq;
-            if (!IS_FDCAN_NOMINAL_TSEG1(time_seg1) || !IS_FDCAN_NOMINAL_TSEG2(time_seg2)) continue;
-            if (time_seg1 > UINT8_MAX) continue;    // Does not fit in struct CanBitrateCfg
-
-            cfg->prescaler = (uint16_t)prescaler;
-            cfg->time_seg1 = (uint8_t)time_seg1;
-            cfg->time_seg2 = (uint8_t)time_seg2;
-            cfg->sjw = (uint8_t)((time_seg2 + 1) / 2);
-            return HAL_OK;
-        }
+    case CAN_DATA_BITRATE_500K:
+        can_bit_cfg_data.prescaler = 4 * CAN_PRESCALER_STEP;
+        break;
+    case CAN_DATA_BITRATE_1M:
+        can_bit_cfg_data.prescaler = 2 * CAN_PRESCALER_STEP;
+        break;
+    case CAN_DATA_BITRATE_2M:
+        break;
+    case CAN_DATA_BITRATE_4M:
+        // 75% is not achievable at 4Mbps; use 80% (N=10, SP=8/10).
+        can_bit_cfg_data.prescaler = 1 * CAN_PRESCALER_STEP;
+        can_bit_cfg_data.sjw = 2;
+        can_bit_cfg_data.time_seg1 = 7;
+        can_bit_cfg_data.time_seg2 = 2;
+        break;
+    case CAN_DATA_BITRATE_5M:
+        // N=8, SP=6/8
+        can_bit_cfg_data.prescaler = 1 * CAN_PRESCALER_STEP;
+        can_bit_cfg_data.sjw = 2;
+        can_bit_cfg_data.time_seg1 = 5;
+        can_bit_cfg_data.time_seg2 = 2;
+        break;
+    default:
+        return HAL_ERROR;
     }
 
-    return HAL_ERROR;
-}
-
-// Compute a data bit timing for kbps from CAN_ROOT_CLOCK_MHZ.
-// Use the smallest prescaler that gives at most CAN_DATA_MAX_TQ_PER_BIT time quanta
-// per bit, with the sample point closest to sp_permille and SJW = tseg2 - 1.
-// At 80 MHz this gives the former preset table.
-static HAL_StatusTypeDef can_calc_data_cfg(uint32_t kbps, uint32_t sp_permille, struct CanBitrateCfg *cfg)
-{
-    if (kbps == 0 || (CAN_ROOT_CLOCK_MHZ * 1000) % kbps != 0) return HAL_ERROR;
-    uint32_t tq_total = CAN_ROOT_CLOCK_MHZ * 1000 / kbps;   // prescaler * time quanta per bit
-
-    for (uint32_t prescaler = 1; IS_FDCAN_DATA_PRESCALER(prescaler); prescaler++)
-    {
-        if (tq_total % prescaler != 0) continue;
-        uint32_t tq_per_bit = tq_total / prescaler;
-        if (tq_per_bit > CAN_DATA_MAX_TQ_PER_BIT) continue;
-
-        uint32_t sp_tq = can_calc_sp_tq(tq_per_bit, sp_permille);
-        uint32_t time_seg1 = sp_tq - 1;
-        uint32_t time_seg2 = tq_per_bit - sp_tq;
-        if (!IS_FDCAN_DATA_TSEG1(time_seg1) || !IS_FDCAN_DATA_TSEG2(time_seg2) || time_seg2 < 2) continue;
-
-        cfg->prescaler = (uint16_t)prescaler;
-        cfg->time_seg1 = (uint8_t)time_seg1;
-        cfg->time_seg2 = (uint8_t)time_seg2;
-        cfg->sjw = (uint8_t)(time_seg2 - 1);
-        return HAL_OK;
-    }
-
-    return HAL_ERROR;
+    return HAL_OK;
 }
 
 // Set the nominal bitrate configuration of the CAN peripheral
