@@ -356,12 +356,9 @@ class TdcTestCase(unittest.TestCase):
         if not self.dut.fd_support or not self.dut.debug_build:
             self.skipTest("Requires a CAN-FD capable DEBUG build (!7DC)")
 
-        # CAN clock for converting mtq to ns (Ixyzz, zz in hex MHz).
-        self.dut.send(b"I\r")
-        rx_data = self.dut.receive()
-        match = re.fullmatch(rb"I[0-9A-F]{2}([0-9A-F]{2})\r", rx_data)
-        self.assertIsNotNone(match, f"Unexpected I reply: {rx_data!r}")
-        clock_mhz = int(match.group(1), 16)
+        # CAN clock for converting mtq to ns (read from the I reply in setup).
+        clock_mhz = self.dut.clock_mhz
+        self.assertIsNotNone(clock_mhz, "CAN clock is unknown (no valid I reply)")
 
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
