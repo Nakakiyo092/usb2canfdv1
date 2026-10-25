@@ -462,8 +462,10 @@ void psr_parse_str_set_bitrate(uint8_t *buf, uint8_t len)
         uint8_t xx = ((uint8_t)buf[1] << 4) + buf[2];
         uint8_t yy = ((uint8_t)buf[3] << 4) + buf[4];
 
+        // One SJA1000 time quantum (125 ns at BRP = 0) maps to 5 FDCAN time quanta,
+        // so the prescaler is CAN_ROOT_CLOCK_MHZ / 40 per BRP step (2 at 80 MHz).
         struct CanBitrateCfg bitrate_cfg;
-        bitrate_cfg.prescaler = (uint16_t)(2 * ((xx & 0x3F) + 1));
+        bitrate_cfg.prescaler = (uint16_t)((CAN_ROOT_CLOCK_MHZ / 40U) * ((xx & 0x3F) + 1));
         bitrate_cfg.time_seg1 = (uint8_t)(5 * (yy & 0x0F) + 9);
         bitrate_cfg.time_seg2 = (uint8_t)(5 * ((yy >> 4) & 0x07) + 5);
         bitrate_cfg.sjw       = (uint8_t)(5 * ((xx >> 6) & 0x03) + 5);
@@ -872,11 +874,25 @@ void psr_parse_str_can_info(uint8_t *buf, uint8_t len)
     }
     else if (buf[0] == 'i')
     {
-        // "i: protocol=\"ISO-CANFD\", clock_mhz=XXX, controller=\"STM32G0B1CB\"\r" (fixed length: 65)
-        char out[65 + 1];   // + NUL written by snprintf
-        snprintf(out, sizeof(out), "i: protocol=\"ISO-CANFD\", clock_mhz=%3u, controller=\"STM32G0B1CB\"\r",
-                 CAN_ROOT_CLOCK_MHZ);
-        buf_enqueue_cdc((uint8_t *)out, 65);
+        uint32_t tq_clock_hz = can_get_tq_clock_hz();
+        if (tq_clock_hz == CAN_ROOT_CLOCK_MHZ * 1000000U)
+        {
+            // "i: protocol=\"ISO-CANFD\", clock_mhz=XXX, controller=\"STM32G0B1CB\"\r" (fixed length: 65)
+            char out[65 + 1];   // + NUL written by snprintf
+            snprintf(out, sizeof(out), "i: protocol=\"ISO-CANFD\", clock_mhz=%3u, controller=\"STM32G0B1CB\"\r",
+                     CAN_ROOT_CLOCK_MHZ);
+            buf_enqueue_cdc((uint8_t *)out, 65);
+        }
+        else
+        {
+            // The actual time quanta clock differs from CAN_ROOT_CLOCK_MHZ (CubeMX clock setup and
+            // the macro out of sync). Report it in an extra field. This reply is not fixed length.
+            char out[65 + 30 + 1];  // + ", clock_mismatch_hz=" with up to 10 digits, + NUL
+            int n = snprintf(out, sizeof(out),
+                             "i: protocol=\"ISO-CANFD\", clock_mhz=%3u, controller=\"STM32G0B1CB\", clock_mismatch_hz=%lu\r",
+                             CAN_ROOT_CLOCK_MHZ, (unsigned long)tq_clock_hz);
+            buf_enqueue_cdc((uint8_t *)out, (uint16_t)n);
+        }
     }
 
     return;

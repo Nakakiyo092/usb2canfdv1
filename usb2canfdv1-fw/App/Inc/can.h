@@ -99,7 +99,12 @@ struct CanBitrateCfg
 
 // CANFD parameter
 #define CAN_MAX_DATALEN                 64U // CAN maximum data length. Must be 64 for canfd.
-#define CAN_ROOT_CLOCK_MHZ              80U // FDCAN kernel clock, reported by the I and i commands
+#define CAN_ROOT_CLOCK_MHZ              80U // Time quanta clock (FDCAN kernel clock / ClockDivider)
+
+// The bit timing presets and the sxxyy mapping are computed from CAN_ROOT_CLOCK_MHZ.
+// CiA recommends 20, 40 or 80 MHz, and the SJA1000 mapping needs a multiple of 8 MHz
+// (one SJA1000 time quantum is 125 ns at BRP = 0) to keep its segment factor of 5.
+_Static_assert(CAN_ROOT_CLOCK_MHZ % 40U == 0, "CAN_ROOT_CLOCK_MHZ must be a multiple of 40");
 
 // Public variable
 #define CAN_DLC_TO_BYTES_SIZE           16U // Number of entries in can_dlc_to_bytes (DLC 0x0..0xF)
@@ -118,6 +123,7 @@ HAL_StatusTypeDef can_set_nominal_bitrate_cfg(struct CanBitrateCfg bitrate_cfg);
 HAL_StatusTypeDef can_set_data_bitrate_cfg(struct CanBitrateCfg bitrate_cfg);
 struct CanBitrateCfg can_get_nominal_bitrate_cfg(void);
 struct CanBitrateCfg can_get_data_bitrate_cfg(void);
+uint32_t can_get_tq_clock_hz(void);
 
 // Filter functions
 HAL_StatusTypeDef can_set_filter1_std(FunctionalState state, uint32_t code, uint32_t mask);
