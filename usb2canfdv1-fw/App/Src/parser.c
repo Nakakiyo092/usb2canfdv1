@@ -875,7 +875,10 @@ void psr_parse_str_can_info(uint8_t *buf, uint8_t len)
     else if (buf[0] == 'i')
     {
         uint32_t tq_clock_hz = can_get_tq_clock_hz();
-        if (tq_clock_hz == CAN_ROOT_CLOCK_MHZ * 1000000U)
+        uint32_t pclk_hz = HAL_RCC_GetPCLK1Freq();
+        uint8_t clock_mismatch = (tq_clock_hz != CAN_ROOT_CLOCK_MHZ * 1000000U);
+        uint8_t pclk_too_low = (pclk_hz < tq_clock_hz);     // RM0444 36.3.3: tq clock <= PCLK
+        if (!clock_mismatch && !pclk_too_low)
         {
             // "i: protocol=\"ISO-CANFD\", clock_mhz=XXX, controller=\"STM32G0B1CB\"\r" (fixed length: 65)
             char out[65 + 1];   // + NUL written by snprintf
@@ -885,12 +888,18 @@ void psr_parse_str_can_info(uint8_t *buf, uint8_t len)
         }
         else
         {
-            // The actual time quanta clock differs from CAN_ROOT_CLOCK_MHZ (CubeMX clock setup and
-            // the macro out of sync). Report it in an extra field. This reply is not fixed length.
-            char out[65 + 30 + 1];  // + ", clock_mismatch_hz=" with up to 10 digits, + NUL
-            int n = snprintf(out, sizeof(out),
-                             "i: protocol=\"ISO-CANFD\", clock_mhz=%3u, controller=\"STM32G0B1CB\", clock_mismatch_hz=%lu\r",
-                             CAN_ROOT_CLOCK_MHZ, (unsigned long)tq_clock_hz);
+            // Report a clock setup problem in extra fields. This reply is not fixed length.
+            // clock_mismatch_hz: the actual time quanta clock, if it differs from CAN_ROOT_CLOCK_MHZ
+            //                    (CubeMX clock setup and the macro out of sync).
+            // pclk_below_tq_clock_hz: PCLK, if it is lower than the time quanta clock.
+            char out[64 + 30 + 35 + 1 + 1];     // + both fields with up to 10 digits, + CR, + NUL
+            int n = snprintf(out, sizeof(out), "i: protocol=\"ISO-CANFD\", clock_mhz=%3u, controller=\"STM32G0B1CB\"",
+                             CAN_ROOT_CLOCK_MHZ);
+            if (clock_mismatch)
+                n += snprintf(out + n, sizeof(out) - n, ", clock_mismatch_hz=%lu", (unsigned long)tq_clock_hz);
+            if (pclk_too_low)
+                n += snprintf(out + n, sizeof(out) - n, ", pclk_below_tq_clock_hz=%lu", (unsigned long)pclk_hz);
+            n += snprintf(out + n, sizeof(out) - n, "\r");
             buf_enqueue_cdc((uint8_t *)out, (uint16_t)n);
         }
     }

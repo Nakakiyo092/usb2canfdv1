@@ -242,8 +242,8 @@ class BufferTestCase(unittest.TestCase):
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # Capture this hardware's I reply (e.g. b"I3050\r" on STM32G0B1,
-        # b"I30A0\r" on STM32G431). The test is then hardware-agnostic.
+        # Capture this hardware's I reply (e.g. b"I3028\r" with a 40 MHz CAN
+        # clock, b"I3050\r" with 80 MHz). The test is then hardware-agnostic.
         self.dut.send(b"I\r")
         expected_reply = self.dut.receive()
         self.assertTrue(expected_reply.startswith(b"I") and expected_reply.endswith(b"\r"),
