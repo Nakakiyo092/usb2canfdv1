@@ -99,7 +99,7 @@ struct CanBitrateCfg
 
 // CANFD parameter
 #define CAN_MAX_DATALEN                 64U // CAN maximum data length. Must be 64 for canfd.
-#define CAN_ROOT_CLOCK_MHZ              80U // Time quanta clock (FDCAN kernel clock / ClockDivider)
+#define CAN_ROOT_CLOCK_MHZ              40U // Time quanta clock (FDCAN kernel clock / ClockDivider)
 
 // The bit timing presets and the sxxyy mapping follow CAN_ROOT_CLOCK_MHZ.
 // CiA recommends 20, 40 or 80 MHz, and the SJA1000 mapping needs a multiple of 8 MHz
