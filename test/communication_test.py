@@ -395,12 +395,9 @@ class CommunicationTestCase(unittest.TestCase):
 
 
     def _read_clock_mhz(self, dev):
-        """Return the CAN clock in MHz from the I command (Ixyzz, zz in hex)."""
-        dev.send(b"I\r")
-        r = dev.receive()
-        match = re.fullmatch(rb"I[0-9A-F]{2}([0-9A-F]{2})\r", r)
-        self.assertIsNotNone(match, f"Unexpected I reply: {r!r}")
-        return int(match.group(1), 16)
+        """Return the CAN clock in MHz, read from the I reply in setup."""
+        self.assertIsNotNone(dev.clock_mhz, "CAN clock is unknown (no valid I reply)")
+        return dev.clock_mhz
 
 
     def _find_data_bit_timing(self, clock_mhz, kbps, sp):

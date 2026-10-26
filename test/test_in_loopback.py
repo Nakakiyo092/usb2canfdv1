@@ -723,8 +723,8 @@ class TimestampUsTestCase(unittest.TestCase):
         Internal-loopback isolates the test from any external bus."""
         FRAME = b"T0137FEC880011223344556677"  # classic, ext ID, DLC8
 
-        # === OK case: 10 kbps nominal (prescaler=100, presets match S0) ===
-        self.dut.send(b"s64450A05\r")    # 10 kbps via sddxxyyzz raw form
+        # === OK case: 10 kbps nominal (same bit timing as S0) ===
+        self.dut.send(self.dut.nominal_s_cmd(10))   # 10 kbps via sddxxyyzz raw form
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -738,8 +738,8 @@ class TimestampUsTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # === NG case: 5 kbps (prescaler=200, twice as slow) ===
-        self.dut.send(b"sC8450A05\r")
+        # === NG case: 5 kbps (twice as slow) ===
+        self.dut.send(self.dut.nominal_s_cmd(5))
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -760,8 +760,8 @@ class TimestampUsTestCase(unittest.TestCase):
         ~20 ms SOF-to-report window)."""
         FRAME_BODY = b"D0137FEC8F" + b"00112233445566778899AABBCCDDEEFF" * 4
 
-        # === OK case: 50 kbps nominal (prescaler=20), BRS off ===
-        self.dut.send(b"s14450A05\r")
+        # === OK case: 50 kbps nominal, BRS off ===
+        self.dut.send(self.dut.nominal_s_cmd(50))
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"Z2\r")
         self.assertEqual(self.dut.receive(), b"\r")
@@ -775,8 +775,8 @@ class TimestampUsTestCase(unittest.TestCase):
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
-        # === NG case: 25 kbps nominal (prescaler=40), BRS off ===
-        self.dut.send(b"s28450A05\r")
+        # === NG case: 25 kbps nominal, BRS off ===
+        self.dut.send(self.dut.nominal_s_cmd(25))
         self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
