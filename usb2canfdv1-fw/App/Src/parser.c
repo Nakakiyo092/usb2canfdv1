@@ -29,7 +29,7 @@
 #include "bootloader.h"
 #endif
 
-#define SLCAN_VERSION       "VW1K7"
+#define SLCAN_VERSION       "VW1K8-PRE"
 #define SLCAN_SW_VERSION    "2.4.0"
 #define SLCAN_RET_OK    ((uint8_t*)"\r")
 #define SLCAN_RET_ERR   ((uint8_t*)"\a")
