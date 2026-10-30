@@ -155,6 +155,9 @@ static int8_t CDC_Init_FS(void)
   /* Set Application Buffers */
   USBD_CDC_SetTxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_tx.data[buf_cdc_tx.tail], 0);
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);
+  // The library arms the OUT endpoint on the head buffer after this call, even if the
+  // reception was paused (see CDC_Receive_FS).
+  buf_cdc_rx.rx_state = BUF_CDC_RX_RUNNING;
   return (USBD_OK);
   /* USER CODE END 3 */
 }
@@ -270,29 +273,36 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
   UNUSED(Buf);
+  buf_cdc_rx.msglen[buf_cdc_rx.head] = *Len;
+
   uint32_t new_head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
   if (new_head == buf_cdc_rx.tail)
   {
-    // Buffer overflow - flag this slot so consumer skips its torn prefix.
-    buf_cdc_rx.data_drop[buf_cdc_rx.head] = 1;
+    // No room to move to the next buffer. The endpoint is re-armed only when there is
+    // room, so this happens only if the class is re-initialized (e.g. by a USB reset)
+    // while the reception is paused: the library then re-arms the endpoint by itself.
+    // Hold the packet in the current buffer and leave the endpoint NAK.
+    // CDC_Resume_Receive_FS moves to the next buffer once a buffer is free.
+    buf_cdc_rx.rx_state = BUF_CDC_RX_PAUSED_HELD;
+    return (USBD_OK);
+  }
 
-    // Listen again on the same buffer. Old data will be overwritten.
+  // Move to next buffer. The received one will be processed in main loop.
+  buf_cdc_rx.head = new_head;
+
+  // Start listening on next buffer if the one after it is also free, so that the next
+  // packet can be kept. Otherwise leave the endpoint NAK, which holds off the host,
+  // until CDC_Resume_Receive_FS is called after a buffer is processed.
+  if ((buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS != buf_cdc_rx.tail)
+  {
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);
     USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-    return (USBD_FAIL);
   }
   else
   {
-    // Save length and move to next buffer
-    buf_cdc_rx.msglen[buf_cdc_rx.head] = *Len;
-    buf_cdc_rx.head = new_head;
-    buf_cdc_rx.data_drop[buf_cdc_rx.head] = 0;  // Wipe stale flag for the new producer slot.
-
-    // Start listening on next buffer. Previous buffer will be processed in main loop.
-    USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);
-    USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-    return (USBD_OK);
+    buf_cdc_rx.rx_state = BUF_CDC_RX_PAUSED;
   }
+  return (USBD_OK);
   /* USER CODE END 6 */
 }
 
@@ -358,7 +368,34 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
+/**
+  * @brief  CDC_Resume_Receive_FS
+  *         Resumes the reception paused by CDC_Receive_FS once a buffer is free.
+  *
+  *         @note
+  *         Call this function with interrupts disabled, after the main loop has
+  *         processed a buffer (moved buf_cdc_rx.tail).
+  *
+  * @retval None
+  */
+void CDC_Resume_Receive_FS(void)
+{
+  // A packet held in the current buffer (see CDC_Receive_FS): move to next buffer first.
+  if (buf_cdc_rx.rx_state == BUF_CDC_RX_PAUSED_HELD
+      && (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS != buf_cdc_rx.tail)
+  {
+    buf_cdc_rx.head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
+    buf_cdc_rx.rx_state = BUF_CDC_RX_PAUSED;
+  }
 
+  if (buf_cdc_rx.rx_state == BUF_CDC_RX_PAUSED
+      && (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS != buf_cdc_rx.tail)
+  {
+    buf_cdc_rx.rx_state = BUF_CDC_RX_RUNNING;
+    USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);
+    USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+  }
+}
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
 
 /**

@@ -64,13 +64,6 @@ volatile struct BufCdcRx buf_cdc_rx = {0};
 static struct BufCanTx buf_can_tx = {0};
 static uint8_t cmd_line_buf[SLCAN_MTU];          // Command line buffer
 static uint8_t cmd_line_buf_idx = 0;
-// Sticky CDC Rx re-sync flag. Set when a slot is observed with the producer-
-// overflow marker and cleared at the next '\r'. The flag spans slots so that
-// a long command (e.g. a B FD frame is ~139 chars and crosses ~3 USB packets)
-// whose middle packet is dropped still has its trailing fragment discarded -
-// without it, the leading random byte of the next, non-dropped slot could
-// land in the frame-command path and emit garbled CAN frames on the bus.
-static uint8_t cdc_rx_drop_resync = 0;
 
 // Private prototypes
 static HAL_StatusTypeDef buf_release_can_tail(void);
@@ -82,6 +75,7 @@ void buf_init(void)
 {
     buf_cdc_rx.head = 0;
     buf_cdc_rx.tail = 0;
+    buf_cdc_rx.rx_state = BUF_CDC_RX_RUNNING;
 
     buf_cdc_tx.head = 1;
     buf_cdc_tx.msglen[buf_cdc_tx.head] = 0;
@@ -115,35 +109,10 @@ void buf_process(void)
     buf_enable_irq();
     if (buf_cdc_rx.tail != cpy_head)
     {
-        // Engage the sticky resync if the producer overflowed this slot.
-        // The torn data must be discarded all the way to the next '\r' -
-        // which may not appear in this slot - so the flag is set here and
-        // only cleared by the '\r' check in the byte loop below. The
-        // already-buffered partial command is dropped at the same time.
-        if (buf_cdc_rx.data_drop[buf_cdc_rx.tail])
-        {
-            // CDC Rx buffer overflow is intentionally reported through the
-            // SLCAN status flag named SLCAN_STS_CAN_TX_FIFO_FULL (F bit 1).
-            // The bit-to-source mapping (CAN and CDC share the same bits) is
-            // defined in doc/2.-Command-List.md as the protocol contract.
-            gen_raise_error(SLCAN_STS_CAN_TX_FIFO_FULL);
-            cmd_line_buf_idx = 0;
-            cdc_rx_drop_resync = 1;
-        }
-
         // Process one whole buffer
         for (uint32_t i = 0; i < buf_cdc_rx.msglen[buf_cdc_rx.tail]; i++)
         {
             uint8_t b = buf_cdc_rx.data[buf_cdc_rx.tail][i];
-
-            // While the resync is engaged, discard every byte (including the
-            // '\r' that ends the torn command) until and including the first
-            // '\r'. The first non-resync byte after it begins a fresh command.
-            if (cdc_rx_drop_resync)
-            {
-                if (b == '\r') cdc_rx_drop_resync = 0;
-                continue;
-            }
 
             if (b == '\r')    // \r = [CR] = delimiter
             {
@@ -169,10 +138,12 @@ void buf_process(void)
             }
         }
 
-        // Move on to the next buffer
+        // Move on to the next buffer, and resume the reception if it was paused
+        // because no buffer was free (USB NAK flow control, see CDC_Receive_FS).
         new_tail = (buf_cdc_rx.tail + 1) % BUF_CDC_RX_NUM_BUFS;
         buf_disable_irq();
         buf_cdc_rx.tail = new_tail;
+        CDC_Resume_Receive_FS();
         buf_enable_irq();
     }
 

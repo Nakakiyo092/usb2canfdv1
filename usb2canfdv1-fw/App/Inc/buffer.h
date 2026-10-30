@@ -26,6 +26,11 @@
 #define BUF_CDC_RX_NUM_BUFS 8U      // Should be >= 3 (triple buffering) to avoid dead lock
 #define BUF_CDC_RX_BUF_SIZE CDC_DATA_FS_MAX_PACKET_SIZE // Size of RX buffer item
 
+// CDC receive state (rx_state). While paused, the OUT endpoint is left NAK to hold off the host.
+#define BUF_CDC_RX_RUNNING      0U  // The OUT endpoint is armed on the head buffer
+#define BUF_CDC_RX_PAUSED       1U  // Paused, the head buffer is empty
+#define BUF_CDC_RX_PAUSED_HELD  2U  // Paused, a received packet is held in the head buffer
+
 // CDC transmit buffering
 #define BUF_CDC_TX_NUM_BUFS 3U      // Should be >= 3 (triple buffering) to avoid dead lock
 #define BUF_CDC_TX_BUF_SIZE 4096U   // Set to 64 * 64 for max single packet size
@@ -35,7 +40,7 @@ struct BufCdcRx
 {
     uint8_t data[BUF_CDC_RX_NUM_BUFS][BUF_CDC_RX_BUF_SIZE];
     uint32_t msglen[BUF_CDC_RX_NUM_BUFS];
-    uint8_t data_drop[BUF_CDC_RX_NUM_BUFS]; // Sets when data is dropped before each element
+    uint8_t rx_state;  // BUF_CDC_RX_RUNNING / PAUSED / PAUSED_HELD
     uint8_t head;
     uint8_t tail;
 };
