@@ -31,6 +31,13 @@
 #define BUF_CDC_RX_PAUSED       1U  // Paused, the head buffer is empty
 #define BUF_CDC_RX_PAUSED_HELD  2U  // Paused, a received packet is held in the head buffer
 
+// BUF_CDC_RX_PAUSED_HELD handles an edge case only. The OUT endpoint is armed only when
+// the buffer after the head one is also free, so a received packet can normally always
+// be moved on. However, if the CDC class is re-initialized (e.g. by a USB reset or a
+// re-enumeration) while the reception is paused, the library re-arms the endpoint on the
+// head buffer by itself. A packet received then cannot be moved on, so it is held in the
+// head buffer until the main loop frees a buffer.
+
 // CDC transmit buffering
 #define BUF_CDC_TX_NUM_BUFS 3U      // Should be >= 3 (triple buffering) to avoid dead lock
 #define BUF_CDC_TX_BUF_SIZE 4096U   // Set to 64 * 64 for max single packet size

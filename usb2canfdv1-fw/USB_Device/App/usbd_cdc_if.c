@@ -278,9 +278,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   uint32_t new_head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
   if (new_head == buf_cdc_rx.tail)
   {
-    // No room to move to the next buffer. The endpoint is re-armed only when there is
-    // room, so this happens only if the class is re-initialized (e.g. by a USB reset)
-    // while the reception is paused: the library then re-arms the endpoint by itself.
+    // Edge case (see BUF_CDC_RX_PAUSED_HELD): no room to move to the next buffer.
     // Hold the packet in the current buffer and leave the endpoint NAK.
     // CDC_Resume_Receive_FS moves to the next buffer once a buffer is free.
     buf_cdc_rx.rx_state = BUF_CDC_RX_PAUSED_HELD;
@@ -289,11 +287,12 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 
   // Move to next buffer. The received one will be processed in main loop.
   buf_cdc_rx.head = new_head;
+  new_head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
 
   // Start listening on next buffer if the one after it is also free, so that the next
   // packet can be kept. Otherwise leave the endpoint NAK, which holds off the host,
   // until CDC_Resume_Receive_FS is called after a buffer is processed.
-  if ((buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS != buf_cdc_rx.tail)
+  if (new_head != buf_cdc_rx.tail)
   {
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);
     USBD_CDC_ReceivePacket(&hUsbDeviceFS);
@@ -380,16 +379,18 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
   */
 void CDC_Resume_Receive_FS(void)
 {
-  // A packet held in the current buffer (see CDC_Receive_FS): move to next buffer first.
-  if (buf_cdc_rx.rx_state == BUF_CDC_RX_PAUSED_HELD
-      && (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS != buf_cdc_rx.tail)
+  uint32_t new_head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
+
+  // Edge case (see BUF_CDC_RX_PAUSED_HELD): a packet is held in the current buffer.
+  // Move to next buffer first.
+  if (buf_cdc_rx.rx_state == BUF_CDC_RX_PAUSED_HELD && new_head != buf_cdc_rx.tail)
   {
-    buf_cdc_rx.head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
+    buf_cdc_rx.head = new_head;
     buf_cdc_rx.rx_state = BUF_CDC_RX_PAUSED;
+    new_head = (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS;
   }
 
-  if (buf_cdc_rx.rx_state == BUF_CDC_RX_PAUSED
-      && (buf_cdc_rx.head + 1) % BUF_CDC_RX_NUM_BUFS != buf_cdc_rx.tail)
+  if (buf_cdc_rx.rx_state == BUF_CDC_RX_PAUSED && new_head != buf_cdc_rx.tail)
   {
     buf_cdc_rx.rx_state = BUF_CDC_RX_RUNNING;
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, (uint8_t *)buf_cdc_rx.data[buf_cdc_rx.head]);
