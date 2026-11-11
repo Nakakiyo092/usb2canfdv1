@@ -1209,14 +1209,14 @@ void psr_parse_str_debug(uint8_t *buf, uint8_t len)
 //     after HAL_Delay returns.
 //   - Incoming bytes on USB CDC keep filling the APP-level CDC Rx buffer
 //     via ISR. If the host sends more than that buffer holds during the
-//     stall, the overflow path in buffer.c is exercised.
+//     stall, the device holds off the host with USB NAK until the stall ends.
 //   - The ACK is enqueued before HAL_Delay so that any Rx reports produced
 //     after the stall are guaranteed to be ordered behind it.
 //
 // Used by tests that need to reproduce timing-sensitive scenarios:
 //   - the us timestamp sentinel that fires when the SOF-to-report delay
 //     exceeds the Note 3 design window (~20 ms);
-//   - CDC Rx buffer overflow under host-driven flooding.
+//   - CDC Rx buffer full under host-driven flooding.
 void psr_parse_str_stall(uint8_t *buf, uint8_t len)
 {
     // 1 prefix char + 4 hex digits
