@@ -118,7 +118,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     case 'i':
         psr_parse_str_can_info(buf, len);
         return;
-    // Get serial number
+    // Get or set serial number
     case 'N':
         psr_parse_str_number(buf, len);
         return;
@@ -907,7 +907,7 @@ void psr_parse_str_can_info(uint8_t *buf, uint8_t len)
     return;
 }
 
-// Get serial number
+// Get or set serial number
 void psr_parse_str_number(uint8_t *buf, uint8_t len)
 {
     if (len == 1)
