@@ -173,7 +173,7 @@ class DominantTestCase(unittest.TestCase):
               because the DUT cannot drive any recessive bit on top of
               the clamp, so TEC climbs by 8 per failed attempt.
 
-        last_err_code ends up reporting FORM (not BIT1), because the
+        recent_err_code ends up reporting FORM (not BIT1), because the
         RX-side FORM errors are continuous and overwrite the most
         recent error code register; the TX-side BIT1 errors still
         drive TEC, but their code is not the latest one seen.
@@ -207,7 +207,7 @@ class DominantTestCase(unittest.TestCase):
 
             The detailed f-command must report either BUS_OFF (ideal)
             or ER_PSSV (clamp not held long enough) with REC saturated
-            at the error-passive threshold (0x80). last_err_code is
+            at the error-passive threshold (0x80). recent_err_code is
             FORM in both cases -- the RX-side FORM errors driven by
             the dominant clamp overwrite the latest-error register
             regardless of the final node state.
@@ -274,13 +274,13 @@ class DominantTestCase(unittest.TestCase):
                          f"Second F should be F00 or F80 (only BEI may re-fire); got F={f2_reply!r}")
         # Detailed f-command: either BUS_OFF (ideal) or ER_PSSV (clamp
         # not held long enough). REC saturates at 0x80 in both states.
-        # last_err_code=FORM in both cases (RX-side FORM errors dominate).
+        # recent_err_code=FORM in both cases (RX-side FORM errors dominate).
         self.dut.send(b"f\r")
         status = self.dut.receive()
         self.assertTrue(b"node_sts=BUS_OFF" in status or b"node_sts=ER_PSSV" in status,
                         f"Expected BUS_OFF or ER_PSSV after dominant-clamped tx, got: {status!r}")
-        self.assertIn(b"last_err_code=FORM", status,
-                      f"Expected last_err_code=FORM (RX-side FORM errors dominate the latest-error "
+        self.assertIn(b"recent_err_code=FORM", status,
+                      f"Expected recent_err_code=FORM (RX-side FORM errors dominate the latest-error "
                       f"register even while TX-side BIT1 errors drive TEC), got: {status!r}")
         self.assertIn(b", 0x80]", status,
                       f"Expected REC=0x80 (error-passive cap) regardless of final node state, "

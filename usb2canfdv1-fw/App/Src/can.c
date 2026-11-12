@@ -127,7 +127,8 @@ HAL_StatusTypeDef can_enable(void)
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
         can_error_state = (struct CanErrorState){0};
-        can_error_state.last_err_code = FDCAN_PROTOCOL_ERROR_NONE;
+        can_error_state.early_err_code = FDCAN_PROTOCOL_ERROR_NONE;
+        can_error_state.recent_err_code = FDCAN_PROTOCOL_ERROR_NONE;
 
         hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
         hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
@@ -350,10 +351,10 @@ void can_process(void)
         // PSR (node state, LEC/DLEC) and ECR (TEC/REC) are two separate reads a
         // few cycles apart. An error event landing in between can leave one
         // can_error_state snapshot inconsistent (e.g. err_pssv=0 with
-        // tx_err_cnt=128); it self-corrects on the next poll. last_err_code is
-        // a sticky latch (last error since open, never cleared by `F`) and
-        // bus load is a 100 ms moving average, so neither describes the same
-        // instant as the node state / counters. Accepted for a debug query.
+        // tx_err_cnt=128); it self-corrects on the next poll. The error codes
+        // are sticky latches (since open, never cleared by `F`), so they do not
+        // describe the same instant as the node state / counters. Accepted for
+        // a debug query.
 
         // Check for bus state and error counters
         FDCAN_ProtocolStatusTypeDef sts;
@@ -370,10 +371,24 @@ void can_process(void)
 
             // Check for error code (See the link for the intended behavior)
             // https://github.com/Nakakiyo092/canable2-fw/issues/68
+            // Only actual error codes are latched, NONE and NO_CHANGE are ignored.
+            // The early code is the first one caught since open and the recent code
+            // is the latest one. Both are approximate: LEC/DLEC hold only the last
+            // error, are set to NO_CHANGE on a read and to NONE on an error-free
+            // transfer, so only the last code between two polls can be caught, or
+            // none at all if an error-free transfer follows it. If both LEC and
+            // DLEC are caught in one poll, LEC is taken.
+            uint32_t err_code = FDCAN_PROTOCOL_ERROR_NONE;
             if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
-                can_error_state.last_err_code = sts.DataLastErrorCode;
+                err_code = sts.DataLastErrorCode;
             if (sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.LastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
-                can_error_state.last_err_code = sts.LastErrorCode;
+                err_code = sts.LastErrorCode;
+            if (err_code != FDCAN_PROTOCOL_ERROR_NONE)
+            {
+                if (can_error_state.early_err_code == FDCAN_PROTOCOL_ERROR_NONE)
+                    can_error_state.early_err_code = err_code;
+                can_error_state.recent_err_code = err_code;
+            }
         }
 
         // BUS_ERROR on any FDCAN protocol error event (PEA/PED sticky flags).
@@ -994,13 +1009,13 @@ HAL_StatusTypeDef can_set_tdc_manual(uint8_t tdco, uint8_t tdcf)
 // FDCAN registers in that state is undefined and can HardFault.
 // When closed we therefore return all-zero rather than reading.
 //
-// SIDE EFFECT on can_error_state.last_err_code (`f` command):
+// SIDE EFFECT on the error codes in can_error_state (`f` command):
 // HAL_FDCAN_GetProtocolStatus() reads the whole PSR word, and the M_CAN
 // spec marks PSR.LEC / PSR.DLEC as "Set on read": any read replaces them
 // with 7 (NO_CHANGE). The latch in can_process() deliberately ignores
 // NO_CHANGE, so a protocol error that occurred between the previous
 // can_process() poll and this call is consumed here and never reaches
-// last_err_code. IR.PEA/PED (F bit 7), TEC/REC and the EW/EP/BO flags
+// the error codes. IR.PEA/PED (F bit 7), TEC/REC and the EW/EP/BO flags
 // are not affected; only the error *code* of that one window is lost,
 // and only in DEBUG builds while a TDC query is being served. Accepted
 // for a debug-only query. If it ever matters, feed `status` through the

@@ -59,6 +59,7 @@ static void psr_parse_str_filter_mask(uint8_t *buf, uint8_t len);
 static void psr_parse_str_version(uint8_t *buf, uint8_t len);
 static void psr_parse_str_can_info(uint8_t *buf, uint8_t len);
 static void psr_parse_str_number(uint8_t *buf, uint8_t len);
+static const char *psr_err_code_to_str(uint32_t err_code);
 static void psr_parse_str_status(uint8_t *buf, uint8_t len);
 static void psr_parse_str_auto_startup(uint8_t *buf, uint8_t len);
 #ifdef DEBUG
@@ -596,10 +597,10 @@ void psr_query_timestamp(void)
 // call.
 void psr_query_detailed_time(void)
 {
-    // "z: time_ms=0x0000, time_us=0x00000000, cycle_time_us_ave_max=[0x000, 0x000]\r";
+    // "z: time_ms=0x0000, time_us=0x00000000, cycle_time_us_ave_max=[0x000, 0x000], theoretical_bus_load_percent=00\r";
 
     // Reserve worst-case footprint up front. SLCAN_MTU is well above
-    // the ~76 byte actual response, so this is a safe upper bound.
+    // the ~109 byte actual response, so this is a safe upper bound.
     // On failure NOTHING has been queued yet — the host therefore
     // never sees a truncated fragment of the response. F bit 0 is
     // raised inside buf_reserve_cdc_dest itself when the reservation
@@ -630,6 +631,9 @@ void psr_query_detailed_time(void)
     uint16_t cycle_max = (uint16_t)(can_get_cycle_max_time_ns() >= 4095000 ? 4095 : can_get_cycle_max_time_ns() / 1000);
     can_clear_cycle_time();
 
+    // Theoretical bus load in percent (00-99)
+    uint8_t bus_load = (uint8_t)(can_get_bus_load_ppm() >= 990000 ? 99 : can_get_bus_load_ppm() / 10000);
+
     // Layout (matches the template comment above):
     //   "z: time_ms=0x"               13 B
     //   ms hex                         4 B
@@ -639,9 +643,12 @@ void psr_query_detailed_time(void)
     //   cycle_ave hex                  3 B
     //   ", 0x"                         4 B
     //   cycle_max hex                  3 B
-    //   "]\r"                          2 B
+    //   "], theoretical_bus_load_percent="
+    //                                 32 B
+    //   bus_load decimal               2 B
+    //   "\r"                           1 B
     //   -------------------------------------
-    //   total                         76 B
+    //   total                        109 B
     memcpy(p, "z: time_ms=0x", 13);
     p += 13;
     p[0] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
@@ -676,9 +683,15 @@ void psr_query_detailed_time(void)
     p[2] = gen_nibble_to_ascii[cycle_max & 0xF];
     p += 3;
 
-    memcpy(p, "]\r", 2);
+    memcpy(p, "], theoretical_bus_load_percent=", 32);
+    p += 32;
+    p[0] = (uint8_t)('0' + bus_load / 10);
+    p[1] = (uint8_t)('0' + bus_load % 10);
+    p += 2;
 
-    buf_commit_cdc_dest(76);
+    memcpy(p, "\r", 1);
+
+    buf_commit_cdc_dest(109);
     return;
 }
 
@@ -944,6 +957,30 @@ void psr_parse_str_number(uint8_t *buf, uint8_t len)
     }
 }
 
+// Convert a protocol error code to a 4-character string
+const char *psr_err_code_to_str(uint32_t err_code)
+{
+    switch (err_code)
+    {
+    case FDCAN_PROTOCOL_ERROR_NONE:
+        return "NONE";
+    case FDCAN_PROTOCOL_ERROR_STUFF:
+        return "STUF";
+    case FDCAN_PROTOCOL_ERROR_FORM:
+        return "FORM";
+    case FDCAN_PROTOCOL_ERROR_ACK:
+        return "_ACK";
+    case FDCAN_PROTOCOL_ERROR_BIT1:
+        return "BIT1";
+    case FDCAN_PROTOCOL_ERROR_BIT0:
+        return "BIT0";
+    case FDCAN_PROTOCOL_ERROR_CRC:
+        return "_CRC";
+    default:
+        return "SAME";
+    }
+}
+
 // Read status flags
 void psr_parse_str_status(uint8_t *buf, uint8_t len)
 {
@@ -972,25 +1009,19 @@ void psr_parse_str_status(uint8_t *buf, uint8_t len)
         }
         else if (buf[0] == 'f')
         {
-            // "f: node_sts=XXXXXXX, last_err_code=XXXX, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r"
+            // "f: node_sts=XXXXXXX, err_cnt_tx_rx=[0x00, 0x00], early_err_code=XXXX, recent_err_code=XXXX\r"
 
             uint8_t* stsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             if (stsstr == NULL) return;
 
             struct CanErrorState err = can_get_error_state();
 
-            uint16_t written = (uint16_t)snprintf((char*)stsstr, SLCAN_MTU - 1, "f: node_sts=%s, last_err_code=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], th_bus_load_percent=%02d\r",
+            uint16_t written = (uint16_t)snprintf((char*)stsstr, SLCAN_MTU - 1, "f: node_sts=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], early_err_code=%s, recent_err_code=%s\r",
                                         (err.bus_off ? "BUS_OFF" : (err.err_pssv ? "ER_PSSV" : "ER_ACTV")),
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_NONE ? "NONE" :
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_STUFF ? "STUF" :
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_FORM ? "FORM" :
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_ACK ? "_ACK" :
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_BIT1 ? "BIT1" :
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_BIT0 ? "BIT0" :
-                                        (err.last_err_code == FDCAN_PROTOCOL_ERROR_CRC ? "_CRC" : "SAME"))))))),
                                         (uint8_t)(err.tx_err_cnt),
                                         (uint8_t)(err.rx_err_cnt),
-                                        (uint8_t)(can_get_bus_load_ppm() >= 990000 ? 99 : can_get_bus_load_ppm() / 10000));
+                                        psr_err_code_to_str(err.early_err_code),
+                                        psr_err_code_to_str(err.recent_err_code));
 
             buf_commit_cdc_dest(written);
         }

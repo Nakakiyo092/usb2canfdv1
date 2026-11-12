@@ -7,10 +7,10 @@ from device_under_test import DeviceUnderTest
 
 # Detailed status replies expected at the various points in the tests below.
 # Kept as constants to keep assertions readable.
-F_DETAIL_CLEAN          = b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r"
-F_DETAIL_ACK_TX_08      = b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x08, 0x00], th_bus_load_percent=00\r"
-F_DETAIL_ACK_TX_60      = b"f: node_sts=ER_ACTV, last_err_code=_ACK, err_cnt_tx_rx=[0x60, 0x00], th_bus_load_percent=00\r"
-F_DETAIL_PSSV_TX_80     = b"f: node_sts=ER_PSSV, last_err_code=_ACK, err_cnt_tx_rx=[0x80, 0x00], th_bus_load_percent=00\r"
+F_DETAIL_CLEAN          = b"f: node_sts=ER_ACTV, err_cnt_tx_rx=[0x00, 0x00], early_err_code=NONE, recent_err_code=NONE\r"
+F_DETAIL_ACK_TX_08      = b"f: node_sts=ER_ACTV, err_cnt_tx_rx=[0x08, 0x00], early_err_code=_ACK, recent_err_code=_ACK\r"
+F_DETAIL_ACK_TX_60      = b"f: node_sts=ER_ACTV, err_cnt_tx_rx=[0x60, 0x00], early_err_code=_ACK, recent_err_code=_ACK\r"
+F_DETAIL_PSSV_TX_80     = b"f: node_sts=ER_PSSV, err_cnt_tx_rx=[0x80, 0x00], early_err_code=_ACK, recent_err_code=_ACK\r"
 
 
 class ErrorTestCase(unittest.TestCase):
@@ -60,7 +60,7 @@ class ErrorTestCase(unittest.TestCase):
 
     def test_bus_error(self):
         """A single un-acknowledged transmission (no-retransmit mode) raises
-        the BUS_ERROR flag (F bit 7) and increments TEC by 8. last_err_code
+        the BUS_ERROR flag (F bit 7) and increments TEC by 8. recent_err_code
         becomes _ACK."""
         self.dut.send(b"-\r")   # No retransmit mode
         self.assertEqual(self.dut.receive(), b"\r")
