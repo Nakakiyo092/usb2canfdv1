@@ -18,6 +18,7 @@ from device_under_test import DeviceUnderTest
 #       - TdcTestCase: aux acts as a normal ACK provider.
 #       The test_single_tx_event_after_retries requires the channel of the
 #       aux device becoming open and closed repeatedly.
+#       BusErrorFlagTestCase uses the same controlled NACKs as EsiTestCase.
 class TxEventTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
@@ -382,6 +383,147 @@ class TdcTestCase(unittest.TestCase):
                                 f"Loop delay {delay_ns:.1f} ns out of [50, 500] ns: {rx_data!r}")
         self.assertLessEqual(delay_ns, 500,
                              f"Loop delay {delay_ns:.1f} ns out of [50, 500] ns: {rx_data!r}")
+
+
+class BusErrorFlagTestCase(unittest.TestCase):
+    """F bit 7 (BUS_ERROR) with bus errors mixed with successful transfers.
+
+    Setup (same as EsiTestCase): DUT runs at Y5 (5 Mbps data) while the aux
+    stays at Y2 (default), and the DUT opens with - (no retransmission).
+    b (BRS) frames from the DUT fail in the data phase, as the aux cannot
+    follow the faster data bit rate. t / d frames use only the nominal phase,
+    so the aux ACKs them. TEC: +8 per failed frame, -1 per successful frame.
+    Only F is checked; the error code in f is unspecified.
+    """
+
+    dut: DeviceUnderTest
+
+    def setUp(self):
+        self.dut = DeviceUnderTest()
+        self.dut.open()
+        self.dut.setup()
+        if not self.dut.debug_build:
+            self.skipTest("Requires a DEBUG build (no retransmission mode)")
+
+
+    def tearDown(self):
+        self.dut.close()
+
+
+    def open_with_nack(self, report: bytes):
+        """Set up Y5 and the report mode, then open with no retransmission."""
+        self.dut.send(b"Y5\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(report)
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"-\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_bus_error_mixed_with_success(self):
+        """Repeat [b x 1, t x 8] and read F after each group. Each group must
+        give F80 and nothing else: the 1:8 ratio brings TEC back to 0, so the
+        node stays error active. Every t frame must give its Tx event.
+        """
+        #self.dut.print_on = True
+        rx_data = b""
+        rx_data_exp = b""
+        self.open_with_nack(b"z0002\r")    # no rx, tx event only
+
+        for grp in range(0, 16):
+            tx_data = b"b" + format(grp, "03X").encode() + b"2" + format(grp, "04X").encode() + b"\r"
+            self.dut.send(tx_data)
+            for i in range(0, 8):
+                num = grp * 8 + i
+                tx_data = b"t" + format(num, "03X").encode() + b"2" + format(num, "04X").encode() + b"\r"
+                rx_data_exp += b"\r" + b"z" + tx_data
+                self.dut.send(tx_data)
+                time.sleep(0.001)
+            rx_data += self.dut.receive()
+            self.dut.send(b"F\r")
+            self.assertEqual(self.dut.receive(), b"F80\r",
+                             f"Expected F80 (BUS_ERROR only) after group {grp} of [b x 1, t x 8]")
+
+        # The b frames give no Tx event. [CR] and Tx event may swap, so remove all [CR].
+        rx_data = rx_data.replace(b"\r", b"")
+        rx_data_exp = rx_data_exp.replace(b"\r", b"")
+        self.assertEqual(rx_data, rx_data_exp,
+                         "Every t frame should give its Tx event")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_bus_error_followed_by_success_in_stall(self):
+        """An error followed by a successful transfer before the firmware
+        polls the status. Queue [d (64 bytes), b, t] and stall the main loop
+        while the long d frame is still on the bus, so that the b frame fails
+        and the t frame succeeds during the stall. F must give F80.
+
+        Whether the stall starts in time cannot be seen from the host; the
+        long d frame (about 5 ms at 125 kbps) gives a wide margin.
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        long_d = b"d100F" + b"A5" * 64 + b"\r"
+        for rnd in range(0, 5):
+            self.dut.send(long_d + b"b1012AA55\r" + b"t1022AA55\r")
+            time.sleep(0.002)   # let the three frames go to the HAL Tx FIFO
+            self.dut.send(b"~012C\r")   # stall 300 ms
+            time.sleep(0.5)
+            self.dut.receive()
+            self.dut.send(b"F\r")
+            self.assertEqual(self.dut.receive(), b"F80\r",
+                             f"Expected F80 when a failed frame is followed by a successful one "
+                             f"during a stall (round {rnd})")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_bus_error_kept_over_psr_reads(self):
+        """Reading the protocol status (f, and !7DC which reads PSR) after
+        a failed b frame must not clear F bit 7. F must give F80.
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        self.dut.send(b"b1012AA55\r")
+        time.sleep(0.05)
+        self.dut.receive()
+        self.dut.send(b"f\r")
+        self.assertEqual(self.dut.receive()[0:1], b"f", "f should be answered")
+        self.dut.send(b"!7DC\r")
+        self.assertEqual(self.dut.receive()[0:1], b"!", "!7DC should be answered")
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F80\r",
+                         "Expected F80 after reading the protocol status with f and !7DC")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_no_bus_error_with_success_only(self):
+        """Only successful t / d frames in the same setup must give F00."""
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        for i in range(0, 64):
+            if i % 2 == 0:
+                tx_data = b"t" + format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r"
+            else:
+                tx_data = b"d" + format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r"
+            self.dut.send(tx_data)
+            time.sleep(0.001)
+        time.sleep(0.05)
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00 when every frame succeeds")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
 
 
 if __name__ == "__main__":

@@ -143,10 +143,11 @@ class ErrorTestCase(unittest.TestCase):
 
 
     def test_error_passive_clear(self):
-        """Once F bits are read and cleared, only currently-active conditions
-        re-appear on the next read. After reaching ERROR_WARNING then clearing,
-        further no-ACK transmissions raise ERROR_PASSIVE (bit 5) but not the
-        latch-style BUS_ERROR (bit 7), giving FA0 rather than FA4."""
+        """Once F bits are read and cleared, only new events re-appear on the
+        next read. After reaching ERROR_WARNING then clearing, further no-ACK
+        transmissions raise BUS_ERROR (bit 7) again and ERROR_PASSIVE (bit 5),
+        but not ERROR_WARNING (bit 2) because the warning status does not
+        change, giving FA0 rather than FA4."""
         self.dut.send(b"-\r")   # No retransmit mode
         self.assertEqual(self.dut.receive(), b"\r")
 
@@ -172,8 +173,8 @@ class ErrorTestCase(unittest.TestCase):
         time.sleep(0.05)    # wait for the passive level ( > 1ms * 4)
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"FA0\r",
-                         "Expected FA0 (ERROR_PASSIVE | ERROR_WARNING) after crossing TEC=128; "
-                         "BUS_ERROR (bit 7) was already consumed by the previous F read")
+                         "Expected FA0 (BUS_ERROR | ERROR_PASSIVE) after crossing TEC=128; "
+                         "ERROR_WARNING (bit 2) is not raised again as the warning status does not change")
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r",
                          "F bits should clear after read")
