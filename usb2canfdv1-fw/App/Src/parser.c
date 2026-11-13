@@ -25,6 +25,7 @@
 #include "led.h"
 #include "nvm.h"
 #include "parser.h"
+#include "usbd_desc.h"
 #ifdef DEBUG
 #include "bootloader.h"
 #endif
@@ -59,6 +60,7 @@ static void psr_parse_str_filter_mask(uint8_t *buf, uint8_t len);
 static void psr_parse_str_version(uint8_t *buf, uint8_t len);
 static void psr_parse_str_can_info(uint8_t *buf, uint8_t len);
 static void psr_parse_str_number(uint8_t *buf, uint8_t len);
+static void psr_parse_str_unique_id(uint8_t *buf, uint8_t len);
 static void psr_parse_str_status(uint8_t *buf, uint8_t len);
 static void psr_parse_str_auto_startup(uint8_t *buf, uint8_t len);
 #ifdef DEBUG
@@ -121,6 +123,10 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     // Get or set serial number
     case 'N':
         psr_parse_str_number(buf, len);
+        return;
+    // Get unique ID of the hardware
+    case 'n':
+        psr_parse_str_unique_id(buf, len);
         return;
     // Read status flags
     case 'F':
@@ -942,6 +948,42 @@ void psr_parse_str_number(uint8_t *buf, uint8_t len)
         buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
         return;
     }
+}
+
+// Get unique ID of the hardware
+void psr_parse_str_unique_id(uint8_t *buf, uint8_t len)
+{
+    UNUSED(buf);
+
+    // Check command length (read only)
+    if (len != 1)
+    {
+        buf_enqueue_cdc(SLCAN_RET_ERR, SLCAN_RET_LEN);
+        return;
+    }
+
+    // "n: uid=0xXXXXXXXXXXXXXXXXXXXXXXXX, usb_serial=\"XXXXXXXXXXXX\", dev_id=0xXXX\r"
+
+    // The USB serial number exactly as presented to the host. The descriptor holds
+    // a UTF-16LE string after a 2-byte header. Getting it rebuilds the same string,
+    // so this does not disturb the USB stack.
+    char usb_serial[(USB_SIZ_STRING_SERIAL - 2) / 2 + 1];
+    uint16_t desc_len = 0;
+    uint8_t *desc = CDC_Desc.GetSerialStrDescriptor(USBD_SPEED_FULL, &desc_len);
+    uint32_t idx = 0;
+    for (uint32_t i = 2; i + 1 < desc_len && idx < sizeof(usb_serial) - 1; i += 2)
+        usb_serial[idx++] = (char)desc[i];
+    usb_serial[idx] = '\0';
+
+    uint8_t* idstr = buf_reserve_cdc_dest(SLCAN_MTU);
+    if (idstr == NULL) return;
+
+    // The 96-bit unique ID is written as a number, the most significant word first.
+    uint16_t written = (uint16_t)snprintf((char*)idstr, SLCAN_MTU - 1, "n: uid=0x%08lX%08lX%08lX, usb_serial=\"%s\", dev_id=0x%03lX\r",
+                                          (unsigned long)HAL_GetUIDw2(), (unsigned long)HAL_GetUIDw1(), (unsigned long)HAL_GetUIDw0(),
+                                          usb_serial, (unsigned long)HAL_GetDEVID());
+
+    buf_commit_cdc_dest(written);
 }
 
 // Read status flags
