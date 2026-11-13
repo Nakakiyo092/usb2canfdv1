@@ -147,10 +147,10 @@ class ExLoopbackTestCase(unittest.TestCase):
 
         Generates traffic at four nominal levels (0 %, 18 %, 36 %, 72 %)
         by sending increasingly large bursts of minimum-stuffing frames
-        at 10 kbps. After each level, queries the bus load via the `f`
+        at 10 kbps. After each level, queries the bus load via the `z`
         command and checks that the reported percentage falls within a
         ±10 % window around the expected value (bus load value lives at
-        columns 89-90 of the `f` response, in base 10).
+        columns 106-107 of the `z` response, in base 10).
 
         The 10 % point accuracy has no theoretical basis; it is an
         empirical margin to absorb the inaccuracy of the host-side bus
@@ -176,10 +176,10 @@ class ExLoopbackTestCase(unittest.TestCase):
         # Check bus load in 0% mode (prove 10% point accuracy)
         time.sleep(1)
         rx_data = self.dut.receive()
-        self.dut.send(b"f\r")
+        self.dut.send(b"z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92, "f-command response length mismatch (idle level)")
-        pct = int(rx_data[89:91], 10)
+        self.assertEqual(len(rx_data), 109, "z-command response length mismatch (idle level)")
+        pct = int(rx_data[106:108], 10)
         self.assertGreaterEqual(pct, 0,
                                 f"idle bus load: reported {pct} %, expected within [0, 10]")
         self.assertLessEqual(pct, 10,
@@ -192,10 +192,10 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(tx_data)
         time.sleep(0.5)
         rx_data = self.dut.receive()
-        self.dut.send(b"f\r")
+        self.dut.send(b"z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92, "f-command response length mismatch (18 % level)")
-        pct = int(rx_data[89:91], 10)
+        self.assertEqual(len(rx_data), 109, "z-command response length mismatch (18 % level)")
+        pct = int(rx_data[106:108], 10)
         self.assertGreaterEqual(pct, 8,
                                 f"18 % bus load: reported {pct} %, expected within [8, 28]")
         self.assertLessEqual(pct, 28,
@@ -209,10 +209,10 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(tx_data)
         time.sleep(0.5)
         rx_data = self.dut.receive()
-        self.dut.send(b"f\r")
+        self.dut.send(b"z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92, "f-command response length mismatch (36 % level)")
-        pct = int(rx_data[89:91], 10)
+        self.assertEqual(len(rx_data), 109, "z-command response length mismatch (36 % level)")
+        pct = int(rx_data[106:108], 10)
         self.assertGreaterEqual(pct, 26,
                                 f"36 % bus load: reported {pct} %, expected within [26, 46]")
         self.assertLessEqual(pct, 46,
@@ -230,10 +230,10 @@ class ExLoopbackTestCase(unittest.TestCase):
         self.dut.send(tx_data)
         time.sleep(0.25)
         rx_data = self.dut.receive()
-        self.dut.send(b"f\r")
+        self.dut.send(b"z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92, "f-command response length mismatch (72 % level)")
-        pct = int(rx_data[89:91], 10)
+        self.assertEqual(len(rx_data), 109, "z-command response length mismatch (72 % level)")
+        pct = int(rx_data[106:108], 10)
         self.assertGreaterEqual(pct, 62,
                                 f"72 % bus load: reported {pct} %, expected within [62, 82]")
         self.assertLessEqual(pct, 82,
@@ -254,7 +254,7 @@ class ExLoopbackTestCase(unittest.TestCase):
             (11 + 64) / 112 stuff-bit overhead in the frame.
 
         The 5 % margin absorbs test-setup and calculation inaccuracy.
-        Bus load value lives at columns 89-90 of the `f` response, in
+        Bus load value lives at columns 106-107 of the `z` response, in
         base 10.
         """
         #self.dut.print_on = True
@@ -299,11 +299,11 @@ class ExLoopbackTestCase(unittest.TestCase):
         flags = int(f_reply[1:3], 16)
         self.assertEqual(flags & ~0x02, 0,
                          f"Only F bit 1 (CDC Rx overflow) is tolerated in 10 kbps min-stuffing bus-load test; F={f_reply!r}")
-        self.dut.send(b"f\r")
+        self.dut.send(b"z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps min-stuffing)")
+        self.assertEqual(len(rx_data), 109, "z-command response length mismatch (10 kbps min-stuffing)")
         # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
-        pct = int(rx_data[89:91], 10)
+        pct = int(rx_data[106:108], 10)
         self.assertGreaterEqual(pct, 93,
                                 f"10 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
         self.assertLessEqual(pct, 99,
@@ -333,11 +333,11 @@ class ExLoopbackTestCase(unittest.TestCase):
         flags = int(f_reply[1:3], 16)
         self.assertEqual(flags & ~0x02, 0,
                          f"Only F bit 1 (CDC Rx overflow) is tolerated in 10 kbps max-stuffing bus-load test; F={f_reply!r}")
-        self.dut.send(b"f\r")
+        self.dut.send(b"z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92, "f-command response length mismatch (10 kbps max-stuffing)")
+        self.assertEqual(len(rx_data), 109, "z-command response length mismatch (10 kbps max-stuffing)")
         # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
-        pct = int(rx_data[89:91], 10)
+        pct = int(rx_data[106:108], 10)
         self.assertGreaterEqual(pct, 81,
                                 f"10 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
         self.assertLessEqual(pct, 88,
@@ -388,11 +388,11 @@ class ExLoopbackTestCase(unittest.TestCase):
         flags = int(f_reply[1:3], 16)
         self.assertEqual(flags & ~0x02, 0,
                          f"Only F bit 1 (CDC Rx overflow) is tolerated in 20 kbps min-stuffing bus-load test; F={f_reply!r}")
-        self.dut.send(b"f\r")
+        self.dut.send(b"z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps min-stuffing)")
+        self.assertEqual(len(rx_data), 109, "z-command response length mismatch (20 kbps min-stuffing)")
         # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
-        pct = int(rx_data[89:91], 10)
+        pct = int(rx_data[106:108], 10)
         self.assertGreaterEqual(pct, 93,
                                 f"20 kbps min-stuffing full load: reported {pct} %, expected within [93, 99]")
         self.assertLessEqual(pct, 99,
@@ -422,11 +422,11 @@ class ExLoopbackTestCase(unittest.TestCase):
         flags = int(f_reply[1:3], 16)
         self.assertEqual(flags & ~0x02, 0,
                          f"Only F bit 1 (CDC Rx overflow) is tolerated in 20 kbps max-stuffing bus-load test; F={f_reply!r}")
-        self.dut.send(b"f\r")
+        self.dut.send(b"z\r")
         rx_data = self.dut.receive()
-        self.assertEqual(len(rx_data), 92, "f-command response length mismatch (20 kbps max-stuffing)")
+        self.assertEqual(len(rx_data), 109, "z-command response length mismatch (20 kbps max-stuffing)")
         # 7% margin for test setup and calculation (widened from 5% for Linux virtual box)
-        pct = int(rx_data[89:91], 10)
+        pct = int(rx_data[106:108], 10)
         self.assertGreaterEqual(pct, 81,
                                 f"20 kbps max-stuffing full load: reported {pct} %, expected within [81, 88]")
         self.assertLessEqual(pct, 88,
