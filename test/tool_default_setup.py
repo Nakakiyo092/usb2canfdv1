@@ -11,7 +11,8 @@ from device_under_test import DeviceUnderTest
 # Tests overwrite the serial number, so this tool writes it back.
 # A device not listed here gets NA123 only if no serial number is stored.
 DEVICE_SERIALS = {
-    # "0x0123456789ABCDEF01234567": b"3C01",
+    "0x203532463032501900100040": b"3C01",
+    "0x203532463032501800590038": b"3C02",
 }
 
 class ToolDefaultTestCase(unittest.TestCase):
