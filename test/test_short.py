@@ -8,10 +8,10 @@ from device_under_test import DeviceUnderTest
 
 # Detailed status replies expected at the various points in the tests below.
 # Kept as constants to keep assertions readable.
-F_DETAIL_CLEAN              = b"f: node_sts=ER_ACTV, last_err_code=NONE, err_cnt_tx_rx=[0x00, 0x00], th_bus_load_percent=00\r"
-F_DETAIL_BUS_OFF_BIT0_F8    = b"f: node_sts=BUS_OFF, last_err_code=BIT0, err_cnt_tx_rx=[0xF8, 0x00], th_bus_load_percent=00\r"
-F_DETAIL_PSSV_BIT0_TX_88    = b"f: node_sts=ER_PSSV, last_err_code=BIT0, err_cnt_tx_rx=[0x88, 0x00], th_bus_load_percent=00\r"
-F_DETAIL_PSSV_BIT0_TX_F8    = b"f: node_sts=ER_PSSV, last_err_code=BIT0, err_cnt_tx_rx=[0xF8, 0x00], th_bus_load_percent=00\r"
+F_DETAIL_CLEAN              = b"f: node_sts=ER_ACTV, err_cnt_tx_rx=[0x00, 0x00], onset_err_code=NONE, recent_err_code=NONE\r"
+F_DETAIL_BUS_OFF_BIT0_F8    = b"f: node_sts=BUS_OFF, err_cnt_tx_rx=[0xF8, 0x00], onset_err_code=BIT0, recent_err_code=BIT0\r"
+F_DETAIL_PSSV_BIT0_TX_88    = b"f: node_sts=ER_PSSV, err_cnt_tx_rx=[0x88, 0x00], onset_err_code=BIT0, recent_err_code=BIT0\r"
+F_DETAIL_PSSV_BIT0_TX_F8    = b"f: node_sts=ER_PSSV, err_cnt_tx_rx=[0xF8, 0x00], onset_err_code=BIT0, recent_err_code=BIT0\r"
 
 
 class ShortTestCase(unittest.TestCase):
