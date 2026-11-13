@@ -135,6 +135,19 @@ class SlcanTestCase(unittest.TestCase):
                          "N with 6 chars should be rejected")
 
 
+    def test_n_command(self):
+        """n[CR]: returns the unique ID string of the hardware (read only)."""
+        self.dut.send(b"n\r")
+        rx_data = self.dut.receive()
+        self.assertGreaterEqual(len(rx_data), len(b"n\r"),
+                                f"n reply too short: {rx_data!r}")
+        self.assertEqual(rx_data[0], b"n"[0],
+                         f"n reply should start with 'n': {rx_data!r}")
+        self.dut.send(b"n0\r")
+        self.assertEqual(self.dut.receive(), b"\a",
+                         "n with trailing characters should be rejected")
+
+
     def test_open_close_command(self):
         """C / O / L bus-state transitions and the rejection of invalid combinations."""
         # O (normal mode) open/close cycle.
