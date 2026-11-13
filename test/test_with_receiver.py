@@ -579,5 +579,57 @@ class BusErrorFlagTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def send_and_wait(self, tx_data: bytes, count: int):
+        """Send the frame count times and wait until all are done."""
+        for _ in range(0, count):
+            self.dut.send(tx_data)
+            time.sleep(0.001)
+        time.sleep(0.05)
+        self.dut.receive()
+
+
+    def test_leaving_error_warning(self):
+        """Bit 2 (ERROR_WARNING) is a status-change flag: it is raised when
+        the node reaches the warning level and again when it leaves it.
+        b x 12 gives TEC 96 (F84), then t x 1 gives TEC 95 (F04).
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        self.send_and_wait(b"b1012AA55\r", 12)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F84\r",
+                         "Expected F84 (BUS_ERROR | ERROR_WARNING) when TEC reaches 96")
+        self.send_and_wait(b"t1022AA55\r", 1)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F04\r",
+                         "Expected F04 (ERROR_WARNING) when TEC goes back to 95")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_leaving_error_passive(self):
+        """Bit 5 (ERROR_PASSIVE) is a status-change flag: it is raised when
+        the node reaches the error passive level and again when it leaves it.
+        b x 16 gives TEC 128 (FA4), then t x 1 gives TEC 127 (F20). The node
+        stays at the warning level, so bit 2 is not raised again.
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        self.send_and_wait(b"b1012AA55\r", 16)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"FA4\r",
+                         "Expected FA4 (BUS_ERROR | ERROR_PASSIVE | ERROR_WARNING) when TEC reaches 128")
+        self.send_and_wait(b"t1022AA55\r", 1)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F20\r",
+                         "Expected F20 (ERROR_PASSIVE) when TEC goes back to 127")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
 if __name__ == "__main__":
     unittest.main()
