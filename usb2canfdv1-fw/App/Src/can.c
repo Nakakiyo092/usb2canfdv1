@@ -35,6 +35,10 @@
 
 // Parameter to calculate bus load
 #define CAN_BUS_LOAD_CYCLE_MS           100U
+#define CAN_DATA_BIT_RATIO_SHIFT        16U         // Fixed point of data bit time vs nominal bit time
+
+// Size of an Rx FIFO element in the message RAM (fixed layout, see RM0444)
+#define CAN_RX_FIFO_ELEMENT_SIZE        (18U * 4U)
 
 // Maximum data bit rate prescaler for which Tx delay compensation is available.
 // Per Bosch M_CAN User's Manual v3.3.1 (p.8), when TDC = '1' the DBTP.DBRP field
@@ -63,6 +67,7 @@ static struct CanBitrateCfg can_bit_cfg_data = {0};
 static uint32_t can_cycle_max_time_ns = 0;
 static uint32_t can_cycle_ave_time_ns = 0;
 static uint32_t can_bit_time_ns = 0;            // Time for one bit in ns
+static uint32_t can_data_bit_ratio = 0;         // Data bit time vs nominal bit time (fixed point, CAN_DATA_BIT_RATIO_SHIFT)
 static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
 
 #ifdef DEBUG
@@ -75,9 +80,10 @@ static uint8_t can_tdc_manual_tdcf = 0;
 #endif
 
 // Private methods
-static void can_update_bit_time_ns(void);
-static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader);
-static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent);
+static void can_update_bit_time(void);
+static uint32_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader);
+static uint32_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent);
+static HAL_StatusTypeDef can_get_rx_fifo1_header(FDCAN_RxHeaderTypeDef *pRxHeader);
 
 // Initialize CAN peripheral settings, but don't actually start the peripheral
 void can_init(void)
@@ -214,7 +220,7 @@ HAL_StatusTypeDef can_enable(void)
 
         buf_clear_can_buffer();
 
-        can_update_bit_time_ns();
+        can_update_bit_time();
         can_bus_load_ppm = 0;
 
         led_turn_txd(LED_OFF);
@@ -293,7 +299,7 @@ void can_process(void)
     }
 
     // If a message has been received but not been accepted, pull it from the buffer
-    if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO1, &rx_msg_header, rx_msg_data) == HAL_OK)
+    if (can_get_rx_fifo1_header(&rx_msg_header) == HAL_OK)
     {
         bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
 
@@ -889,23 +895,32 @@ FDCAN_HandleTypeDef *can_get_handle(void)
     return &hfdcan1;
 }
 
-// Get the nominal one bit time in nanoseconds
-static void can_update_bit_time_ns(void)
+// Get the nominal one bit time in nanoseconds and the data bit time vs nominal bit time.
+// The bit rates do not change while the channel is open, so this is done once on open.
+static void can_update_bit_time(void)
 {
-    // Number of time quanta (Tq) in one bit
-    can_bit_time_ns = ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
-    // ... times Tq [ns] = prescaler / CAN clock [GHz] = prescaler * 1000 / CAN clock [MHz]
-    can_bit_time_ns = can_bit_time_ns * can_bit_cfg_nominal.prescaler;
-    can_bit_time_ns = can_bit_time_ns * 1000;   // MAX: (1 + 255 + 128) * 255 * 1000
-    can_bit_time_ns = can_bit_time_ns / CAN_ROOT_CLOCK_MHZ;
+    // Number of time quanta (Tq) in one bit, times prescaler
+    uint32_t nominal_tq = ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
+    nominal_tq = nominal_tq * can_bit_cfg_nominal.prescaler;   // MAX: (1 + 255 + 128) * 255
+    uint32_t data_tq = ((uint32_t)1 + can_bit_cfg_data.time_seg1 + can_bit_cfg_data.time_seg2);
+    data_tq = data_tq * can_bit_cfg_data.prescaler;            // MAX: (1 + 32 + 16) * 32
+
+    // Tq [ns] = prescaler / CAN clock [GHz] = prescaler * 1000 / CAN clock [MHz]
+    can_bit_time_ns = nominal_tq * 1000 / CAN_ROOT_CLOCK_MHZ;
+
+    // The CAN clock is canceled in the ratio
+    if (nominal_tq == 0)
+        can_data_bit_ratio = 0;     // Uninitialized bitrate (avoid zero-div)
+    else
+        can_data_bit_ratio = (data_tq << CAN_DATA_BIT_RATIO_SHIFT) / nominal_tq;    // MAX: 1568 << 16
 
     return;
 }
 
 // Return the duration of the rx frame in the nominal bit number
-static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
+static uint32_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
 {
-    uint16_t time_msg, time_data;
+    uint32_t time_msg, time_data;
     uint8_t data_bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(pRxHeader->DataLength)];
 
     if (pRxHeader->RxFrameType == FDCAN_REMOTE_FRAME && pRxHeader->IdType == FDCAN_STANDARD_ID)
@@ -934,24 +949,13 @@ static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
         else
             time_data = CAN_BIT_NBR_WOD_FXFF_DATA_L;    // Long CRC
 
-        time_data = time_data + (uint16_t)data_bytes * 8;
+        time_data = time_data + (uint32_t)data_bytes * 8;
 
         if (pRxHeader->BitRateSwitch == FDCAN_BRS_ON)
         {
-            if (can_bit_cfg_nominal.prescaler == 0) return 0;   // Uninitialized bitrate (avoid zero-div)
-
-            uint32_t rate_ppm;  // Nominal bit time vs data bit time
-            // Number of time quanta (Tq) in one bit for data phase
-            rate_ppm = ((uint32_t)1 + can_bit_cfg_data.time_seg1 + can_bit_cfg_data.time_seg2);
-            // ... times Tq [ns] = prescaler / CAN clock [GHz], but CAN clock will be canceled
-            rate_ppm = rate_ppm * can_bit_cfg_data.prescaler;
-            rate_ppm = rate_ppm * 1000000;      // MAX: (1 + 32 + 16) * 32 * 1000000
-            // Divide by number of time quanta (Tq) in one bit for nominal phase
-            rate_ppm = rate_ppm / ((uint32_t)1 + can_bit_cfg_nominal.time_seg1 + can_bit_cfg_nominal.time_seg2);
-            // ... times Tq [ns] = prescaler / CAN clock [GHz], but CAN clock is canceled
-            rate_ppm = rate_ppm / can_bit_cfg_nominal.prescaler;
-
-            time_msg = time_msg + ((uint32_t)time_data * rate_ppm) / 1000000;
+            // Convert to the nominal bit number. The product does not fit in 32 bits
+            // when the data bit time is much longer than the nominal bit time.
+            time_msg = time_msg + (uint32_t)(((uint64_t)time_data * can_data_bit_ratio) >> CAN_DATA_BIT_RATIO_SHIFT);
         }
         else
         {
@@ -962,7 +966,7 @@ static uint16_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
 }
 
 // Return the duration of the tx event in the nominal bit number
-static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent)
+static uint32_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent)
 {
     FDCAN_RxHeaderTypeDef frame_header;
     //frame_header.Identifier = pTxEvent->Identifier;
@@ -974,6 +978,35 @@ static uint16_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEven
     frame_header.FDFormat = pTxEvent->FDFormat;
     //frame_header.RxTimestamp = pTxEvent->TxTimestamp;
     return can_get_bit_number_in_rx_frame(&frame_header);
+}
+
+// Read only the header of the oldest frame in Rx FIFO 1 and release the frame.
+// The frames in Rx FIFO 1 are only counted for the bus load, so the payload copy
+// of HAL_FDCAN_GetRxMessage() is skipped. Only the fields used for the bit number
+// are set. The first two words of the element have the same bit positions as the
+// HAL constants (RM0444). Rx FIFO 1 is in blocking mode (default), so the oldest
+// frame is at the get index.
+static HAL_StatusTypeDef can_get_rx_fifo1_header(FDCAN_RxHeaderTypeDef *pRxHeader)
+{
+    // The registers are not accessible while closed (see can_process)
+    if (can_bus_state != BUS_OPENED) return HAL_ERROR;
+
+    uint32_t rxf1s = hfdcan1.Instance->RXF1S;
+    if ((rxf1s & FDCAN_RXF1S_F1FL) == 0U) return HAL_ERROR;     // Empty
+
+    uint32_t get_index = (rxf1s & FDCAN_RXF1S_F1GI) >> FDCAN_RXF1S_F1GI_Pos;
+    const uint32_t *element = (const uint32_t *)(hfdcan1.msgRam.RxFIFO1SA + get_index * CAN_RX_FIFO_ELEMENT_SIZE);
+
+    pRxHeader->IdType = element[0] & FDCAN_EXTENDED_ID;
+    pRxHeader->RxFrameType = element[0] & FDCAN_REMOTE_FRAME;
+    pRxHeader->DataLength = (element[1] >> 16) & 0xFU;          // FDCAN_DLC_BYTES_x
+    pRxHeader->BitRateSwitch = element[1] & FDCAN_BRS_ON;
+    pRxHeader->FDFormat = element[1] & FDCAN_FD_CAN;
+
+    // Acknowledge that the oldest element is read, so that the get index is incremented
+    hfdcan1.Instance->RXF1A = get_index;
+
+    return HAL_OK;
 }
 
 #ifdef DEBUG
