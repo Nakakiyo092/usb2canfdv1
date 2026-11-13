@@ -18,6 +18,7 @@ from device_under_test import DeviceUnderTest
 #       - TdcTestCase: aux acts as a normal ACK provider.
 #       The test_single_tx_event_after_retries requires the channel of the
 #       aux device becoming open and closed repeatedly.
+#       BusErrorFlagTestCase uses the same controlled NACKs as EsiTestCase.
 class TxEventTestCase(unittest.TestCase):
 
     dut: DeviceUnderTest
@@ -382,6 +383,208 @@ class TdcTestCase(unittest.TestCase):
                                 f"Loop delay {delay_ns:.1f} ns out of [50, 500] ns: {rx_data!r}")
         self.assertLessEqual(delay_ns, 500,
                              f"Loop delay {delay_ns:.1f} ns out of [50, 500] ns: {rx_data!r}")
+
+
+class BusErrorFlagTestCase(unittest.TestCase):
+    """F bit 7 (BUS_ERROR) with bus errors mixed with successful transfers.
+
+    Setup (same as EsiTestCase): DUT runs at Y5 (5 Mbps data) while the aux
+    stays at Y2 (default), and the DUT opens with - (no retransmission).
+    b (BRS) frames from the DUT fail in the data phase, as the aux cannot
+    follow the faster data bit rate. t / d frames use only the nominal phase,
+    so the aux ACKs them. TEC: +8 per failed frame, -1 per successful frame.
+    Only F is checked; the error code in f is unspecified.
+    """
+
+    dut: DeviceUnderTest
+
+    def setUp(self):
+        self.dut = DeviceUnderTest()
+        self.dut.open()
+        self.dut.setup()
+        if not self.dut.debug_build:
+            self.skipTest("Requires a DEBUG build (no retransmission mode)")
+
+
+    def tearDown(self):
+        self.dut.close()
+
+
+    def open_with_nack(self, report: bytes):
+        """Set up Y5 and the report mode, then open with no retransmission."""
+        self.dut.send(b"Y5\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(report)
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"-\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_bus_error_mixed_with_success(self):
+        """Repeat [b x 1, t x 8] and read F after each group. Each group must
+        give F80 and nothing else: the 1:8 ratio brings TEC back to 0, so the
+        node stays error active. Every t frame must give its Tx event.
+        """
+        #self.dut.print_on = True
+        rx_data = b""
+        rx_data_exp = b""
+        self.open_with_nack(b"z0002\r")    # no rx, tx event only
+
+        for grp in range(0, 16):
+            tx_data = b"b" + format(grp, "03X").encode() + b"2" + format(grp, "04X").encode() + b"\r"
+            self.dut.send(tx_data)
+            # Wait until the b frame has failed. With no retransmission (DAR), when a
+            # transmission fails, the frames already in the HAL Tx FIFO and those added
+            # just after the failure are not sent at all: no bus activity, no TEC change,
+            # no Tx event and no F flag. Frames added 0.5 ms or more after the failure
+            # are sent. Seen on the bench and likely the behavior of the FDCAN, not
+            # confirmed in the documents.
+            time.sleep(0.005)
+            for i in range(0, 8):
+                num = grp * 8 + i
+                tx_data = b"t" + format(num, "03X").encode() + b"2" + format(num, "04X").encode() + b"\r"
+                rx_data_exp += b"\r" + b"z" + tx_data
+                self.dut.send(tx_data)
+                time.sleep(0.001)
+            rx_data += self.dut.receive()
+            self.dut.send(b"F\r")
+            self.assertEqual(self.dut.receive(), b"F80\r",
+                             f"Expected F80 (BUS_ERROR only) after group {grp} of [b x 1, t x 8]")
+
+        # The b frames give no Tx event. [CR] and Tx event may swap, so remove all [CR].
+        rx_data = rx_data.replace(b"\r", b"")
+        rx_data_exp = rx_data_exp.replace(b"\r", b"")
+        self.assertEqual(rx_data, rx_data_exp,
+                         "Every t frame should give its Tx event")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_bus_error_kept_over_tdc_query(self):
+        """A TDC query (!7DC) that reads PSR before the firmware polls the
+        status after an error. PSR.LEC is set to NO_CHANGE on a read, so the
+        error code is lost, but F bit 7 must still be raised. F must give F80.
+
+        Queue [d (64 bytes), b], then send the stall and !7DC in one write
+        (one USB packet) while the long d frame is still on the bus. The b
+        frame fails during the stall. After the stall, the parser handles the
+        rest of the packet first, so !7DC reads PSR before the next poll.
+        As in test_bus_error_followed_by_success_in_stall, the round is valid
+        only if the error code was missed (recent_err_code stays NONE), and
+        the test is skipped as inconclusive if no round is valid.
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        long_d = b"d100F" + b"A5" * 64 + b"\r"
+        num_rounds = 10
+        num_valid = 0
+        for rnd in range(0, num_rounds):
+            self.dut.send(b"-\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+            self.dut.send(long_d + b"b1012AA55\r")
+            time.sleep(0.002)   # let the two frames go to the HAL Tx FIFO
+            self.dut.send(b"~012C\r!7DC\r")    # stall 300 ms, then the TDC query
+            time.sleep(0.5)
+            rx_data = self.dut.receive()
+            self.assertIn(b"!: TDCV=", rx_data, f"!7DC should be answered: {rx_data!r}")
+            self.dut.send(b"F\r")
+            self.assertEqual(self.dut.receive(), b"F80\r",
+                             f"Expected F80 when a TDC query reads PSR before the status poll "
+                             f"(round {rnd})")
+
+            self.dut.send(b"f\r")
+            status = self.dut.receive()
+            match = re.search(rb"recent_err_code=(\w{4})", status)
+            if match is None:
+                self.skipTest(f"Requires recent_err_code in the f reply: {status!r}")
+            if match.group(1) == b"NONE":
+                num_valid += 1
+
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+        print(f"\nValid rounds (error code missed by the TDC query): {num_valid} / {num_rounds}")
+        if num_valid == 0:
+            self.skipTest("Inconclusive: the stall did not start in time in any round")
+
+
+    def test_no_bus_error_with_success_only(self):
+        """Only successful t / d frames in the same setup must give F00."""
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        for i in range(0, 64):
+            if i % 2 == 0:
+                tx_data = b"t" + format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r"
+            else:
+                tx_data = b"d" + format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r"
+            self.dut.send(tx_data)
+            time.sleep(0.001)
+        time.sleep(0.05)
+        self.dut.receive()
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F00\r",
+                         "Expected F00 when every frame succeeds")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def send_and_wait(self, tx_data: bytes, count: int):
+        """Send the frame count times and wait until all are done."""
+        for _ in range(0, count):
+            self.dut.send(tx_data)
+            time.sleep(0.001)
+        time.sleep(0.05)
+        self.dut.receive()
+
+
+    def test_leaving_error_warning(self):
+        """Bit 2 (ERROR_WARNING) is a status-change flag: it is raised when
+        the node reaches the warning level and again when it leaves it.
+        b x 12 gives TEC 96 (F84), then t x 1 gives TEC 95 (F04).
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        self.send_and_wait(b"b1012AA55\r", 12)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F84\r",
+                         "Expected F84 (BUS_ERROR | ERROR_WARNING) when TEC reaches 96")
+        self.send_and_wait(b"t1022AA55\r", 1)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F04\r",
+                         "Expected F04 (ERROR_WARNING) when TEC goes back to 95")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_leaving_error_passive(self):
+        """Bit 5 (ERROR_PASSIVE) is a status-change flag: it is raised when
+        the node reaches the error passive level and again when it leaves it.
+        b x 16 gives TEC 128 (FA4), then t x 1 gives TEC 127 (F20). The node
+        stays at the warning level, so bit 2 is not raised again.
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        self.send_and_wait(b"b1012AA55\r", 16)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"FA4\r",
+                         "Expected FA4 (BUS_ERROR | ERROR_PASSIVE | ERROR_WARNING) when TEC reaches 128")
+        self.send_and_wait(b"t1022AA55\r", 1)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F20\r",
+                         "Expected F20 (ERROR_PASSIVE) when TEC goes back to 127")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
 
 
 if __name__ == "__main__":
