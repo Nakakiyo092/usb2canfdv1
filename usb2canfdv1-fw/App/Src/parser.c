@@ -1009,18 +1009,18 @@ void psr_parse_str_status(uint8_t *buf, uint8_t len)
         }
         else if (buf[0] == 'f')
         {
-            // "f: node_sts=XXXXXXX, err_cnt_tx_rx=[0x00, 0x00], early_err_code=XXXX, recent_err_code=XXXX\r"
+            // "f: node_sts=XXXXXXX, err_cnt_tx_rx=[0x00, 0x00], onset_err_code=XXXX, recent_err_code=XXXX\r"
 
             uint8_t* stsstr = buf_reserve_cdc_dest(SLCAN_MTU);
             if (stsstr == NULL) return;
 
             struct CanErrorState err = can_get_error_state();
 
-            uint16_t written = (uint16_t)snprintf((char*)stsstr, SLCAN_MTU - 1, "f: node_sts=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], early_err_code=%s, recent_err_code=%s\r",
+            uint16_t written = (uint16_t)snprintf((char*)stsstr, SLCAN_MTU - 1, "f: node_sts=%s, err_cnt_tx_rx=[0x%02X, 0x%02X], onset_err_code=%s, recent_err_code=%s\r",
                                         (err.bus_off ? "BUS_OFF" : (err.err_pssv ? "ER_PSSV" : "ER_ACTV")),
                                         (uint8_t)(err.tx_err_cnt),
                                         (uint8_t)(err.rx_err_cnt),
-                                        psr_err_code_to_str(err.early_err_code),
+                                        psr_err_code_to_str(err.onset_err_code),
                                         psr_err_code_to_str(err.recent_err_code));
 
             buf_commit_cdc_dest(written);

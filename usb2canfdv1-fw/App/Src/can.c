@@ -127,7 +127,7 @@ HAL_StatusTypeDef can_enable(void)
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
         can_error_state = (struct CanErrorState){0};
-        can_error_state.early_err_code = FDCAN_PROTOCOL_ERROR_NONE;
+        can_error_state.onset_err_code = FDCAN_PROTOCOL_ERROR_NONE;
         can_error_state.recent_err_code = FDCAN_PROTOCOL_ERROR_NONE;
 
         hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
@@ -364,6 +364,7 @@ void can_process(void)
             HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
         {
             uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
+            uint8_t err_free = (can_error_state.tx_err_cnt == 0 && can_error_state.rx_err_cnt == 0);    // On the previous poll
             can_error_state.bus_off = (uint8_t)sts.BusOff;
             can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
             can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
@@ -372,12 +373,17 @@ void can_process(void)
             // Check for error code (See the link for the intended behavior)
             // https://github.com/Nakakiyo092/canable2-fw/issues/68
             // Only actual error codes are latched, NONE and NO_CHANGE are ignored.
-            // The early code is the first one caught since open and the recent code
-            // is the latest one. Both are approximate: LEC/DLEC hold only the last
-            // error, are set to NO_CHANGE on a read and to NONE on an error-free
-            // transfer, so only the last code between two polls can be caught, or
-            // none at all if an error-free transfer follows it. If both LEC and
-            // DLEC are caught in one poll, LEC is taken.
+            // The onset code is the one caught in the error-free state, i.e. when
+            // both counters were 0 on the previous poll. It is updated each time the
+            // node leaves the error-free state again, and is not reset on recovery.
+            // If no onset code is caught yet (e.g. the code of the first error was
+            // missed), the first code caught is taken. The recent code is the latest
+            // one. Both are approximate: LEC/DLEC hold only the last error, are set
+            // to NO_CHANGE on a read and to NONE on an error-free transfer, so only
+            // the last code between two polls can be caught, or none at all if an
+            // error-free transfer follows it. A short excursion of the counters
+            // between two polls is not seen either. If both LEC and DLEC are caught
+            // in one poll, LEC is taken.
             uint32_t err_code = FDCAN_PROTOCOL_ERROR_NONE;
             if (sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NONE && sts.DataLastErrorCode != FDCAN_PROTOCOL_ERROR_NO_CHANGE)
                 err_code = sts.DataLastErrorCode;
@@ -385,8 +391,8 @@ void can_process(void)
                 err_code = sts.LastErrorCode;
             if (err_code != FDCAN_PROTOCOL_ERROR_NONE)
             {
-                if (can_error_state.early_err_code == FDCAN_PROTOCOL_ERROR_NONE)
-                    can_error_state.early_err_code = err_code;
+                if (err_free || can_error_state.onset_err_code == FDCAN_PROTOCOL_ERROR_NONE)
+                    can_error_state.onset_err_code = err_code;
                 can_error_state.recent_err_code = err_code;
             }
         }

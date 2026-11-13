@@ -78,11 +78,11 @@ struct CanTdcLiveState
 // Structure for CAN protocol status and error counters
 struct CanErrorState
 {
-    uint8_t bus_off;        // Copy of BusOff in FDCAN_ProtocolStatus
-    uint8_t err_pssv;       // Copy of ErrorPassive in FDCAN_ProtocolStatus
-    uint8_t tx_err_cnt;     // Copy of TxErrorCnt in FDCAN_ErrorCounters
-    uint8_t rx_err_cnt;     // Copy of RxErrorCnt in FDCAN_ErrorCounters (rx err active) / 128 (rx err passive)
-    uint32_t early_err_code;    // First LastErrorCode or DataLastErrorCode caught since open
+    uint8_t bus_off;            // Copy of BusOff in FDCAN_ProtocolStatus
+    uint8_t err_pssv;           // Copy of ErrorPassive in FDCAN_ProtocolStatus
+    uint8_t tx_err_cnt;         // Copy of TxErrorCnt in FDCAN_ErrorCounters
+    uint8_t rx_err_cnt;         // Copy of RxErrorCnt in FDCAN_ErrorCounters (rx err active) / 128 (rx err passive)
+    uint32_t onset_err_code;    // LastErrorCode or DataLastErrorCode caught in the error-free state (TEC = REC = 0)
     uint32_t recent_err_code;   // Latest LastErrorCode or DataLastErrorCode caught since open
 };
 

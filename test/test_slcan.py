@@ -628,8 +628,8 @@ class SlcanTestCase(unittest.TestCase):
                                 f"f reply too short: {rx_data!r}")
         self.assertEqual(rx_data[0], b"f"[0],
                          f"f reply should start with 'f': {rx_data!r}")
-        self.assertIn(b"early_err_code", rx_data,
-                      f"f reply should contain the early error code: {rx_data!r}")
+        self.assertIn(b"onset_err_code", rx_data,
+                      f"f reply should contain the onset error code: {rx_data!r}")
         self.assertNotIn(b"bus_load", rx_data,
                          f"f reply should not contain the bus load (moved to z): {rx_data!r}")
         self.dut.send(b"C\r")

@@ -338,18 +338,19 @@ class ErrorCodeTestCase(unittest.TestCase):
 
 
     def get_err_codes(self) -> tuple[bytes, bytes]:
-        """Return (early_err_code, recent_err_code) from the f reply."""
+        """Return (onset_err_code, recent_err_code) from the f reply."""
         self.dut.send(b"f\r")
         status = self.dut.receive()
-        early = re.search(rb"early_err_code=(\w{4})", status)
+        onset = re.search(rb"onset_err_code=(\w{4})", status)
         recent = re.search(rb"recent_err_code=(\w{4})", status)
-        self.assertTrue(early and recent, f"Error codes not found in the f reply: {status!r}")
-        return early.group(1), recent.group(1)
+        self.assertTrue(onset and recent, f"Error codes not found in the f reply: {status!r}")
+        return onset.group(1), recent.group(1)
 
 
-    def test_early_err_code(self):
-        """Verify that early_err_code latches the first error code caught
-        since open and holds it, also after recovery to error-active.
+    def test_onset_err_code(self):
+        """Verify that onset_err_code latches the error code caught in the
+        error-free state (TEC = REC = 0) and holds it, also after recovery
+        to the error-free state.
 
         Setup:
             DUT runs at Y5 (5 Mbps data) while the aux stays at Y2 (default).
@@ -361,7 +362,7 @@ class ErrorCodeTestCase(unittest.TestCase):
                mismatch). Both codes latch an actual error code.
             3. Send d (CAN-FD no-BRS) frames; the aux ACKs them and the DUT
                recovers to error-active with TEC=0. Both codes are held,
-               the early one unchanged (not reset, NONE is not latched).
+               the onset one unchanged (not reset, NONE is not latched).
             4. Close and open again. Both codes are reset to NONE.
         """
         #self.dut.print_on = True
@@ -380,8 +381,8 @@ class ErrorCodeTestCase(unittest.TestCase):
         for i in range(0, 4):
             self.dut.send(b"b" + format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r")
             self.dut.receive()
-        early, recent = self.get_err_codes()
-        self.assertNotEqual(early, b"NONE", "early_err_code should latch an error code")
+        onset, recent = self.get_err_codes()
+        self.assertNotEqual(onset, b"NONE", "onset_err_code should latch an error code")
         self.assertNotEqual(recent, b"NONE", "recent_err_code should latch an error code")
 
         # Phase 3: recover by successful ACKs (TEC 8 per failure, -1 per success)
@@ -392,9 +393,9 @@ class ErrorCodeTestCase(unittest.TestCase):
         status = self.dut.receive()
         self.assertIn(b"node_sts=ER_ACTV, err_cnt_tx_rx=[0x00,", status,
                       f"DUT should be back to error-active with TEC=0, got: {status!r}")
-        early_after, recent_after = self.get_err_codes()
-        self.assertEqual(early_after, early,
-                         "early_err_code should hold the first code after recovery")
+        onset_after, recent_after = self.get_err_codes()
+        self.assertEqual(onset_after, onset,
+                         "onset_err_code should hold the code after recovery")
         self.assertNotEqual(recent_after, b"NONE",
                             "recent_err_code should not be reset to NONE by recovery")
 
