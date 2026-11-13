@@ -460,14 +460,25 @@ class BusErrorFlagTestCase(unittest.TestCase):
         while the long d frame is still on the bus, so that the b frame fails
         and the t frame succeeds during the stall. F must give F80.
 
-        Whether the stall starts in time cannot be seen from the host; the
-        long d frame (about 5 ms at 125 kbps) gives a wide margin.
+        Whether the stall starts in time depends on the host and USB timing
+        (the long d frame takes about 5 ms at 125 kbps). The round is valid
+        only if the error code of the b frame was missed, which shows that the
+        t frame overwrote LEC before the next poll: recent_err_code stays NONE
+        although F gives F80. Each round opens the channel again to reset the
+        error code. If no round is valid, the test is skipped as inconclusive.
         """
         #self.dut.print_on = True
         self.open_with_nack(b"z0000\r")    # no report
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
 
         long_d = b"d100F" + b"A5" * 64 + b"\r"
-        for rnd in range(0, 5):
+        num_rounds = 10
+        num_valid = 0
+        for rnd in range(0, num_rounds):
+            self.dut.send(b"-\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
             self.dut.send(long_d + b"b1012AA55\r" + b"t1022AA55\r")
             time.sleep(0.002)   # let the three frames go to the HAL Tx FIFO
             self.dut.send(b"~012C\r")   # stall 300 ms
@@ -478,8 +489,20 @@ class BusErrorFlagTestCase(unittest.TestCase):
                              f"Expected F80 when a failed frame is followed by a successful one "
                              f"during a stall (round {rnd})")
 
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"f\r")
+            status = self.dut.receive()
+            match = re.search(rb"recent_err_code=(\w{4})", status)
+            if match is None:
+                self.skipTest(f"Requires recent_err_code in the f reply: {status!r}")
+            if match.group(1) == b"NONE":
+                num_valid += 1
+
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+        print(f"\nValid rounds (error code missed during the stall): {num_valid} / {num_rounds}")
+        if num_valid == 0:
+            self.skipTest("Inconclusive: the stall did not start in time in any round")
 
 
     def test_bus_error_kept_over_psr_reads(self):
