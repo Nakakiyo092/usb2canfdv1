@@ -364,7 +364,7 @@ void can_process(void)
             HAL_FDCAN_GetErrorCounters(&hfdcan1, &cnt) == HAL_OK)
         {
             uint8_t rec = (uint8_t)(cnt.RxErrorPassive ? 128 : cnt.RxErrorCnt);
-            uint8_t err_free = (can_error_state.tx_err_cnt == 0 && can_error_state.rx_err_cnt == 0);    // On the previous poll
+            uint8_t was_err_free = (can_error_state.tx_err_cnt == 0 && can_error_state.rx_err_cnt == 0);    // On the previous poll
             can_error_state.bus_off = (uint8_t)sts.BusOff;
             can_error_state.err_pssv = (uint8_t)sts.ErrorPassive;
             can_error_state.tx_err_cnt = (uint8_t)cnt.TxErrorCnt;
@@ -391,7 +391,7 @@ void can_process(void)
                 err_code = sts.LastErrorCode;
             if (err_code != FDCAN_PROTOCOL_ERROR_NONE)
             {
-                if (err_free || can_error_state.onset_err_code == FDCAN_PROTOCOL_ERROR_NONE)
+                if (was_err_free || can_error_state.onset_err_code == FDCAN_PROTOCOL_ERROR_NONE)
                     can_error_state.onset_err_code = err_code;
                 can_error_state.recent_err_code = err_code;
             }

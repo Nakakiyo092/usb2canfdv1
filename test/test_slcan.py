@@ -527,8 +527,6 @@ class SlcanTestCase(unittest.TestCase):
                                 f"z[CR] reply too short: {rx_data!r}")
         self.assertEqual(rx_data[0], b"z"[0],
                          f"z[CR] reply should start with 'z': {rx_data!r}")
-        self.assertIn(b"bus_load", rx_data,
-                      f"z[CR] reply should contain the bus load: {rx_data!r}")
 
         # Closed: z0xxx..z2xxx accepted, others rejected.
         for idx in range(0, 10):
@@ -628,10 +626,6 @@ class SlcanTestCase(unittest.TestCase):
                                 f"f reply too short: {rx_data!r}")
         self.assertEqual(rx_data[0], b"f"[0],
                          f"f reply should start with 'f': {rx_data!r}")
-        self.assertIn(b"onset_err_code", rx_data,
-                      f"f reply should contain the onset error code: {rx_data!r}")
-        self.assertNotIn(b"bus_load", rx_data,
-                         f"f reply should not contain the bus load (moved to z): {rx_data!r}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
 

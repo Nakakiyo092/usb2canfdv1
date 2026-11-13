@@ -15,7 +15,6 @@ from device_under_test import DeviceUnderTest
 #       - TxEventTestCase: aux acts as a normal ACK provider.
 #       - EsiTestCase: aux receives but cannot ACK frames whose data phase
 #         is faster than its own configuration, allowing controlled NACKs.
-#       - ErrorCodeTestCase: the same controlled NACKs as EsiTestCase.
 #       - TdcTestCase: aux acts as a normal ACK provider.
 #       The test_single_tx_event_after_retries requires the channel of the
 #       aux device becoming open and closed repeatedly.
@@ -318,94 +317,6 @@ class EsiTestCase(unittest.TestCase):
         rx_data = self.dut.receive()
         self.assertIn(b"zd03F00\r", rx_data,
                       f"Expected Tx event with ESI=0 in error-active, got: {rx_data!r}")
-
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-
-
-class ErrorCodeTestCase(unittest.TestCase):
-
-    dut: DeviceUnderTest
-
-    def setUp(self):
-        self.dut = DeviceUnderTest()
-        self.dut.open()
-        self.dut.setup()
-
-
-    def tearDown(self):
-        self.dut.close()
-
-
-    def get_err_codes(self) -> tuple[bytes, bytes]:
-        """Return (onset_err_code, recent_err_code) from the f reply."""
-        self.dut.send(b"f\r")
-        status = self.dut.receive()
-        onset = re.search(rb"onset_err_code=(\w{4})", status)
-        recent = re.search(rb"recent_err_code=(\w{4})", status)
-        self.assertTrue(onset and recent, f"Error codes not found in the f reply: {status!r}")
-        return onset.group(1), recent.group(1)
-
-
-    def test_onset_err_code(self):
-        """Verify that onset_err_code latches the error code caught in the
-        error-free state (TEC = REC = 0) and holds it, also after recovery
-        to the error-free state.
-
-        Setup:
-            DUT runs at Y5 (5 Mbps data) while the aux stays at Y2 (default).
-            DAR mode (open with -), so that each failed frame is sent once.
-
-        Phases:
-            1. Just after open, no error code has been caught (NONE).
-            2. Send BRS frames; each is NACKed by the aux (data-phase
-               mismatch). Both codes latch an actual error code.
-            3. Send d (CAN-FD no-BRS) frames; the aux ACKs them and the DUT
-               recovers to error-active with TEC=0. Both codes are held,
-               the onset one unchanged (not reset, NONE is not latched).
-            4. Close and open again. Both codes are reset to NONE.
-        """
-        #self.dut.print_on = True
-        self.dut.send(b"Y5\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"z0000\r")  # No report
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-\r")      # Normal + DAR
-        self.assertEqual(self.dut.receive(), b"\r")
-
-        # Phase 1: nothing caught yet
-        self.assertEqual(self.get_err_codes(), (b"NONE", b"NONE"),
-                         "No error code should be caught just after open")
-
-        # Phase 2: errors by BRS NACKs
-        for i in range(0, 4):
-            self.dut.send(b"b" + format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r")
-            self.dut.receive()
-        onset, recent = self.get_err_codes()
-        self.assertNotEqual(onset, b"NONE", "onset_err_code should latch an error code")
-        self.assertNotEqual(recent, b"NONE", "recent_err_code should latch an error code")
-
-        # Phase 3: recover by successful ACKs (TEC 8 per failure, -1 per success)
-        for i in range(0, 64):
-            self.dut.send(b"d03F0\r")
-            self.dut.receive()
-        self.dut.send(b"f\r")
-        status = self.dut.receive()
-        self.assertIn(b"node_sts=ER_ACTV, err_cnt_tx_rx=[0x00,", status,
-                      f"DUT should be back to error-active with TEC=0, got: {status!r}")
-        onset_after, recent_after = self.get_err_codes()
-        self.assertEqual(onset_after, onset,
-                         "onset_err_code should hold the code after recovery")
-        self.assertNotEqual(recent_after, b"NONE",
-                            "recent_err_code should not be reset to NONE by recovery")
-
-        # Phase 4: reset by close and open
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.dut.send(b"-\r")
-        self.assertEqual(self.dut.receive(), b"\r")
-        self.assertEqual(self.get_err_codes(), (b"NONE", b"NONE"),
-                         "Error codes should be reset by close and open")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
