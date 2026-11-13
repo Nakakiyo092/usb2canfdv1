@@ -460,14 +460,25 @@ class BusErrorFlagTestCase(unittest.TestCase):
         while the long d frame is still on the bus, so that the b frame fails
         and the t frame succeeds during the stall. F must give F80.
 
-        Whether the stall starts in time cannot be seen from the host; the
-        long d frame (about 5 ms at 125 kbps) gives a wide margin.
+        Whether the stall starts in time depends on the host and USB timing
+        (the long d frame takes about 5 ms at 125 kbps). The round is valid
+        only if the error code of the b frame was missed, which shows that the
+        t frame overwrote LEC before the next poll: recent_err_code stays NONE
+        although F gives F80. Each round opens the channel again to reset the
+        error code. If no round is valid, the test is skipped as inconclusive.
         """
         #self.dut.print_on = True
         self.open_with_nack(b"z0000\r")    # no report
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
 
         long_d = b"d100F" + b"A5" * 64 + b"\r"
-        for rnd in range(0, 5):
+        num_rounds = 10
+        num_valid = 0
+        for rnd in range(0, num_rounds):
+            self.dut.send(b"-\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
             self.dut.send(long_d + b"b1012AA55\r" + b"t1022AA55\r")
             time.sleep(0.002)   # let the three frames go to the HAL Tx FIFO
             self.dut.send(b"~012C\r")   # stall 300 ms
@@ -478,30 +489,72 @@ class BusErrorFlagTestCase(unittest.TestCase):
                              f"Expected F80 when a failed frame is followed by a successful one "
                              f"during a stall (round {rnd})")
 
-        self.dut.send(b"C\r")
-        self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"f\r")
+            status = self.dut.receive()
+            match = re.search(rb"recent_err_code=(\w{4})", status)
+            if match is None:
+                self.skipTest(f"Requires recent_err_code in the f reply: {status!r}")
+            if match.group(1) == b"NONE":
+                num_valid += 1
+
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+        print(f"\nValid rounds (error code missed during the stall): {num_valid} / {num_rounds}")
+        if num_valid == 0:
+            self.skipTest("Inconclusive: the stall did not start in time in any round")
 
 
-    def test_bus_error_kept_over_psr_reads(self):
-        """Reading the protocol status (f, and !7DC which reads PSR) after
-        a failed b frame must not clear F bit 7. F must give F80.
+    def test_bus_error_kept_over_tdc_query(self):
+        """A TDC query (!7DC) that reads PSR before the firmware polls the
+        status after an error. PSR.LEC is set to NO_CHANGE on a read, so the
+        error code is lost, but F bit 7 must still be raised. F must give F80.
+
+        Queue [d (64 bytes), b], then send the stall and !7DC in one write
+        (one USB packet) while the long d frame is still on the bus. The b
+        frame fails during the stall. After the stall, the parser handles the
+        rest of the packet first, so !7DC reads PSR before the next poll.
+        As in test_bus_error_followed_by_success_in_stall, the round is valid
+        only if the error code was missed (recent_err_code stays NONE), and
+        the test is skipped as inconclusive if no round is valid.
         """
         #self.dut.print_on = True
         self.open_with_nack(b"z0000\r")    # no report
-
-        self.dut.send(b"b1012AA55\r")
-        time.sleep(0.05)
-        self.dut.receive()
-        self.dut.send(b"f\r")
-        self.assertEqual(self.dut.receive()[0:1], b"f", "f should be answered")
-        self.dut.send(b"!7DC\r")
-        self.assertEqual(self.dut.receive()[0:1], b"!", "!7DC should be answered")
-        self.dut.send(b"F\r")
-        self.assertEqual(self.dut.receive(), b"F80\r",
-                         "Expected F80 after reading the protocol status with f and !7DC")
-
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+        long_d = b"d100F" + b"A5" * 64 + b"\r"
+        num_rounds = 10
+        num_valid = 0
+        for rnd in range(0, num_rounds):
+            self.dut.send(b"-\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+            self.dut.send(long_d + b"b1012AA55\r")
+            time.sleep(0.002)   # let the two frames go to the HAL Tx FIFO
+            self.dut.send(b"~012C\r!7DC\r")    # stall 300 ms, then the TDC query
+            time.sleep(0.5)
+            rx_data = self.dut.receive()
+            self.assertIn(b"!: TDCV=", rx_data, f"!7DC should be answered: {rx_data!r}")
+            self.dut.send(b"F\r")
+            self.assertEqual(self.dut.receive(), b"F80\r",
+                             f"Expected F80 when a TDC query reads PSR before the status poll "
+                             f"(round {rnd})")
+
+            self.dut.send(b"f\r")
+            status = self.dut.receive()
+            match = re.search(rb"recent_err_code=(\w{4})", status)
+            if match is None:
+                self.skipTest(f"Requires recent_err_code in the f reply: {status!r}")
+            if match.group(1) == b"NONE":
+                num_valid += 1
+
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+        print(f"\nValid rounds (error code missed by the TDC query): {num_valid} / {num_rounds}")
+        if num_valid == 0:
+            self.skipTest("Inconclusive: the stall did not start in time in any round")
 
 
     def test_no_bus_error_with_success_only(self):
@@ -521,6 +574,58 @@ class BusErrorFlagTestCase(unittest.TestCase):
         self.dut.send(b"F\r")
         self.assertEqual(self.dut.receive(), b"F00\r",
                          "Expected F00 when every frame succeeds")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def send_and_wait(self, tx_data: bytes, count: int):
+        """Send the frame count times and wait until all are done."""
+        for _ in range(0, count):
+            self.dut.send(tx_data)
+            time.sleep(0.001)
+        time.sleep(0.05)
+        self.dut.receive()
+
+
+    def test_leaving_error_warning(self):
+        """Bit 2 (ERROR_WARNING) is a status-change flag: it is raised when
+        the node reaches the warning level and again when it leaves it.
+        b x 12 gives TEC 96 (F84), then t x 1 gives TEC 95 (F04).
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        self.send_and_wait(b"b1012AA55\r", 12)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F84\r",
+                         "Expected F84 (BUS_ERROR | ERROR_WARNING) when TEC reaches 96")
+        self.send_and_wait(b"t1022AA55\r", 1)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F04\r",
+                         "Expected F04 (ERROR_WARNING) when TEC goes back to 95")
+
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_leaving_error_passive(self):
+        """Bit 5 (ERROR_PASSIVE) is a status-change flag: it is raised when
+        the node reaches the error passive level and again when it leaves it.
+        b x 16 gives TEC 128 (FA4), then t x 1 gives TEC 127 (F20). The node
+        stays at the warning level, so bit 2 is not raised again.
+        """
+        #self.dut.print_on = True
+        self.open_with_nack(b"z0000\r")    # no report
+
+        self.send_and_wait(b"b1012AA55\r", 16)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"FA4\r",
+                         "Expected FA4 (BUS_ERROR | ERROR_PASSIVE | ERROR_WARNING) when TEC reaches 128")
+        self.send_and_wait(b"t1022AA55\r", 1)
+        self.dut.send(b"F\r")
+        self.assertEqual(self.dut.receive(), b"F20\r",
+                         "Expected F20 (ERROR_PASSIVE) when TEC goes back to 127")
 
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
