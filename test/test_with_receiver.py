@@ -433,6 +433,13 @@ class BusErrorFlagTestCase(unittest.TestCase):
         for grp in range(0, 16):
             tx_data = b"b" + format(grp, "03X").encode() + b"2" + format(grp, "04X").encode() + b"\r"
             self.dut.send(tx_data)
+            # Wait until the b frame has failed. With no retransmission (DAR), when a
+            # transmission fails, the frames already in the HAL Tx FIFO and those added
+            # just after the failure are not sent at all: no bus activity, no TEC change,
+            # no Tx event and no F flag. Frames added 0.5 ms or more after the failure
+            # are sent. Seen on the bench and likely the behavior of the FDCAN, not
+            # confirmed in the documents.
+            time.sleep(0.005)
             for i in range(0, 8):
                 num = grp * 8 + i
                 tx_data = b"t" + format(num, "03X").encode() + b"2" + format(num, "04X").encode() + b"\r"
