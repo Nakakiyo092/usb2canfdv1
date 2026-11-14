@@ -35,7 +35,6 @@
 
 // Parameter to calculate bus load
 #define CAN_BUS_LOAD_CYCLE_MS           100U
-#define CAN_DATA_BIT_RATIO_SHIFT        16U         // Fixed point of data bit time vs nominal bit time
 
 // Size of an Rx FIFO element in the message RAM (fixed layout, see RM0444)
 #define CAN_RX_FIFO_ELEMENT_SIZE        (18U * 4U)
@@ -67,7 +66,7 @@ static struct CanBitrateCfg can_bit_cfg_data = {0};
 static uint32_t can_cycle_max_time_ns = 0;
 static uint32_t can_cycle_ave_time_ns = 0;
 static uint32_t can_bit_time_ns = 0;            // Time for one bit in ns
-static uint32_t can_data_bit_ratio = 0;         // Data bit time vs nominal bit time (fixed point, CAN_DATA_BIT_RATIO_SHIFT)
+static uint32_t can_data_bit_ratio_q16 = 0;     // Data bit time vs nominal bit time (Q16 fixed point)
 static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
 
 #ifdef DEBUG
@@ -910,9 +909,9 @@ static void can_update_bit_time(void)
 
     // The CAN clock is canceled in the ratio
     if (nominal_tq == 0)
-        can_data_bit_ratio = 0;     // Uninitialized bitrate (avoid zero-div)
+        can_data_bit_ratio_q16 = 0; // Uninitialized bitrate (avoid zero-div)
     else
-        can_data_bit_ratio = (data_tq << CAN_DATA_BIT_RATIO_SHIFT) / nominal_tq;    // MAX: 1568 << 16
+        can_data_bit_ratio_q16 = (data_tq << 16) / nominal_tq;    // MAX: 1568 << 16
 
     return;
 }
@@ -955,7 +954,7 @@ static uint32_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
         {
             // Convert to the nominal bit number. The product does not fit in 32 bits
             // when the data bit time is much longer than the nominal bit time.
-            time_msg = time_msg + (uint32_t)(((uint64_t)time_data * can_data_bit_ratio) >> CAN_DATA_BIT_RATIO_SHIFT);
+            time_msg = time_msg + (uint32_t)(((uint64_t)time_data * can_data_bit_ratio_q16) >> 16);
         }
         else
         {
