@@ -67,9 +67,19 @@ class ListenOnlyTestCase(AuxTestCase):
     The DUT does not ACK in listen only mode, so the aux sends with
     + (external loopback) when the frames must succeed: the aux then
     ignores the missing ACK and transmits each frame only once.
+    In + mode, the aux does not see the bus at all (the FDCAN disregards
+    its Rx pin), so it cannot see what the DUT does on the bus. The tests
+    that check it use - (normal mode, no retransmission) on the aux.
     """
 
     aux_debug_required = True
+
+    def aux_recent_err_code(self) -> bytes:
+        """Return the recent error code shown by f on the aux."""
+        self.aux.send(b"f\r")
+        match = re.search(rb"recent_err_code=(\w+)", self.aux.receive())
+        self.assertIsNotNone(match, "Aux should show recent_err_code in f")
+        return match.group(1)
 
 
     def test_receive_in_listen_only(self):
@@ -149,36 +159,58 @@ class ListenOnlyTestCase(AuxTestCase):
         """The DUT sends no error frame in listen only mode.
 
         The DUT runs at Y5 (5 Mbps data) while the aux stays at Y2 (default),
-        so the DUT cannot receive the data phase of b (BRS) frames, while it
-        receives d (no BRS) frames. The aux sends b and d frames in turns with
-        + (external loopback). In normal mode the DUT would destroy each b
-        frame with an error frame. In listen only mode, every frame must
-        succeed on the first try with no bus error on the aux, and the DUT
-        must receive only the d frames.
+        so the DUT cannot receive the data phase of b (BRS) frames. The aux
+        sends a b frame with - (no retransmission), and the frame fails in
+        both modes of the DUT. The error code shown by f on the aux tells
+        how it failed:
+          - O (normal mode, as a reference): the DUT destroys the frame with
+            an error frame, so the aux sees an error other than the ACK error
+            (BIT1 on the bench).
+          - L (listen only mode): the aux sends the frame to the end and sees
+            only the missing ACK (_ACK).
+        The reference confirms that the aux can see the error frame of the
+        DUT. The error code in f is unspecified in general, but it is used
+        here to check how the frame failed.
         """
         #self.dut.print_on = True
+        frame = b"b03F21122\r"
         self.dut.send(b"Y5\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+        # Normal mode (reference): the error frame of the DUT destroys the frame
+        self.dut.send(b"O\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.open_aux(b"-\r")
+        self.aux.send(frame)
+        self.assertEqual(self.aux.receive(), b"\r",
+                         "Aux should give no Tx event (the frame fails at the DUT)")
+        self.assertEqual(self.dut.receive(), b"",
+                         "DUT should not receive the frame (data phase too slow)")
+        self.aux.send(b"F\r")
+        self.assertEqual(self.aux.receive(), b"F80\r",
+                         "Aux should see the bus error")
+        code = self.aux_recent_err_code()
+        self.assertNotIn(code, (b"_ACK", b"NONE"),
+                         f"Aux should see the error frame of the DUT in normal mode, not {code!r}")
+        self.aux.send(b"C\r")   # reopen later to reset the error codes
+        self.assertEqual(self.aux.receive(), b"\r")
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        # Listen only mode: no error frame, so only the ACK is missing
         self.dut.send(b"L\r")
         self.assertEqual(self.dut.receive(), b"\r")
-        self.open_aux(b"+\r")
-
-        for i in range(0, 4):
-            for cmd in (b"b", b"d"):
-                frame = cmd + format(i, "03X").encode() + b"2" + format(i, "04X").encode() + b"\r"
-                self.aux.send(frame)
-                self.assertEqual(self.aux.receive(), b"\r" + b"z" + frame,
-                                 f"Aux should report the Tx event of {frame!r}")
-                if cmd == b"b":
-                    self.assertEqual(self.dut.receive(), b"",
-                                     f"DUT should not receive {frame!r} (data phase too slow)")
-                else:
-                    self.assertEqual(self.dut.receive(), frame,
-                                     f"DUT should receive {frame!r} (no BRS)")
-
+        self.open_aux(b"-\r")
+        self.aux.send(frame)
+        self.assertEqual(self.aux.receive(), b"\r",
+                         "Aux should give no Tx event (no ACK from the DUT)")
+        self.assertEqual(self.dut.receive(), b"",
+                         "DUT should not receive the frame (data phase too slow)")
         self.aux.send(b"F\r")
-        self.assertEqual(self.aux.receive(), b"F00\r",
-                         "Aux should see no bus error (no error frame from the DUT)")
+        self.assertEqual(self.aux.receive(), b"F80\r",
+                         "Aux should see the bus error (ACK error)")
+        self.assertEqual(self.aux_recent_err_code(), b"_ACK",
+                         "Aux should see only the ACK error (no error frame from the DUT)")
 
 
 class ReceiveErrorTestCase(AuxTestCase):
