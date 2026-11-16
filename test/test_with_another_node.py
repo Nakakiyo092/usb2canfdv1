@@ -11,12 +11,17 @@ from device_under_test import DeviceUnderTest
 # NOTE: All tests in this file require another device (aux) wired to the DUT
 #       on the same CAN bus, with no other node on the bus. The tests open
 #       and drive the aux themselves, so no manual setup of the aux is needed.
-#       Connect the aux to the host at AUX_PORT. Some tests also need a DEBUG
-#       build on the aux (the aux opens with + or -), and are skipped otherwise.
+#       Some tests need a DEBUG build on the aux (the aux opens with + or -),
+#       and are skipped otherwise. So, unlike the other tests, the aux uses
+#       the default port of the DUT, where the DEBUG build is connected in the
+#       other tests, and the DUT uses the other port. The DUT needs no DEBUG
+#       build, but should run the firmware under test.
 if sys.platform == "win32":
-    AUX_PORT = "COM8"
+    DUT_PORT = "COM8"
+    AUX_PORT = "COM9"
 else:
-    AUX_PORT = "/dev/ttyACM1"
+    DUT_PORT = "/dev/ttyACM1"
+    AUX_PORT = "/dev/ttyACM0"
 
 
 class AuxTestCase(unittest.TestCase):
@@ -28,7 +33,7 @@ class AuxTestCase(unittest.TestCase):
 
     def setUp(self):
         self.dut = DeviceUnderTest()
-        self.dut.open()
+        self.dut.open(DUT_PORT)
         self.dut.setup()
         self.aux = DeviceUnderTest()
         self.aux.open(AUX_PORT)
