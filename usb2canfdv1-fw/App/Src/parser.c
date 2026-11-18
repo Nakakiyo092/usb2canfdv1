@@ -300,18 +300,7 @@ void psr_parse_str(uint8_t *buf, uint8_t len)
     frame_header->DataLength = CAN_STD_DLC_TO_HAL_DLC(dlc_code_raw);
 
     // Calculate number of bytes we expect in the message
-    uint8_t bytes_in_msg = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
-
-    if (frame_header->TxFrameType == FDCAN_REMOTE_FRAME)
-    {
-        // Apply maximum data bytes for a remote frame
-        bytes_in_msg = 0x0;
-    }
-    else if (frame_header->FDFormat == FDCAN_CLASSIC_CAN)
-    {
-        // Apply maximum data bytes for a classical data frame
-        if (0x8 < bytes_in_msg) bytes_in_msg = 0x8;
-    }
+    uint8_t bytes_in_msg = can_get_data_bytes(frame_header->TxFrameType, frame_header->FDFormat, frame_header->DataLength);
 
     // Check command length
     // parse_loc is always updated after a byte is parsed

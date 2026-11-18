@@ -100,6 +100,7 @@ struct CanBitrateCfg
 
 // CANFD parameter
 #define CAN_MAX_DATALEN                 64U // CAN maximum data length. Must be 64 for canfd.
+#define CAN_CLASSIC_MAX_DATALEN         8U  // Data length of a classical data frame with DLC 8..F
 #define CAN_ROOT_CLOCK_MHZ              40U // Time quanta clock (FDCAN kernel clock / ClockDivider)
 
 // The bit timing presets and the sxxyy mapping follow CAN_ROOT_CLOCK_MHZ.
@@ -115,6 +116,7 @@ extern uint8_t can_dlc_to_bytes[];
 
 // Prototypes
 void can_init(void);
+uint8_t can_get_data_bytes(uint32_t frame_type, uint32_t fd_format, uint32_t data_length);
 HAL_StatusTypeDef can_enable(void);
 HAL_StatusTypeDef can_disable(void);
 void can_process(void);
