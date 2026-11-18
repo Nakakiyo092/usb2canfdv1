@@ -267,8 +267,13 @@ void can_process(void)
         uint8_t *data = buf_get_can_sent_data(tx_event.MessageMarker);
         if (data != NULL)
         {
-            uint16_t len = gen_generate_tx_event(buf_reserve_cdc_dest(SLCAN_MTU), &tx_event, data);
-            buf_commit_cdc_dest(len);
+            // Reserve the CDC Tx buffer only when the report is enabled, since a failed
+            // reservation raises the overflow flag although nothing is discarded otherwise.
+            if ((gen_get_report_mode() >> SLCAN_REPORT_TX) & 1)
+            {
+                uint16_t len = gen_generate_tx_event(buf_reserve_cdc_dest(SLCAN_MTU), &tx_event, data);
+                buf_commit_cdc_dest(len);
+            }
             buf_release_can_until(tx_event.MessageMarker);
         }
         else
@@ -289,8 +294,12 @@ void can_process(void)
     // If a message has been accepted, parse the frame
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &rx_msg_header, rx_msg_data) == HAL_OK)
     {
-        uint16_t len = gen_generate_rx_frame(buf_reserve_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
-        buf_commit_cdc_dest(len);
+        // Reserve the CDC Tx buffer only when the report is enabled (see the Tx event above)
+        if ((gen_get_report_mode() >> SLCAN_REPORT_RX) & 1)
+        {
+            uint16_t len = gen_generate_rx_frame(buf_reserve_cdc_dest(SLCAN_MTU), &rx_msg_header, rx_msg_data);
+            buf_commit_cdc_dest(len);
+        }
 
         bit_cnt_message += can_get_bit_number_in_rx_frame(&rx_msg_header);
 
