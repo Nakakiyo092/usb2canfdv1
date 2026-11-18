@@ -796,6 +796,21 @@ HAL_StatusTypeDef can_set_filter2_ext(FunctionalState state, uint32_t code, uint
     return ret;
 }
 
+// Return the number of data bytes in a frame from its type, format and DLC (HAL format)
+// A remote frame has no data bytes, and a classical data frame with DLC 9..F has 8 data bytes.
+// The frame type is FDCAN_DATA_FRAME or FDCAN_REMOTE_FRAME, for both Rx and Tx frames.
+uint8_t can_get_data_bytes(uint32_t frame_type, uint32_t fd_format, uint32_t data_length)
+{
+    if (frame_type == FDCAN_REMOTE_FRAME)
+        return 0;
+
+    uint8_t bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(data_length)];
+    if (fd_format == FDCAN_CLASSIC_CAN && CAN_CLASSIC_MAX_DATALEN < bytes)
+        bytes = CAN_CLASSIC_MAX_DATALEN;
+
+    return bytes;
+}
+
 // Set CAN peripheral to the specific mode
 // normal: FDCAN_MODE_NORMAL
 // silent: FDCAN_MODE_BUS_MONITORING
@@ -920,7 +935,7 @@ static void can_update_bit_time(void)
 static uint32_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader)
 {
     uint32_t time_msg, time_data;
-    uint8_t data_bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(pRxHeader->DataLength)];
+    uint8_t data_bytes = can_get_data_bytes(pRxHeader->RxFrameType, pRxHeader->FDFormat, pRxHeader->DataLength);
 
     if (pRxHeader->RxFrameType == FDCAN_REMOTE_FRAME && pRxHeader->IdType == FDCAN_STANDARD_ID)
     {
