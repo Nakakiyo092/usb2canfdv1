@@ -476,52 +476,57 @@ HAL_StatusTypeDef can_set_nominal_bitrate(enum CanBitrateNominal bitrate)
         return HAL_ERROR;
     }
 
-    // Set default bitrate 125kbps at 87.5% sampling point
+    // Build the timing in a local variable, and store it only for a valid bitrate,
+    // so that a rejected command leaves the current timing unchanged.
+    // Start from 125kbps at 87.5% sampling point
     // Equivalent to sxxyy command with BTR0=0x03, BTR1=0x1C
-    can_bit_cfg_nominal.prescaler = 4 * CAN_PRESCALER_STEP;
-    can_bit_cfg_nominal.sjw = 5;
-    can_bit_cfg_nominal.time_seg1 = 69;
-    can_bit_cfg_nominal.time_seg2 = 10;
+    struct CanBitrateCfg cfg;
+    cfg.prescaler = 4 * CAN_PRESCALER_STEP;
+    cfg.sjw = 5;
+    cfg.time_seg1 = 69;
+    cfg.time_seg2 = 10;
 
     switch (bitrate)
     {
     case CAN_BITRATE_10K:
-        can_bit_cfg_nominal.prescaler = 50 * CAN_PRESCALER_STEP;
+        cfg.prescaler = 50 * CAN_PRESCALER_STEP;
         break;
     case CAN_BITRATE_20K:
-        can_bit_cfg_nominal.prescaler = 25 * CAN_PRESCALER_STEP;
+        cfg.prescaler = 25 * CAN_PRESCALER_STEP;
         break;
     case CAN_BITRATE_50K:
-        can_bit_cfg_nominal.prescaler = 10 * CAN_PRESCALER_STEP;
+        cfg.prescaler = 10 * CAN_PRESCALER_STEP;
         break;
     case CAN_BITRATE_100K:
-        can_bit_cfg_nominal.prescaler = 5 * CAN_PRESCALER_STEP;
+        cfg.prescaler = 5 * CAN_PRESCALER_STEP;
         break;
     case CAN_BITRATE_125K:
         break;
     case CAN_BITRATE_250K:
-        can_bit_cfg_nominal.prescaler = 2 * CAN_PRESCALER_STEP;
+        cfg.prescaler = 2 * CAN_PRESCALER_STEP;
         break;
     case CAN_BITRATE_500K:
-        can_bit_cfg_nominal.prescaler = 1 * CAN_PRESCALER_STEP;
+        cfg.prescaler = 1 * CAN_PRESCALER_STEP;
         break;
     case CAN_BITRATE_800K:
         // 87.5% is not achievable at 800kbps; use 88% (N=50, SP=44/50) as the closest value.
-        can_bit_cfg_nominal.prescaler = 1 * CAN_PRESCALER_STEP;
-        can_bit_cfg_nominal.sjw = 3;
-        can_bit_cfg_nominal.time_seg1 = 43;
-        can_bit_cfg_nominal.time_seg2 = 6;
+        cfg.prescaler = 1 * CAN_PRESCALER_STEP;
+        cfg.sjw = 3;
+        cfg.time_seg1 = 43;
+        cfg.time_seg2 = 6;
         break;
     case CAN_BITRATE_1000K:
         // N=40, SP=35/40
-        can_bit_cfg_nominal.prescaler = 1 * CAN_PRESCALER_STEP;
-        can_bit_cfg_nominal.sjw = 3;
-        can_bit_cfg_nominal.time_seg1 = 34;
-        can_bit_cfg_nominal.time_seg2 = 5;
+        cfg.prescaler = 1 * CAN_PRESCALER_STEP;
+        cfg.sjw = 3;
+        cfg.time_seg1 = 34;
+        cfg.time_seg2 = 5;
         break;
     default:
         return HAL_ERROR;
     }
+
+    can_bit_cfg_nominal = cfg;
 
     return HAL_OK;
 }
@@ -535,40 +540,45 @@ HAL_StatusTypeDef can_set_data_bitrate(enum CanBitrateData bitrate)
         return HAL_ERROR;
     }
 
-    // Set default bitrate 2M at 75% sampling point (N=20, SP=15/20)
+    // Build the timing in a local variable, and store it only for a valid bitrate,
+    // so that a rejected command leaves the current timing unchanged.
+    // Start from 2M at 75% sampling point (N=20, SP=15/20)
     // SJW is the largest allowed value, min(tseg1, tseg2), as recommended by CiA.
-    can_bit_cfg_data.prescaler = 1 * CAN_PRESCALER_STEP;
-    can_bit_cfg_data.sjw = 5;
-    can_bit_cfg_data.time_seg1 = 14;
-    can_bit_cfg_data.time_seg2 = 5;
+    struct CanBitrateCfg cfg;
+    cfg.prescaler = 1 * CAN_PRESCALER_STEP;
+    cfg.sjw = 5;
+    cfg.time_seg1 = 14;
+    cfg.time_seg2 = 5;
 
     switch (bitrate)
     {
     case CAN_DATA_BITRATE_500K:
-        can_bit_cfg_data.prescaler = 4 * CAN_PRESCALER_STEP;
+        cfg.prescaler = 4 * CAN_PRESCALER_STEP;
         break;
     case CAN_DATA_BITRATE_1M:
-        can_bit_cfg_data.prescaler = 2 * CAN_PRESCALER_STEP;
+        cfg.prescaler = 2 * CAN_PRESCALER_STEP;
         break;
     case CAN_DATA_BITRATE_2M:
         break;
     case CAN_DATA_BITRATE_4M:
         // 75% is not achievable at 4Mbps; use 80% (N=10, SP=8/10).
-        can_bit_cfg_data.prescaler = 1 * CAN_PRESCALER_STEP;
-        can_bit_cfg_data.sjw = 2;
-        can_bit_cfg_data.time_seg1 = 7;
-        can_bit_cfg_data.time_seg2 = 2;
+        cfg.prescaler = 1 * CAN_PRESCALER_STEP;
+        cfg.sjw = 2;
+        cfg.time_seg1 = 7;
+        cfg.time_seg2 = 2;
         break;
     case CAN_DATA_BITRATE_5M:
         // N=8, SP=6/8
-        can_bit_cfg_data.prescaler = 1 * CAN_PRESCALER_STEP;
-        can_bit_cfg_data.sjw = 2;
-        can_bit_cfg_data.time_seg1 = 5;
-        can_bit_cfg_data.time_seg2 = 2;
+        cfg.prescaler = 1 * CAN_PRESCALER_STEP;
+        cfg.sjw = 2;
+        cfg.time_seg1 = 5;
+        cfg.time_seg2 = 2;
         break;
     default:
         return HAL_ERROR;
     }
+
+    can_bit_cfg_data = cfg;
 
     return HAL_OK;
 }
