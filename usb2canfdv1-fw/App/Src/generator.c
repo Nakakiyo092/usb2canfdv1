@@ -110,15 +110,17 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
 
     // Add DLC to the buffer
     buf[msg_idx++] = gen_nibble_to_ascii[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
+    uint8_t bytes = can_dlc_to_bytes[CAN_HAL_DLC_TO_STD_DLC(frame_header->DataLength)];
 
     // Add data bytes
-    // No data bytes for a remote frame, and 8 bytes at most for a classical data frame.
-    // The frame buffer may hold more bytes left by an earlier frame, which must not be reported.
-    uint8_t bytes = can_get_data_bytes(frame_header->RxFrameType, frame_header->FDFormat, frame_header->DataLength);
-    for (uint8_t j = 0; j < bytes; j++)
+    // Data frame only. No data bytes for a remote frame.
+    if (frame_header->RxFrameType != FDCAN_REMOTE_FRAME)
     {
-        buf[msg_idx++] = gen_nibble_to_ascii[frame_data[j] >> 4];
-        buf[msg_idx++] = gen_nibble_to_ascii[frame_data[j] & 0xF];
+        for (uint8_t j = 0; j < bytes; j++)
+        {
+            buf[msg_idx++] = gen_nibble_to_ascii[frame_data[j] >> 4];
+            buf[msg_idx++] = gen_nibble_to_ascii[frame_data[j] & 0xF];
+        }
     }
 
     // Add time stamp
