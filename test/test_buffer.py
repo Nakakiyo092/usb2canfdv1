@@ -296,6 +296,60 @@ class BufferTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_unreported_frame_in_full_cdc_tx_buffer(self):
+        """Verify that a Tx event or an Rx frame whose report is switched off
+        does not raise F bit 0, even when the CDC Tx buffer is nearly full.
+
+        Method (internal loopback at S8):
+        One write of z[CR] x 96, v[CR] x 6 and t1000[CR] arrives as four USB
+        packets. The replies of the first packet go in flight and those of
+        the second wait behind them, so the replies of the third (32 z
+        replies, 3,488 bytes) and the fourth (6 v replies, 516 bytes, and
+        the ACK of the frame) stay in the head slot of the CDC Tx buffer:
+        about 4,005 bytes of 4,096. A report needs a free space of SLCAN_MTU
+        (165 bytes), so it cannot be reserved while the frame loops back.
+
+        - Reference, with the Tx event report on (z0002): the Tx event is
+          discarded and F bit 0 is raised. This confirms that the head slot
+          was that full when the frame looped back.
+        - With all reports off (z0000): nothing is discarded, so F must be
+          F00.
+        """
+        #self.dut.print_on = True
+        burst = b"z\r" * 96 + b"v\r" * 6 + b"t1000\r"
+        self.dut.send(b"S8\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        for report in (b"z0002\r", b"z0000\r"):
+            self.dut.send(report)
+            self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"=\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+            self.dut.ser.write(burst)
+            time.sleep(0.5)
+            rx_data = b""
+            for _ in range(10):
+                chunk = self.dut.receive()
+                if not chunk:
+                    break
+                rx_data += chunk
+
+            self.dut.send(b"F\r")
+            f_reply = self.dut.receive()
+            if report == b"z0002\r":
+                self.assertNotIn(b"zt1000\r", rx_data,
+                                 "Reference: the Tx event should be discarded (head slot not full enough)")
+                self.assertEqual(f_reply, b"F01\r",
+                                 "Reference: F bit 0 should be raised by the discarded Tx event")
+            else:
+                self.assertEqual(f_reply, b"F00\r",
+                                 "F bit 0 should not be raised by a frame whose reports are off")
+
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+
     def test_can_rx_buffer(self):
         """Verify that a HAL Rx FIFO overflow is reported via F08, and that
         the frames that do reach the host keep their order.
