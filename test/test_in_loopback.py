@@ -2,6 +2,7 @@
 
 import unittest
 
+import re
 import time
 from device_under_test import DeviceUnderTest
 
@@ -87,6 +88,71 @@ class InLoopbackTestCase(unittest.TestCase):
                          "Long CAN-FD ext BRS (B, 64 bytes) loopback mismatch")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def measure_frame_interval_us(self, tx_frame: bytes) -> int:
+        """Send two identical frames in one write over internal loopback, and
+        return the interval between the us timestamps of the two Rx frames,
+        which is one frame time (including the intermission)."""
+        self.dut.send(b"Z2\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(tx_frame + tx_frame)
+        time.sleep(0.1)
+        rx_data = self.dut.receive()
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        stamps = re.findall(re.escape(tx_frame[:-1]) + rb"([0-9A-F]{8})\r", rx_data)
+        self.assertEqual(len(stamps), 2, f"Expected two Rx frames with timestamps, got {rx_data!r}")
+        interval = int(stamps[1], 16) - int(stamps[0], 16)
+        if interval < 0:
+            interval += 3600000000  # us timestamp wraps at 60 minutes
+        return interval
+
+
+    def test_rejected_bitrate_keeps_timing(self):
+        """Verify that an S / Y command rejected with BELL leaves the bit
+        timing as it was.
+
+        There is no command to read the bit timing back, so the frame time is
+        measured as the interval of two back-to-back frames in internal
+        loopback: first after the accepted setting, then again after the
+        rejected command. The two must agree within 10 %. A fall back to the
+        default (125 kbps / 2 Mbps) gives a much different interval in every
+        case below (for example 896 us instead of 224 us at S6).
+        """
+        #self.dut.print_on = True
+
+        # Nominal bit rate: classical frame, about 112 bit
+        tx_frame = b"t55585555555555555555\r"
+        for setting, rejected in ((b"S6\r", b"S9\r"), (b"S6\r", b"SF\r"), (b"S0\r", b"S9\r"),
+                                  (self.dut.nominal_s_cmd(200), b"S9\r")):
+            self.dut.send(setting)
+            self.assertEqual(self.dut.receive(), b"\r")
+            reference = self.measure_frame_interval_us(tx_frame)
+            self.dut.send(rejected)
+            self.assertEqual(self.dut.receive(), b"\a", f"{rejected!r} should be rejected")
+            interval = self.measure_frame_interval_us(tx_frame)
+            self.assertLess(abs(interval - reference), reference * 0.1,
+                            f"{setting!r} then {rejected!r}: frame time {interval} us, "
+                            f"expected {reference} us (bit timing should be kept)")
+
+        # Data bit rate: BRS frame at S6
+        tx_frame = b"b55585555555555555555\r"
+        self.dut.send(b"S6\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        for setting, rejected in ((b"Y5\r", b"Y3\r"), (b"Y0\r", b"Y6\r"), (b"Y0\r", b"YF\r")):
+            self.dut.send(setting)
+            self.assertEqual(self.dut.receive(), b"\r")
+            reference = self.measure_frame_interval_us(tx_frame)
+            self.dut.send(rejected)
+            self.assertEqual(self.dut.receive(), b"\a", f"{rejected!r} should be rejected")
+            interval = self.measure_frame_interval_us(tx_frame)
+            self.assertLess(abs(interval - reference), reference * 0.1,
+                            f"{setting!r} then {rejected!r}: frame time {interval} us, "
+                            f"expected {reference} us (bit timing should be kept)")
 
 
     def test_tx_off_rx_on(self):
