@@ -69,6 +69,11 @@ static uint32_t can_bit_time_ns = 0;            // Time for one bit in ns
 static uint32_t can_data_bit_ratio_q16 = 0;     // Data bit time vs nominal bit time (Q16 fixed point)
 static uint32_t can_bus_load_ppm = 0;           // Current bus load in ppm
 
+// Timestamp validity per frame type, see can_is_timestamp_valid
+static FunctionalState can_ts_valid_classic = ENABLE;
+static FunctionalState can_ts_valid_fd = ENABLE;
+static FunctionalState can_ts_valid_fd_brs = ENABLE;
+
 #ifdef DEBUG
 // Tx delay compensation override state. Default is AUTO (matches the
 // non-debug build). Setters change these; can_enable() consults them and
@@ -80,6 +85,7 @@ static uint8_t can_tdc_manual_tdcf = 0;
 
 // Private methods
 static void can_update_bit_time(void);
+static FunctionalState can_is_longest_frame_within_ts_limit(uint32_t fd_format, uint32_t brs);
 static uint32_t can_get_bit_number_in_rx_frame(FDCAN_RxHeaderTypeDef *pRxHeader);
 static uint32_t can_get_bit_number_in_tx_event(FDCAN_TxEventFifoTypeDef *pTxEvent);
 static HAL_StatusTypeDef can_get_rx_fifo1_header(FDCAN_RxHeaderTypeDef *pRxHeader);
@@ -928,7 +934,8 @@ FDCAN_HandleTypeDef *can_get_handle(void)
     return &hfdcan1;
 }
 
-// Get the nominal one bit time in nanoseconds and the data bit time vs nominal bit time.
+// Get the nominal one bit time in nanoseconds and the data bit time vs nominal bit time,
+// and the timestamp validity per frame type that depends on them.
 // The bit rates do not change while the channel is open, so this is done once on open.
 static void can_update_bit_time(void)
 {
@@ -947,7 +954,48 @@ static void can_update_bit_time(void)
     else
         can_data_bit_ratio_q16 = (data_tq << 16) / nominal_tq;    // MAX: 1568 << 16
 
+    // Uses the bit time and the ratio above
+    can_ts_valid_classic = can_is_longest_frame_within_ts_limit(FDCAN_CLASSIC_CAN, FDCAN_BRS_OFF);
+    can_ts_valid_fd = can_is_longest_frame_within_ts_limit(FDCAN_FD_CAN, FDCAN_BRS_OFF);
+    can_ts_valid_fd_brs = can_is_longest_frame_within_ts_limit(FDCAN_FD_CAN, FDCAN_BRS_ON);
+
     return;
+}
+
+// Return whether the longest frame of the type (extended ID, DLC F) takes GEN_TS_LATCH_LIMIT_US or less
+// in the nominal bit number without stuff bits, which is a lower bound of its duration.
+static FunctionalState can_is_longest_frame_within_ts_limit(uint32_t fd_format, uint32_t brs)
+{
+    FDCAN_RxHeaderTypeDef header = {0};
+    header.IdType = FDCAN_EXTENDED_ID;
+    header.RxFrameType = FDCAN_DATA_FRAME;
+    header.DataLength = FDCAN_DLC_BYTES_64;
+    header.FDFormat = fd_format;
+    header.BitRateSwitch = brs;
+
+    // 64-bit: a long bit time times a long frame does not fit in 32 bits
+    uint64_t duration_ns = (uint64_t)can_get_bit_number_in_rx_frame(&header) * can_bit_time_ns;
+    if (duration_ns <= (uint64_t)GEN_TS_LATCH_LIMIT_US * 1000)
+        return ENABLE;
+    else
+        return DISABLE;
+}
+
+// Return whether the timestamp of a frame of the type can be rebuilt reliably.
+// The timestamp is rebuilt from a 16-bit TIM3 value latched at SOF, which wraps at 65.536 ms, so a
+// SOF-to-report delay of one wrap or more cannot be told from a short one. A frame type whose longest
+// frame (without stuff bits) exceeds GEN_TS_LATCH_LIMIT_US is therefore reported with the sentinel for
+// every frame of the type. A frame of the other types takes at most about 25 % longer with stuff bits,
+// which is far below one wrap, so the latch check in gen_get_timestamp_us_from_tim3 still works for it.
+// See: https://github.com/Nakakiyo092/usb2canfdv1/issues/223
+FunctionalState can_is_timestamp_valid(uint32_t fd_format, uint32_t brs)
+{
+    if (fd_format == FDCAN_CLASSIC_CAN)
+        return can_ts_valid_classic;
+    else if (brs == FDCAN_BRS_ON)
+        return can_ts_valid_fd_brs;
+    else
+        return can_ts_valid_fd;
 }
 
 // Return the duration of the rx frame in the nominal bit number

@@ -79,6 +79,9 @@ enum SlcanReportFlag
 #define SLCAN_STD_ID_LEN    3U
 #define SLCAN_EXT_ID_LEN    8U
 
+// Max delay from the SOF latch to the report for a reliable timestamp: DLC8 classic @10kbps ~16ms + margin
+#define GEN_TS_LATCH_LIMIT_US   20000U
+
 // Public variables
 extern const uint8_t gen_nibble_to_ascii[];
 

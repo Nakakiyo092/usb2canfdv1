@@ -151,6 +151,7 @@ HAL_StatusTypeDef can_set_auto_retransmit(FunctionalState state);
 enum CanBusState can_get_bus_state(void);
 struct CanErrorState can_get_error_state(void);
 FunctionalState can_is_tx_enabled(void);
+FunctionalState can_is_timestamp_valid(uint32_t fd_format, uint32_t brs);
 uint32_t can_get_bus_load_ppm(void);
 
 // Cycle time functions

@@ -1025,6 +1025,40 @@ class TimestampUsTestCase(unittest.TestCase):
                              f"{report!r}: the slow classic frame at 2 kbps should get the sentinel")
 
 
+    def test_timestamp_validity_per_frame_type(self):
+        """The timestamp validity is decided per frame type (classic, FD
+        without BRS, FD with BRS) when the channel opens: if the longest
+        frame of the type (extended ID, DLC F, without stuff bits) takes more
+        than 20 ms, every frame of the type gets the 0xFFFFFFFF sentinel,
+        even a short one. The longest frames take:
+          - classic, 131 bit: 13.1 ms at 10 kbps, 26.2 ms at 5 kbps
+          - FD without BRS, 597 bit: 59.7 ms at S0, 29.9 ms at S1, 11.9 ms at S2
+          - FD with BRS at S0 / Y2: 49 bit nominal + 548 bit data, 6.0 ms
+        """
+        #self.dut.print_on = True
+        short_t = b"t100111\r"
+        short_d = b"d100111\r"
+        short_b = b"b100111\r"
+        long_d = b"d100F" + b"00" * 64 + b"\r"
+        cases = (
+            (b"S0\r", short_t, False),
+            (b"S0\r", short_d, True),
+            (b"S0\r", short_b, False),
+            (b"S1\r", short_d, True),
+            (b"S2\r", long_d, False),
+            (self.dut.nominal_s_cmd(10), short_t, False),
+            (self.dut.nominal_s_cmd(5), short_t, True),
+        )
+        for setting, frame, sentinel in cases:
+            stamps = self.send_and_get_timestamps(setting, b"Z2\r", (frame,), False)
+            if sentinel:
+                self.assertEqual(stamps[0], b"FFFFFFFF",
+                                 f"{setting!r} {frame!r}: the frame type should get the sentinel")
+            else:
+                self.assertNotEqual(stamps[0], b"FFFFFFFF",
+                                    f"{setting!r} {frame!r}: the frame type should keep a valid timestamp")
+
+
     def test_timestamp_invalid_when_stalled(self):
         """When the main loop is stalled beyond the SOF-to-report design
         window (~20 ms), the us timestamp must be reported as the
