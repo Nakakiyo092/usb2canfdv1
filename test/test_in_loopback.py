@@ -612,6 +612,35 @@ class TimestampMsTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_slow_frame_in_wrap_window_milli(self):
+        """The ms counterpart of TimestampUsTestCase.test_slow_frame_in_wrap_window:
+        an FD frame without BRS with 64 bytes of 00 at S0 (about 73.5 ms)
+        must get the 0xFFFF sentinel, while the short frames before and
+        after it keep a valid timestamp."""
+        #self.dut.print_on = True
+        frames = (b"t1000\r", b"d100F" + b"00" * 64 + b"\r", b"t2000\r")
+        self.dut.send(b"S0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"Z1\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"".join(frames))
+        time.sleep(0.4)
+        rx_data = self.dut.receive()
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        stamps = []
+        for frame in frames:
+            match = re.search(re.escape(frame[:-1]) + rb"([0-9A-F]{4})\r", rx_data)
+            self.assertIsNotNone(match, f"No report of {frame!r} in {rx_data!r}")
+            stamps.append(match.group(1))
+        self.assertNotEqual(stamps[0], b"FFFF", "The short frame before should keep a valid timestamp")
+        self.assertEqual(stamps[1], b"FFFF", "The slow FD frame should get the sentinel")
+        self.assertNotEqual(stamps[2], b"FFFF", "The short frame after should keep a valid timestamp")
+
+
     def test_timestamp_accuracy_milli(self):
         """Send two frames back-to-back at the slowest bitrate (10k/500k)
         and compare the reported ms timestamp delta against the expected
@@ -930,6 +959,70 @@ class TimestampUsTestCase(unittest.TestCase):
                       f"At 25 kbps FD the timestamp must be sentinel FFFFFFFF, got: {rx_data!r}")
         self.dut.send(b"C\r")
         self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def send_and_get_timestamps(self, setting: bytes, report: bytes, frames: tuple, tx_event: bool) -> list:
+        """Open internal loopback with the bit rate setting and the report
+        mode, send the frames in one write, and return the us timestamp of
+        the report of each frame (bytes, 8 hex digits). With tx_event, the
+        Tx event report (z / Z + frame) is read instead of the Rx frame."""
+        self.dut.send(setting)
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(report)
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"=\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"".join(frames))
+        time.sleep(0.4)
+        rx_data = self.dut.receive()
+        self.dut.send(b"C\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        stamps = []
+        for frame in frames:
+            prefix = b""
+            if tx_event:
+                prefix = b"Z" if frame[:1].isupper() else b"z"
+            match = re.search(re.escape(prefix + frame[:-1]) + rb"([0-9A-F]{8})\r", rx_data)
+            self.assertIsNotNone(match, f"No report of {frame!r} in {rx_data!r}")
+            stamps.append(match.group(1))
+        return stamps
+
+
+    def test_slow_frame_in_wrap_window(self):
+        """A frame whose SOF-to-report delay is in 65.5 .. 85.5 ms must get
+        the 0xFFFFFFFF sentinel, not a timestamp 65,536 us late.
+
+        The timestamp is rebuilt from a 16-bit TIM3 value latched at SOF, so
+        the delay wraps at 65.536 ms. test_min_bitrate_classic and
+        test_min_bitrate_fd check only the 20 ms limit (delays of about 11 ms
+        and 20 .. 65.5 ms). Here the frames are slow enough to wrap:
+          - FD without BRS, 64 bytes of 00 / FF at S0: about 73.5 ms
+            (the many stuff bits make it longer than 65.5 ms).
+          - Classic, extended ID 0, DLC 8 with 00 at 2 kbps: about 78 ms.
+        For the FD frame, short frames before and after it (about 5.5 ms)
+        must keep a valid timestamp. Both the Rx frame report (Z2) and the
+        Tx event report (z2002) are checked.
+        """
+        #self.dut.print_on = True
+        short_a = b"t1000\r"
+        short_c = b"t2000\r"
+        for payload in (b"00" * 64, b"FF" * 64):
+            slow = b"d100F" + payload + b"\r"
+            for report, tx_event in ((b"Z2\r", False), (b"z2002\r", True)):
+                stamps = self.send_and_get_timestamps(b"S0\r", report, (short_a, slow, short_c), tx_event)
+                self.assertNotEqual(stamps[0], b"FFFFFFFF",
+                                    f"{report!r}: the short frame before should keep a valid timestamp")
+                self.assertEqual(stamps[1], b"FFFFFFFF",
+                                 f"{report!r}: the slow FD frame ({payload[:2]!r} x 64) should get the sentinel")
+                self.assertNotEqual(stamps[2], b"FFFFFFFF",
+                                    f"{report!r}: the short frame after should keep a valid timestamp")
+
+        slow = b"T0000000080000000000000000\r"
+        for report, tx_event in ((b"Z2\r", False), (b"z2002\r", True)):
+            stamps = self.send_and_get_timestamps(self.dut.nominal_s_cmd(2), report, (slow,), tx_event)
+            self.assertEqual(stamps[0], b"FFFFFFFF",
+                             f"{report!r}: the slow classic frame at 2 kbps should get the sentinel")
 
 
     def test_timestamp_invalid_when_stalled(self):
