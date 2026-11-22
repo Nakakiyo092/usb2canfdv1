@@ -90,6 +90,83 @@ class InLoopbackTestCase(unittest.TestCase):
         self.assertEqual(self.dut.receive(), b"\r")
 
 
+    def test_classic_dlc_over_8(self):
+        """Verify that a classical data frame with DLC 9..F is reported with
+        8 data bytes, in the same format as the t / T command.
+
+        A 64-byte FD frame is sent before each classical frame, so that the
+        buffers the frames go through hold more bytes than the classical
+        frame carries. Both the Rx frame report (z0001) and the Tx event
+        report (z0002) are checked.
+        """
+        #self.dut.print_on = True
+        fd_frame = b"d03FF" + b"".join(format(0xA0 + i, "02X").encode() for i in range(0, 64)) + b"\r"
+        data = b"0011223344556677"
+
+        for report in (b"z0001\r", b"z0002\r"):
+            self.dut.send(report)
+            self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"=\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+            for dlc in b"9ABCDEF":
+                for cmd, id_ in ((b"t", b"03F"), (b"T", b"0137FEC8")):
+                    self.dut.send(fd_frame)
+                    self.dut.receive()
+                    tx_data = cmd + id_ + bytes([dlc]) + data + b"\r"
+                    self.dut.send(tx_data)
+                    z = b"z" if cmd == b"t" else b"Z"
+                    if report == b"z0001\r":
+                        expected = z + b"\r" + tx_data      # ACK, then Rx frame
+                    else:
+                        expected = b"\r" + z + tx_data      # ACK, then Tx event
+                    self.assertEqual(self.dut.receive(), expected,
+                                     f"{report!r}: classical frame with DLC {chr(dlc)} should be "
+                                     f"reported with 8 data bytes")
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+
+    def test_bus_load_classic_dlc_over_8(self):
+        """Verify that a classical data frame with DLC F counts as 8 data
+        bytes in the bus load, both for accepted frames (Rx FIFO 0) and for
+        frames rejected by the acceptance filter (Rx FIFO 1).
+
+        At S0 (10 kbps), t555F with 8 data bytes takes about 11.2 ms (112 bit).
+        One frame every 50 ms gives about 22 %. Counting 64 data bytes would
+        give 100 % or more. The window has the same 10 % point margin as
+        test_bus_load_stepwise in test_ex_loopback.py.
+        """
+        #self.dut.print_on = True
+        tx_data = b"t555F5555555555555555\r"
+        self.dut.send(b"S0\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+        self.dut.send(b"z0000\r")
+        self.assertEqual(self.dut.receive(), b"\r")
+
+        for fifo in (0, 1):
+            if fifo == 1:
+                # Single filter that passes only ID 0x000, so 0x555 goes to Rx FIFO 1
+                for cmd in (b"W2\r", b"M00000000\r", b"m00000000\r"):
+                    self.dut.send(cmd)
+                    self.assertEqual(self.dut.receive(), b"\r")
+            self.dut.send(b"=\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+            for _ in range(0, 40):
+                self.dut.send(tx_data)
+                time.sleep(0.05)
+            self.dut.receive()
+            self.dut.send(b"z\r")
+            rx_data = self.dut.receive()
+            self.assertEqual(len(rx_data), 109, "z-command response length mismatch")
+            pct = int(rx_data[106:108], 10)
+            self.assertGreaterEqual(pct, 12,
+                                    f"Rx FIFO {fifo}: reported {pct} %, expected within [12, 32]")
+            self.assertLessEqual(pct, 32,
+                                 f"Rx FIFO {fifo}: reported {pct} %, expected within [12, 32]")
+            self.dut.send(b"C\r")
+            self.assertEqual(self.dut.receive(), b"\r")
+
+
     def measure_frame_interval_us(self, tx_frame: bytes) -> int:
         """Send two identical frames in one write over internal loopback, and
         return the interval between the us timestamps of the two Rx frames,
