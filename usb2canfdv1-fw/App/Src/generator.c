@@ -21,8 +21,7 @@
 #include "can.h"
 #include "generator.h"
 
-// Constants used in gen_get_timestamp_us_from_tim3
-#define GEN_TS_LATCH_LIMIT_US      20000U        // Max latch->report delay: DLC8 classic @10kbps ~16ms + margin
+// Constants used in gen_get_timestamp_us_from_tim3 (GEN_TS_LATCH_LIMIT_US is in generator.h)
 #define GEN_TS_SNAPSHOT_MAX_RETRY  8U            // Cap on (gen_us_base, TIM3) snapshot retries before giving up
 #define GEN_TS_RING_MS             60000U        // spec wrap
 #define GEN_TS_RING_US             3600000000U   // spec wrap
@@ -122,9 +121,12 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
     }
 
     // Add time stamp
+    // A frame type too slow for a reliable timestamp gets the sentinel (see can_is_timestamp_valid).
     if (gen_timestamp_mode == SLCAN_TIMESTAMP_MILLI)
     {
-        uint16_t timestamp_ms = gen_get_timestamp_ms_from_tim3(frame_header->RxTimestamp);
+        uint16_t timestamp_ms = GEN_TS_INVALID_MS;
+        if (can_is_timestamp_valid(frame_header->FDFormat, frame_header->BitRateSwitch))
+            timestamp_ms = gen_get_timestamp_ms_from_tim3(frame_header->RxTimestamp);
 
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_ms >> 12) & 0xF];
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_ms >> 8) & 0xF];
@@ -136,7 +138,9 @@ uint16_t gen_generate_frame(uint8_t *buf, FDCAN_RxHeaderTypeDef *frame_header, c
         // If a CAN frame is re-transmitted, the reported timestamp corresponds to the final, successful transmission.
         // See the link for details.
         // https://github.com/Nakakiyo092/usb2canfdv1/issues/48
-        uint32_t timestamp_us = gen_get_timestamp_us_from_tim3(frame_header->RxTimestamp);
+        uint32_t timestamp_us = GEN_TS_INVALID_US;
+        if (can_is_timestamp_valid(frame_header->FDFormat, frame_header->BitRateSwitch))
+            timestamp_us = gen_get_timestamp_us_from_tim3(frame_header->RxTimestamp);
 
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_us >> 28) & 0xF];
         buf[msg_idx++] = gen_nibble_to_ascii[(timestamp_us >> 24) & 0xF];
@@ -290,6 +294,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 //   result is reported as GEN_TS_INVALID_US. This is an out-of-spec
 //   input (extremely slow bitrate and/or a stalled main loop), not a
 //   normal operating point. The underlying frame data is unaffected.
+//   `back` itself wraps at 65.536 ms, so a delay of one TIM3 wrap or more
+//   is not detected here. Frame types slow enough for that get the
+//   sentinel before this function (can_is_timestamp_valid); a main loop
+//   stalled that long is out of scope.
 uint32_t gen_get_timestamp_us_from_tim3(uint16_t latched_tim3)
 {
     uint32_t base_before, base_after, tim3_sr;
