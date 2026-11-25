@@ -20,6 +20,7 @@
 #include "stm32g0xx_hal.h"
 #include "can.h"
 #include "generator.h"
+#include "led.h"
 
 // Constants used in gen_get_timestamp_us_from_tim3 (GEN_TS_LATCH_LIMIT_US is in generator.h)
 #define GEN_TS_SNAPSHOT_MAX_RETRY  8U            // Cap on (gen_us_base, TIM3) snapshot retries before giving up
@@ -593,6 +594,14 @@ uint16_t gen_get_report_mode(void)
 void gen_raise_error(enum SlcanStatusFlag err)
 {
     gen_status_flags |= (uint8_t)(1 << err);
+
+    // Indicate the event on the LEDs as well. The LEDs keep their own time, so that
+    // reading the flags by the F command does not change them. The error warning,
+    // error passive and bus off states are taken from the node state in led_process().
+    if (err == SLCAN_STS_BUS_ERROR)
+        led_notify_error();
+    else if (err == SLCAN_STS_CAN_RX_FIFO_FULL || err == SLCAN_STS_CAN_TX_FIFO_FULL || err == SLCAN_STS_DATA_OVERRUN)
+        led_notify_loss();
 }
 
 void gen_clear_error(void)

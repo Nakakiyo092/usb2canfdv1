@@ -33,9 +33,10 @@ enum LedState
 
 // Prototypes
 void led_init(void);
-void led_turn_txd(enum LedState state); // No led_turn_rxd: RX LED is managed exclusively via led_blink_rxd/led_process
 void led_blink_txd(void);
 void led_blink_rxd(void);
-void led_process(void);
+void led_notify_error(void);
+void led_notify_loss(void);
+void led_process(void);     // Writes the LEDs; the functions above only record the request (except led_init)
 
 #endif // USB2CANFDV1_LED_H

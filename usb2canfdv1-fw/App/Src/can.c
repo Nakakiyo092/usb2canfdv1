@@ -228,8 +228,6 @@ HAL_StatusTypeDef can_enable(void)
         can_update_bit_time();
         can_bus_load_ppm = 0;
 
-        led_turn_txd(LED_OFF);
-
         can_bus_state = BUS_OPENED;
 
         return HAL_OK;
@@ -249,8 +247,6 @@ HAL_StatusTypeDef can_disable(void)
         // Reset error counter etc.
         __HAL_RCC_FDCAN_FORCE_RESET();
         __HAL_RCC_FDCAN_RELEASE_RESET();
-
-        led_turn_txd(LED_ON);
 
         can_bus_state = BUS_CLOSED;
 
@@ -475,11 +471,6 @@ void can_process(void)
     can_cycle_ave_time_ns = ((uint32_t)can_cycle_ave_time_ns * 15 + cycle_time_ns) >> 4;
     
     last_time_stamp_cnt = curr_time_stamp_cnt;
-
-    // TX LED on during bus closed
-    if (can_bus_state == BUS_CLOSED)
-        led_turn_txd(LED_ON);
-
 }
 
 // Set the nominal bitrate of the CAN peripheral
