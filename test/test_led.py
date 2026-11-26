@@ -123,7 +123,7 @@ class LedTestCase(unittest.TestCase):
 
 
     def test_4_protocol_error(self):
-        """Error: RX and TX on for a short time after a CAN protocol error."""
+        """CAN error: RX and TX on for a short time after a CAN protocol error."""
         if not self.dut.debug_build:
             self.skipTest("Requires a DEBUG build (no retransmission)")
         self.dut.send(b"-\r")           # no retransmission: the frame fails only once
@@ -145,7 +145,7 @@ class LedTestCase(unittest.TestCase):
 
 
     def test_5_error_passive(self):
-        """Error: RX and TX on while the node is error passive. Reading F does not change it."""
+        """CAN error: RX and TX on while the node is error passive. Reading F does not change it."""
         self.dut.send(b"O\r")
         self.assertEqual(self.dut.receive(), b"\r")
 

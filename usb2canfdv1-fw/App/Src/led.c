@@ -20,7 +20,7 @@
 // led_process() decides the indication by the rules below, applied from top:
 //   1. Startup: RX and TX blink in turn (after a reset)
 //   2. Bus off: RX and TX blink together while the channel is open
-//   3. Error: RX and TX on while the node is error passive,
+//   3. CAN error: RX and TX on while the node is error passive,
 //      and for LED_EVENT_HOLD_MS after a CAN protocol error
 //   4. Data loss: RX on and TX off for LED_EVENT_HOLD_MS after any data is discarded
 //   5. Normal: TX on while the channel is closed, RX and TX blink by the activity
@@ -33,7 +33,7 @@
 
 // Durations in ms
 #define LED_BLINK_DURATION          25U     // Activity blink: on time, and the minimum off time before the next one
-#define LED_EVENT_HOLD_MS           500U    // Error and data loss indication after the event
+#define LED_EVENT_HOLD_MS           500U    // CAN error and data loss indication after the event
 #define LED_BUS_OFF_HALF_PERIOD_MS  250U    // Bus off blink
 
 // Opening animation: 5 blinks, each half-period 100 ms (matches the old blocking sequence)
@@ -167,7 +167,7 @@ void led_process(void)
     }
     else if ((opened && error_state.err_pssv) || led_error_held)
     {
-        // Error: both on
+        // CAN error: both on
         rxd = LED_ON;
         txd = LED_ON;
     }
