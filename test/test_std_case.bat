@@ -51,14 +51,6 @@ echo.
 echo.
 echo Running short test cases
 python test\test_short.py
-echo.
-echo.
-echo Make ready to check LED then press enter...
-pause
-echo.
-echo.
-echo Running led test cases...
-python test\test_led.py
 
 :: Restore default setup
 echo.
