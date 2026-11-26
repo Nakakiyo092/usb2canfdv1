@@ -162,6 +162,8 @@ void led_process(void)
     if (opened && error_state.bus_off)
     {
         // Bus off: blink together
+        // The tick wraps at 2^32 ms, which is not a multiple of the blink period, so one half-period
+        // just before the wrap is shorter. It happens once every 49.7 days, and is accepted.
         rxd = (((now / LED_BUS_OFF_HALF_PERIOD_MS) % 2) == 0) ? LED_ON : LED_OFF;
         txd = rxd;
     }
