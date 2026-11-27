@@ -32,7 +32,7 @@
 #include "led.h"
 
 // Durations in ms
-#define LED_BLINK_DURATION          25U     // Activity blink: on time, and the minimum off time before the next one
+#define LED_BLINK_DURATION_MS       25U     // Activity blink: on time, and the minimum off time before the next one
 #define LED_EVENT_HOLD_MS           500U    // CAN error and data loss indication after the event
 #define LED_BUS_OFF_HALF_PERIOD_MS  250U    // Bus off blink
 
@@ -67,9 +67,9 @@ void led_init(void)
 // Turn TX LED on for a short duration
 void led_blink_txd(void)
 {
-    // Make sure the LED has been off for at least LED_BLINK_DURATION before turning on again
+    // Make sure the LED has been off for at least LED_BLINK_DURATION_MS before turning on again
     // This prevents a solid status LED on a busy can bus
-    if (led_txd_last_state == LED_OFF && (uint32_t)(HAL_GetTick() - led_txd_last_time) > LED_BLINK_DURATION)
+    if (led_txd_last_state == LED_OFF && (uint32_t)(HAL_GetTick() - led_txd_last_time) > LED_BLINK_DURATION_MS)
     {
         led_txd_last_time = HAL_GetTick();
         led_txd_last_state = LED_ON;
@@ -79,9 +79,9 @@ void led_blink_txd(void)
 // Turn RX LED on for a short duration
 void led_blink_rxd(void)
 {
-    // Make sure the LED has been off for at least LED_BLINK_DURATION before turning on again
+    // Make sure the LED has been off for at least LED_BLINK_DURATION_MS before turning on again
     // This prevents a solid status LED on a busy can bus
-    if (led_rxd_last_state == LED_OFF && (uint32_t)(HAL_GetTick() - led_rxd_last_time) > LED_BLINK_DURATION)
+    if (led_rxd_last_state == LED_OFF && (uint32_t)(HAL_GetTick() - led_rxd_last_time) > LED_BLINK_DURATION_MS)
     {
         led_rxd_last_time = HAL_GetTick();
         led_rxd_last_state = LED_ON;
@@ -136,12 +136,12 @@ void led_process(void)
     }
 
     // If an activity blink has been on for long enough, turn it off
-    if (led_rxd_last_state == LED_ON && (uint32_t)(now - led_rxd_last_time) > LED_BLINK_DURATION)
+    if (led_rxd_last_state == LED_ON && (uint32_t)(now - led_rxd_last_time) > LED_BLINK_DURATION_MS)
     {
         led_rxd_last_time = now;
         led_rxd_last_state = LED_OFF;
     }
-    if (led_txd_last_state == LED_ON && (uint32_t)(now - led_txd_last_time) > LED_BLINK_DURATION)
+    if (led_txd_last_state == LED_ON && (uint32_t)(now - led_txd_last_time) > LED_BLINK_DURATION_MS)
     {
         led_txd_last_time = now;
         led_txd_last_state = LED_OFF;
