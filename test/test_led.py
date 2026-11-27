@@ -75,21 +75,29 @@ class LedTestCase(unittest.TestCase):
 
 
     def test_2_bus_open(self):
-        """CAN bus open: RX and TX blink by a CAN frame reception and transmission."""
+        """CAN bus open: RX and TX blink by a CAN frame reception and transmission.
+        RX blinks also for a frame rejected by the acceptance filter."""
         if not self.dut.debug_build:
             self.skipTest("Requires a DEBUG build (internal loopback)")
-        self.dut.send(b"z0000\r")       # no reports, the LEDs do not depend on them
-        self.assertEqual(self.dut.receive(), b"\r")
+        # Simple filter that accepts only the base IDs with bit 0 = 0, so the odd IDs are rejected
+        for cmd in (b"W2\r", b"M80000000\r", b"m7FFFFFFE\r"):
+            self.dut.send(cmd)
+            self.assertEqual(self.dut.receive(), b"\r")
         self.dut.send(b"=\r")
         self.assertEqual(self.dut.receive(), b"\r")
 
         self.announce("CAN bus open",
-                      "Send 8 frames in internal loopback, 0.5 s apart.",
-                      ("RX & TX: blink once per frame (8 times)",
+                      "Send 8 frames in internal loopback, 0.5 s apart."
+                      " Every second frame is rejected by the acceptance filter.",
+                      ("RX & TX: blink once per frame (8 times), also for the rejected frames",
                        "RX & TX: OFF between the frames"))
         for i in range(0, 8):
-            self.dut.send(b"t" + format(i, "03X").encode() + b"0\r")
-            self.assertEqual(self.dut.receive(), b"z\r")
+            frame = b"t" + format(i, "03X").encode() + b"0\r"
+            self.dut.send(frame)
+            if i % 2 == 0:
+                self.assertEqual(self.dut.receive(), b"z\r" + frame, f"{frame!r} should pass the filter")
+            else:
+                self.assertEqual(self.dut.receive(), b"z\r", f"{frame!r} should be rejected by the filter")
             time.sleep(0.5)
         self.confirm()
 
