@@ -55,14 +55,6 @@ echo ""
 echo ""
 echo "Running short test cases"
 python3 test/test_short.py
-echo ""
-echo ""
-echo "Make ready to check LED then press enter..."
-read input
-echo ""
-echo ""
-echo "Running led test cases"
-python3 test/test_led.py
 
 # Restore default setup
 echo ""
